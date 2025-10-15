@@ -1,0 +1,9 @@
+[submodule "submodules/openvdb"]
+	path = submodules/openvdb
+	url = https://github.com/AcademySoftwareFoundation/openvdb.git
+[submodule "submodules/nanoflann"]
+	path = submodules/nanoflann
+	url = https://github.com/jlblancoc/nanoflann.git
+[submodule "submodules/cudaKDTree"]
+	path = submodules/cudaKDTree
+	url = https://github.com/jar091/cudaKDTree.git
