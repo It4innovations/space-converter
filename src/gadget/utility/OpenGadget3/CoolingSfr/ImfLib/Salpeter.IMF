@@ -1,0 +1,15 @@
+1
+#
+TYPE    PowerLaw
+NAME    Salpeter
+TDEP    0
+MU      100.0
+Mm      0.1
+NPar    0
+NSlopes 1
+0.1 1.35 0.1716364
+YSet    0
+N_notBH 1
+40 0.1
+EKin    1.0
+

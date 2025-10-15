@@ -1,0 +1,284 @@
+InitCondFile            /dss/dsshome1/lxc07/di46yig/scratch_work/AqC5/ICs/Aq-C5-aquila-sph+dm_000 
+OutputDir               ./
+
+SnapshotFileBase        snap
+
+
+EnergyFile        energy.txt
+InfoFile          info.txt
+TimingsFile       timings.txt
+CpuFile           cpu.txt
+TimebinFile       timebin.txt
+
+
+RestartFile       restart
+WalCoolTables_Path /dss/dsshome1/lxc07/di46yig/CoolingTables_new 
+%WalCoolTables_Path /dss/dssfs02/pr62go/pr62go-dss-0001/Safe/CoolingTablesWSS08
+%BC_SED_Path    /dss/dssfs02/pr62go/pr62go-dss-0001/Safe/CB07
+
+% CPU-time limit
+
+TimeLimitCPU      172800
+ResubmitOn        0
+ResubmitCommand   ./resub.cmd
+
+
+% Code options
+
+ICFormat              2
+ComovingIntegrationOn 1
+
+NumFilesPerSnapshot       1
+NumFilesWrittenInParallel 1
+SnapFormat                2
+
+CoolingOn 1
+
+%  Caracteristics of run
+
+TimeBegin           0.0078125    % Begin of the simulation (z=127)
+TimeMax	            1.0
+	
+Omega0 	              0.25
+OmegaLambda           0.75
+OmegaBaryon           0.04
+HubbleParam           0.73
+BoxSize               100.0
+
+
+PeriodicBoundariesOn   1
+
+
+% Output frequency
+
+OutputListFilename  outputs
+OutputListOn        1
+
+TimeBetSnapshot        1.04912649189365
+TimeOfFirstSnapshot    0.090909091
+ 
+CpuTimeBetRestartFile  600  % every ~2 min
+
+TimeBetStatistics      0.02
+
+% Accuracy of time integration
+
+TypeOfTimestepCriterion 0
+ErrTolIntAccuracy      0.05
+MaxSizeTimestep       0.1
+MinSizeTimestep       0.0
+MaxRMSDisplacementFac  0.25
+
+% Tree algorithm and force accuracy
+ErrTolTheta            0.45
+TypeOfOpeningCriterion 1
+ErrTolForceAcc         0.005
+	
+TreeDomainUpdateFrequency    0.025
+
+
+%  Parameters of SPH
+
+DesNumNgb           295
+MaxNumNgbDeviation  0.5
+
+ArtBulkViscConst       3.0
+InitGasTemp            97.132017
+MinGasTemp             50.
+CourantFac             0.15
+
+
+% Further code parameters
+
+PartAllocFactor         5.0
+% TreeAllocFactor       8.5
+MaxMemSize 		4000
+
+BufferSize              150
+
+
+% System of units
+
+UnitLength_in_cm         3.085678e24        ;  1.0 Mpc  WARNING!! usually this is KPC!!
+UnitMass_in_g            1.989e43           ;  1.0e10 solar masses 
+UnitVelocity_in_cm_per_s 1e5                ;  1 km/sec 
+GravityConstantInternal  0
+
+
+% Softening lengths
+
+MinGasHsmlFractional 0.
+
+SofteningGas       0.002275
+SofteningHalo      0.002275
+SofteningDisk      0.0091
+SofteningBulge     0.150
+SofteningStars     0.002275
+SofteningBndry     0.002275
+
+SofteningGasMaxPhys       0.000325
+SofteningHaloMaxPhys      0.000325
+SofteningDiskMaxPhys      0.0013
+SofteningBulgeMaxPhys     0.0214
+SofteningStarsMaxPhys     0.000325
+SofteningBndryMaxPhys     0.000325
+
+
+% Quantities for star formation and feedback
+
+StarformationOn 1
+CritPhysDensity     0.01     %  critical physical density for star formation in
+                            %  hydrogen number density in cm^(-3)
+MaxSfrTimescale     1.5     % in internal time units
+CritOverDensity      57.7    %  overdensity threshold value
+TempSupernova        1.0e8   %  in Kelvin
+TempClouds           1000.0   %  in Kelvin
+%FactorSN             0.1
+%FactorEVP            1000.0
+
+%WindEfficiency    2.0
+%WindFreeTravelLength 20.0
+%WindEnergyFraction  0.5
+WindFreeTravelDensFac 0.5
+%WindFreeTravelMaxTimeFactor 30.0 ;not used by muppi but needed by new WIND
+
+
+SFfactor          0.40  ;num pos memoria per stelle riservato
+%% in lt_sfr.c
+Generations       4     ;num generazioni per le varie modalita' di sf (peso
+%medio)
+
+IMFsFileName      Kroupa_1993.IMF 
+SFsFileName       SFs
+
+%% tracking metalli
+%PackPowerBase  10
+InfNeighNum       1
+DesNumNgbSN       200
+SpreadNumNgbDev   3
+
+%
+Z_toset_SF_DensTh  0.0
+Zdependent_SFTh    0
+%%
+
+%SFTh_for_enrich   1e-8
+%
+SnII_InfMass      8.0
+%
+MinBinSystemMass  3.0
+MaxBinSystemMass  16.0
+BinarySystemFrac  0.03
+MinStarMass_inBinSystem 0.8
+%
+%
+%HighestStarMass   100.0
+%LowestStarMass    0.8
+%
+%
+SnIaEnergy        1e51
+SnIIEnergy        1e51
+%
+%
+SnIaDataFileName  Ia.yields
+SnIaDataSetNum    1
+SnIIdataFileName  MassiveMg3x.yields
+SnIIDataSetNum    1
+AGBdataFileName   AGB.yields
+AGBDataSetNum     1
+%
+MinSpreadLength   0.00005
+MaxSpreadLength   0.005
+MinChemTimeStep   3.1536e12    ; 10^5 yrs -WARNING MODIFIED BECAUSE NOW TIME UNIT IS 10^12 Yr
+LongLiving_Step_Prec    0.02
+SnII_Step_Prec    0.1
+
+FracEgyIn          0.02
+FracEgyOut         0.20
+FracEgyKin         0.08
+
+% Subfind part
+ErrTolThetaSubfind 0.45  ; Opening criteria when calculating the potential
+DesLinkNgb         20   ; Minimum number of particles to make a valid subhalo
+BC_SED_Path        /plx/userexternal/sborgani/Commons/CB07  ; Path to the SED tables
+
+% BH part
+BlackHolesOn                                 1
+BlackHoleThermalFeedbackOn                   0
+BlackHoleKineticFeedbackOn                   0
+BlackHoleFoFMinMassForNewSeed                1.25  #in code units
+BlackHoleSeedMass                            8.e-6
+BlackHoleSeedStarMassFraction                0
+BlackHoleSeedDMFraction                      0
+BlackHoleSeedGasFraction                     0
+BlackHoleFormationFactor                     0.01  # mean BHs per gas particle
+BlackHoleSwallowGasOn                        0
+BlackHoleIgnoreMomentum                      0
+BlackHoleAccretionSlicesOn                   1
+BlackHoleDetails                             0
+BlackHoleRepositioningOn                     0
+BlackHoleHotColdAccretionOn                  0
+BlackHoleVelocityInBondiOn                   0
+BlackHoleVariableAccretionFactorOn           0
+BlackHoleVariableAccretionSlope              0
+BlackHoleVariableEfficiencyOn                0
+BlackHoleRadiativeEfficiencySlope            0
+BlackHoleRadiativeEfficiencyNorm             0
+BlackHoleRadiativeEfficiencySlopeMdot        0
+BlackHoleRadiativeEfficiencySlopeMbh         0
+BlackHolePhysMdotUpperLimit                  0
+BlackHoleRadiativeEfficiencyMax              0.1
+BlackHoleRadiativeEfficiencyMin              0
+BlackHoleOutflowModelOn                      0
+BlackHoleRadioModeTreshold                   0
+BlackHoleLimitFeedbackOn                     0
+BlackHoleLimitMaxTemp                        0
+BlackHoleFeedbackTemperatureTresh            0
+BlackHoleFrictionForceOn                     0
+BlackHoleFrictionForceDynaicsOn              0
+BlackHoleFrictionForceMaxCorrect             0
+BlackHoleMergeCsndFrac                       1
+BlackHoleMergeDistFrac                       0
+BlackHoleMergeBindingFrac                    0
+BlackHoleRadioModeFeedbackBoost              0
+
+massDMpart                         1.6e-04  # adapt to the one used in the simulation
+
+BlackHoleNgbFactor                 1
+BlackHoleRadiativeEfficiency       0.1
+BlackHoleFeedbackFactor            0.01
+SeedBlackHoleMass                  8.e-6  #1.e-07
+TimeBetOnTheFlyFoF                 1.03
+MinFoFMassForNewSeed               1.25  #in code units
+BlackHoleEddingtonFactor           1
+BlackHoleMaxAccretionRadius        0.05
+BH_N_AccretionSlices               4     # for LT_BH_ACCRETE_SLICES, set to same than NGenerations)
+BH_radio_treshold                  0.01  # BH_MdotEddington -> treshold for radio mode
+BHFormationFactor                  0.01  # mean BHs per gas particle
+BlackHoleAccretionFactor           1
+BlackHoleColdAccretionFactor       1
+BlackHoleActiveTime                1
+
+
+ConductionEfficiency 0.0 %0.05
+MaxSizeConductionStep 0.0 %0.01
+
+WindFreeTravelMaxTimeFactor 30.0 ;not used by muppi but needed by new WIND
+
+ViscositySourceScaling 0.0
+ViscosityDecayLength   4.0
+ViscosityAlphaMin      0.02
+
+ArtCondConstant 1.0
+ArtCondMin 0.0
+
+
+LevelOfStrickness 	1
+MuppiOn			1
+MuppiDebugOn		0
+CountParticlesInConeOn	1
+StellarKinFB2		1
+StellarKinFB2Output	0
+SpectralCRsOn           0
+BPRealCRsOn  	 	0
+

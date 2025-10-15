@@ -1,0 +1,222 @@
+InitCondFile            ./Aq-C6-aquila-sph+dm_000
+%InitCondFile            ./snap_008
+OutputDir               ./
+
+SnapshotFileBase        snap
+
+
+EnergyFile        energy.txt
+InfoFile          info.txt
+TimingsFile       timings.txt
+CpuFile           cpu.txt
+TimebinFile       timebin.txt
+
+
+RestartFile       restart
+WalCoolTables_Path /m100/home/userexternal/gmurante/local/CoolingTables_new
+
+% CPU-time limit
+
+TimeLimitCPU      80000
+ResubmitOn        0
+ResubmitCommand   ./resub.cmd
+
+
+% Code options
+
+ICFormat              2
+ComovingIntegrationOn 1
+
+NumFilesPerSnapshot       1
+NumFilesWrittenInParallel 1
+SnapFormat                2
+
+CoolingOn 1
+
+%  Caracteristics of run
+
+TimeBegin           0.0078125    % Begin of the simulation (z=127)
+TimeMax	            1.0
+	
+Omega0 	              0.25
+OmegaLambda           0.75
+OmegaBaryon           0.04
+HubbleParam           0.73
+BoxSize               100.0
+
+
+PeriodicBoundariesOn   1
+
+
+% Output frequency
+
+OutputListFilename  outputs.txt
+OutputListOn        1
+
+TimeBetSnapshot        1.04912649189365
+TimeOfFirstSnapshot    0.090909091
+ 
+CpuTimeBetRestartFile  120  % every ~2 min
+
+TimeBetStatistics      0.02
+
+% Accuracy of time integration
+
+TypeOfTimestepCriterion 0
+ErrTolIntAccuracy      0.05
+MaxSizeTimestep       0.1
+MinSizeTimestep       0.0
+MaxRMSDisplacementFac  0.25
+
+% Tree algorithm and force accuracy
+ErrTolTheta            0.45
+TypeOfOpeningCriterion 1
+ErrTolForceAcc         0.005
+	
+TreeDomainUpdateFrequency    0.025
+
+
+%  Parameters of SPH
+
+DesNumNgb           200
+MaxNumNgbDeviation  1
+
+ArtBulkViscConst       3.0
+InitGasTemp            97.132017
+MinGasTemp             50.
+CourantFac             0.15
+
+
+% Further code parameters
+
+PartAllocFactor         5.0
+% TreeAllocFactor       8.5
+MaxMemSize 		6000
+
+BufferSize              150
+
+
+% System of units
+
+UnitLength_in_cm         3.085678e24        ;  1.0 Mpc  WARNING!! usually this is KPC!!
+UnitMass_in_g            1.989e43           ;  1.0e10 solar masses 
+UnitVelocity_in_cm_per_s 1e5                ;  1 km/sec 
+GravityConstantInternal  0
+
+
+% Softening lengths
+
+MinGasHsmlFractional 0.
+
+SofteningGas       0.002275
+SofteningHalo      0.002275
+SofteningDisk      0.0091
+SofteningBulge     0.150
+SofteningStars     0.002275
+SofteningBndry     0.002275
+        
+SofteningGasMaxPhys       0.000325
+SofteningHaloMaxPhys      0.000325
+SofteningDiskMaxPhys      0.001
+SofteningBulgeMaxPhys     0.021
+SofteningStarsMaxPhys     0.000325
+SofteningBndryMaxPhys     0.000325
+
+
+
+% Quantities for star formation and feedback
+
+StarformationOn 1
+CritPhysDensity     0.     %  critical physical density for star formation in
+                            %  hydrogen number density in cm^(-3)
+MaxSfrTimescale     1.5     % in internal time units
+CritOverDensity      57.7    %  overdensity threshold value
+TempSupernova        1.0e8   %  in Kelvin
+TempClouds           1000.0   %  in Kelvin
+%FactorSN             0.1
+%FactorEVP            1000.0
+
+WindEfficiency    2.0
+WindFreeTravelLength 20.0
+WindEnergyFraction  0.5
+WindFreeTravelDensFac 0.5
+WindFreeTravelMaxTimeFactor 30.0 ;not used by muppi but needed by new WIND
+
+
+SFfactor          0.40  ;num pos memoria per stelle riservato
+%% in lt_sfr.c
+Generations       4     ;num generazioni per le varie modalita' di sf (peso
+%medio)
+
+IMFsFileName      IMFs
+SFsFileName       SFs
+
+%% tracking metalli
+%PackPowerBase  10
+InfNeighNum       1
+DesNumNgbSN       200
+SpreadNumNgbDev   3
+
+%
+Z_toset_SF_DensTh  0.0
+Zdependent_SFTh    0
+%%
+
+%SFTh_for_enrich   1e-8
+%
+SnII_InfMass      8.0
+%
+MinBinSystemMass  3.0
+MaxBinSystemMass  16.0
+BinarySystemFrac  0.1
+MinStarMass_inBinSystem 0.8
+%
+%
+%HighestStarMass   100.0
+%LowestStarMass    0.8
+%
+%
+SnIaEnergy        1e51
+SnIIEnergy        1e51
+%
+%
+SnIaDataFileName  Ia.yields
+SnIaDataSetNum    1
+SnIIdataFileName  Massive.yields
+SnIIDataSetNum    1
+AGBdataFileName   AGB.yields
+AGBDataSetNum     1
+%
+MinSpreadLength   0.00005
+MaxSpreadLength   0.5
+MinChemTimeStep   3.1536e12    ; 10^5 yrs -WARNING MODIFIED BECAUSE NOW TIME UNIT IS 10^12 Yr
+LongLiving_Step_Prec    0.02
+SnII_Step_Prec    0.1
+
+
+FracEgyIn          0.02
+FracEgyOut         0.20
+FracEgyKin         0.20
+
+
+
+WindFreeTravelMaxTimeFactor 30.0 ;not used by muppi but needed by new WIND
+
+ViscositySourceScaling 0.0
+ViscosityDecayLength   4.0
+ViscosityAlphaMin      0.02
+
+ArtCondConstant 1.0
+ArtCondMin 0.0
+
+
+LevelOfStrickness 	1
+BlackHolesOn		0
+MuppiOn			1
+MuppiDebugOn		0
+CountParticlesInConeOn	1
+StellarKinFB2		1
+StellarKinFB2Output	0
+SpectralCRsOn           0
+% BPRealCRsOn  		0
+

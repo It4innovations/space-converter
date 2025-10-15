@@ -1,0 +1,17 @@
+1
+#
+TYPE    PowerLaw
+NAME    Kroupa 2001
+TDEP    0
+MU      100.0
+Mm      0.01
+NPar    0
+NSlopes 3
+0.5  1.3  0.2113004
+0.08 0.3  0.4226008
+0.01 -0.7 5.2825105
+YSet    0
+N_notBH 1
+100 0.01
+EKin    1.0
+

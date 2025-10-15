@@ -1,0 +1,16 @@
+1
+#
+TYPE    Whatever
+NAME    Chabrier
+TDEP    0
+MU      100.0
+Mm      0.1
+NPar    0
+NSlopes 2
+1.0 1.3 0.2411671
+0.1  0  0.774127 
+YSet    0
+N_notBH 1
+40 0.08
+EKin    1.0
+
