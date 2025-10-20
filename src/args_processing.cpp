@@ -296,3 +296,5 @@ namespace space_converter {
 //--data-type GADGET_SIMPLE --gadget-file e:\temp\alice\data\snapdir_1000\snap_1000 --output-path e:\temp\ --port 5000 --calc-radius-neigh 32
 //--data-type GADGET_SIMPLE --gadget-file e:\temp\alice\data\snapdir_1000\snap_1000 --output-path e:\temp\ --port 5000
 //--data-type GADGET_SIMPLE --gadget-file e:\temp\alice\data\H1e5_DF_p03\snapdir_{}\snap_{} --output-path e:\temp\ --port 5000 --anim 0 3
+// 
+//--data-type GADGET_SIMPLE --gadget-file e:\temp\gadget\very_small_example\snap_081 --output-path e:\temp\ --port 5000 --calc-radius-neigh 32 --cudakdtree

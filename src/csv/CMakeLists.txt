@@ -73,8 +73,7 @@ include_directories(${INC})
 add_library(csv_converter ${SRC})
 target_link_libraries(
    csv_converter 
-   debug ${OPENVDB_LIBRARIES_DEBUG}
-   optimized ${OPENVDB_LIBRARIES}
+   ${OPENVDB_LIBRARIES}
    ${BOOST_LIBRARIES}
    ${TBB_LIBRARIES}
    ${MPI_LIBRARIES}

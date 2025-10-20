@@ -107,9 +107,8 @@ include_directories(${INC})
 ########################################################
 add_library(space_common ${SRC_COMMON})
 target_link_libraries(
-    space_common 
-   debug ${OPENVDB_LIBRARIES_DEBUG}
-   optimized ${OPENVDB_LIBRARIES}
+   space_common 
+   ${OPENVDB_LIBRARIES}
    ${BOOST_LIBRARIES}
    ${EMBREE_LIBRARIES}
    ${TBB_LIBRARIES}

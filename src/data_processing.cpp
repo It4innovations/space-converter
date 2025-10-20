@@ -544,8 +544,7 @@ namespace space_converter {
 // #endif
 
 		// Calculate radius for particles
-		bool use_cycling = space_data.anim_type == common::SpaceData::AnimType::eNone;// || from_cl.use_anim_merge;
-		common::SpaceData::DenseType rho_kernel = space_data.calc_radius_neigh_rho_kernel;
+		bool use_cycling = space_data.anim_type == common::SpaceData::AnimType::eNone;// || from_cl.use_anim_merge;		
 
 		std::string calc_radius_neigh_file = space_data.calc_radius_neigh_file;
 		// if (calc_radius_neigh_file.length() > 0) {
@@ -560,13 +559,15 @@ namespace space_converter {
 				max_radius = static_cast<float>(atof(converter_knn_max_radius));
 				printf("Using max_radius: %f\n", max_radius);
 			}
+			common::SpaceData::DenseType rho_kernel = space_data.calc_radius_neigh_rho_kernel;
 			convert_vdb_base->calculate_radius_by_cudakdtree(space_data.calc_radius_neigh, calc_radius_neigh_file, use_cycling, from_cl.use_cudakdtree_cpu, max_radius, rho_kernel);
 		}
 		else
 #endif
 
-#ifdef WITH_NANOFLANN
+#ifdef WITH_NANOFLANN		
 		if (from_cl.use_nanoflann && (space_data.calc_radius_neigh > 0 || calc_radius_neigh_file.length() > 0)) {
+			common::SpaceData::DenseType rho_kernel = space_data.calc_radius_neigh_rho_kernel;
 			convert_vdb_base->calculate_radius_by_nanoflann(space_data.calc_radius_neigh, calc_radius_neigh_file, use_cycling, rho_kernel);
 		}		
 		else

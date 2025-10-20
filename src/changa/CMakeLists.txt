@@ -102,8 +102,7 @@ include_directories(${INC})
 add_library(changa_tipsy_converter ${SRC_TIPSY})
 target_link_libraries(
    changa_tipsy_converter 
-   debug ${OPENVDB_LIBRARIES_DEBUG}
-   optimized ${OPENVDB_LIBRARIES}
+   ${OPENVDB_LIBRARIES}
    ${BOOST_LIBRARIES}
    ${TBB_LIBRARIES}
    ${MPI_LIBRARIES}
@@ -117,8 +116,7 @@ install (TARGETS changa_tipsy_converter DESTINATION lib)
 add_library(changa_nchilada_converter ${SRC_NCHILADA})
 target_link_libraries(
    changa_nchilada_converter 
-   debug ${OPENVDB_LIBRARIES_DEBUG}
-   optimized ${OPENVDB_LIBRARIES}
+   ${OPENVDB_LIBRARIES}
    ${BOOST_LIBRARIES}
    ${TBB_LIBRARIES}
    ${MPI_LIBRARIES}

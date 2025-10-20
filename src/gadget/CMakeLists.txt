@@ -110,8 +110,7 @@ add_subdirectory(utility)
 add_library(gadget_converter ${SRC})
 target_link_libraries(
    gadget_converter 
-   debug ${OPENVDB_LIBRARIES_DEBUG}
-   optimized ${OPENVDB_LIBRARIES}
+   ${OPENVDB_LIBRARIES}
    ${BOOST_LIBRARIES}
    ${TBB_LIBRARIES}
    ${MPI_LIBRARIES}
@@ -125,8 +124,7 @@ install (TARGETS gadget_converter DESTINATION lib)
 add_library(gadget_simple_converter ${SRC_SIMPLE})
 target_link_libraries(
    gadget_simple_converter
-   debug ${OPENVDB_LIBRARIES_DEBUG}
-   optimized ${OPENVDB_LIBRARIES}
+   ${OPENVDB_LIBRARIES}
    ${BOOST_LIBRARIES}
    ${TBB_LIBRARIES}
    ${MPI_LIBRARIES}

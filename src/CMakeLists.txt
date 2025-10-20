@@ -132,8 +132,7 @@ endif()
 add_executable(space_converter ${SRC})
 target_link_libraries(
    space_converter 
-   debug ${OPENVDB_LIBRARIES_DEBUG}
-   optimized ${OPENVDB_LIBRARIES}
+   ${OPENVDB_LIBRARIES}
    ${BOOST_LIBRARIES}
    ${TBB_LIBRARIES}
    ${MPI_LIBRARIES}

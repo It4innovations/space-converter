@@ -66,8 +66,7 @@ if(WITH_NANOVDB AND WITH_OPENVDB)
     add_executable(nano2vdb ${SRC_NANOVDB})
     target_link_libraries(
         nano2vdb 
-        debug ${OPENVDB_LIBRARIES_DEBUG}
-        optimized ${OPENVDB_LIBRARIES}
+        ${OPENVDB_LIBRARIES}
         ${BOOST_LIBRARIES}
         ${TBB_LIBRARIES}
         ${MPI_LIBRARIES}
@@ -86,8 +85,7 @@ if(WITH_NANOVDB AND WITH_OPENVDB)
     add_executable(vdb2nano ${SRC_NANOVDB})
     target_link_libraries(
         vdb2nano 
-        debug ${OPENVDB_LIBRARIES_DEBUG}
-        optimized ${OPENVDB_LIBRARIES}
+        ${OPENVDB_LIBRARIES}
         ${BOOST_LIBRARIES}
         ${TBB_LIBRARIES}
         ${MPI_LIBRARIES}
@@ -105,8 +103,7 @@ if(WITH_OPENVDB)
     add_executable(vdb_merge ${SRC_VDB_MERGE})
     target_link_libraries(
         vdb_merge 
-        debug ${OPENVDB_LIBRARIES_DEBUG}
-        optimized ${OPENVDB_LIBRARIES}
+        ${OPENVDB_LIBRARIES}
         ${BOOST_LIBRARIES}
         ${TBB_LIBRARIES}
         ${MPI_LIBRARIES}
@@ -158,8 +155,7 @@ if(WITH_OPENVDB)
     add_executable(vdb2histo ${SRC_VDB2HISTO})
     target_link_libraries(
         vdb2histo 
-        debug ${OPENVDB_LIBRARIES_DEBUG}
-        optimized ${OPENVDB_LIBRARIES}
+        ${OPENVDB_LIBRARIES}
         ${BOOST_LIBRARIES}
         ${TBB_LIBRARIES}
         ${MPI_LIBRARIES}
@@ -177,8 +173,7 @@ if(WITH_OPENVDB)
     add_executable(vdb2png ${SRC_VDB2HISTO})
     target_link_libraries(
         vdb2png 
-        debug ${OPENVDB_LIBRARIES_DEBUG}
-        optimized ${OPENVDB_LIBRARIES}
+        ${OPENVDB_LIBRARIES}
         ${BOOST_LIBRARIES}
         ${TBB_LIBRARIES}
         ${MPI_LIBRARIES}
