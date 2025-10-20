@@ -4,16 +4,16 @@ SpaceConverter is an application designed for handling simulation data in Astron
 
 ## Wiki
 
-[**Home**](https://code.it4i.cz/blender/space_converter/-/wikis/home)
+[**Home**](../../wikis/home)
 
-[**Installation Guide**](https://code.it4i.cz/blender/space_converter/-/wikis/installation-guide)
-- [Linux Installation](https://code.it4i.cz/blender/space_converter/-/wikis/installation-guide/linux-installation)
-- [macOS Installation](https://code.it4i.cz/blender/space_converter/-/wikis/installation-guide/macos-installation)
-- [Windows Installation](https://code.it4i.cz/blender/space_converter/-/wikis/installation-guide/windows-installation)
+[**Installation Guide**](../../wikis/installation-guide)
+- [Linux Installation](../../wikis/installation-guide/linux-installation)
+- [macOS Installation](../../wikis/installation-guide/macos-installation)
+- [Windows Installation](../../wikis/installation-guide/windows-installation)
 
-[**Usage Guide**](https://code.it4i.cz/blender/space_converter/-/wikis/usage-guide)
-- [How to Use SpaceConverter](https://code.it4i.cz/blender/space_converter/-/wikis/usage-guide/how-to-use)
-- [How to Use BSPACE](https://code.it4i.cz/blender/space_converter/-/wikis/usage-guide/bspace)
+[**Usage Guide**](../../wikis/usage-guide)
+- [How to Use SpaceConverter](../../wikis/usage-guide/how-to-use)
+- [How to Use BSPACE](../../wikis/usage-guide/bspace)
 
 ## Acknowledgement
 This work was supported by the SPACE project under grant agreement No 101093441. The project is supported by the European High-Performance Computing Joint Undertaking and its members (including top-up funding by the Ministry of Education, Youth and Sports of the Czech Republic ID: MC2304). 
