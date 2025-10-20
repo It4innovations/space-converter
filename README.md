@@ -7,13 +7,13 @@ SpaceConverter is an application designed for handling simulation data in Astron
 [**Home**](../../wikis/home)
 
 [**Installation Guide**](../../wikis/installation-guide)
-- [Linux Installation](../../wikis/installation-guide/linux-installation)
-- [macOS Installation](../../wikis/installation-guide/macos-installation)
-- [Windows Installation](../../wikis/installation-guide/windows-installation)
+- [Linux Installation](../../wikis/linux-installation)
+- [macOS Installation](../../wikis/macos-installation)
+- [Windows Installation](../../wikis/windows-installation)
 
 [**Usage Guide**](../../wikis/usage-guide)
-- [How to Use SpaceConverter](../../wikis/usage-guide/How-to-Use-SpaceConverter)
-- [How to Use BSPACE](../../wikis/usage-guide/How-to-Use-BSPACE-Add‐on)
+- [How to Use SpaceConverter](../../wikis/How-to-Use-SpaceConverter)
+- [How to Use BSPACE](../../wikis/How-to-Use-BSPACE-Add‐on)
 
 ## Acknowledgement
 This work was supported by the SPACE project under grant agreement No 101093441. The project is supported by the European High-Performance Computing Joint Undertaking and its members (including top-up funding by the Ministry of Education, Youth and Sports of the Czech Republic ID: MC2304). 
