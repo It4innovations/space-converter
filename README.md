@@ -1,6 +1,6 @@
 # Space Converter
 
-SpaceConverter is an application designed for handling simulation data in Astronomy and Cosmology. It features specialized importers current for GADGET and ChaNGa data, enabling high-performance conversion of SPH simulation outputs into volumetric OpenVDB formats. Optimized for seamless integration with Blender and Cycles, this MPI-based application efficiently scales across multiple CPU nodes in a cluster, ensuring rapid preparation of detailed datasets for rendering.
+SpaceConverter is an application designed for handling simulation data in Astronomy and Cosmology. It features specialized importers current for OpenGADGET3, ChaNGa and HACC data, enabling high-performance conversion of SPH simulation outputs into volumetric OpenVDB formats. Optimized for seamless integration with Blender and Cycles, this MPI-based application efficiently scales across multiple CPU nodes in a cluster, ensuring rapid preparation of detailed datasets for rendering.
 
 ## Wiki
 
