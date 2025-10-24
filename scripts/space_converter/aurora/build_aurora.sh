@@ -44,7 +44,7 @@ src=${ROOT_DIR}/src
 export CC=gcc
 export CXX=g++
 
-rm -rf build/space-converter_aurora
+# rm -rf build/space-converter_aurora
 
 #-----------space-converter--------------
 mkdir ${ROOT_DIR}/build/space-converter_aurora
@@ -56,15 +56,6 @@ make_d="${make_d} -DTBB_INCLUDE_DIRS=$lib_dir/lib-linux_x64/tbb/include"
 make_d="${make_d} -DOPENVDB_INCLUDE_DIRS=$lib_dir/lib-linux_x64/openvdb/include"
 make_d="${make_d} -DOPENVDB_LIBRARIES=$lib_dir/lib-linux_x64/openvdb/lib/libopenvdb.so;$lib_dir/lib-linux_x64/tbb/lib/libtbb.so" #$lib_dir/lib-linux_x64/blosc/lib/libblosc.so.1
 make_d="${make_d} -DOPENVDB_VERSION=12"
-
-#make_d="${make_d} -DBOOST_INCLUDE_DIRS=$lib_dir/lib-linux_x64/boost/include"
-#make_d="${make_d} -DBOOST_LIBRARIES=$lib_dir/lib-linux_x64/boost/lib/libboost_iostreams.so"
-
-#make_d="${make_d} -DBLOSC_INCLUDE_DIRS=$lib_dir/lib-linux_x64/blosc/include"
-#make_d="${make_d} -DBLOSC_LIBRARIES=$lib_dir/lib-linux_x64/blosc/lib/libblosc.so"
-
-make_d="${make_d} -DZSTD_LIBRARIES="
-make_d="${make_d} -DZLIB_LIBRARIES="
 
 make_d="${make_d} -DWITH_HDF5=OFF"
 make_d="${make_d} -DGADGET_READ_ID=OFF"

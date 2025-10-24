@@ -19,18 +19,18 @@
 #####################################################################################################################
 
 
-cd /mnt/proj3/open-28-64/blender/he_space
+cd ~/he_space
 
 ROOT_DIR=${PWD}
 
-ml HDF5/1.14.0-gompi-2022b
+# ml HDF5/1.14.0-gompi-2022b
 
-ml c-blosc/1.21.0-GCC-10.2.0
-ml Boost/1.79.0-GCC-11.3.0
-ml tbb/2021.10.0-GCCcore-12.2.0
-ml VirtualGL/3.1-GCC-12.3.0
+# ml c-blosc/1.21.0-GCC-10.2.0
+# ml Boost/1.79.0-GCC-11.3.0
+# ml tbb/2021.10.0-GCCcore-12.2.0
+# ml VirtualGL/3.1-GCC-12.3.0
 
-ml Qt5/5.15.7-GCCcore-12.2.0
+# ml Qt5/5.15.7-GCCcore-12.2.0
 ml CMake/3.24.3-GCCcore-12.2.0
 ml GCC/12.2.0
 ml Mesa/22.2.4-GCCcore-12.2.0
@@ -45,8 +45,10 @@ lib_dir=${ROOT_DIR}/install
 output=${ROOT_DIR}/install/space_converter_kar
 src=${ROOT_DIR}/src
 
-#export CC='mpicc'
-#export CXX='mpic++'
+############DEPENDENCIES###############
+# cd ${lib_dir}
+# git-lfs clone -b blender-v4.5-release  https://projects.blender.org/blender/lib-linux_x64.git
+#######################################
 
 #rm -rf build/space_converter_kar
 
@@ -54,25 +56,22 @@ src=${ROOT_DIR}/src
 mkdir ${ROOT_DIR}/build/space_converter_kar
 cd ${ROOT_DIR}/build/space_converter_kar
 
-make_d="${src}/space_converter"
+make_d="${src}/space-converter"
 
-make_d="${make_d} -DTBB_INCLUDE_DIRS=/apps/all/tbb/2021.10.0-GCCcore-12.2.0/include"
-make_d="${make_d} -DOPENVDB_INCLUDE_DIRS=$lib_dir/openvdb_kar/include"
-make_d="${make_d} -DOPENVDB_LIBRARIES=$lib_dir/openvdb_kar/lib64/libopenvdb.so;/apps/all/tbb/2021.10.0-GCCcore-12.2.0/lib64/libtbb.so"
-make_d="${make_d} -DOPENVDB_VERSION=11"
-
-make_d="${make_d} -DZSTD_LIBRARIES=/apps/all/zstd/1.5.2-GCCcore-12.2.0/lib64/libzstd.so"
-make_d="${make_d} -DBLOSC_LIBRARIES=/apps/all/c-blosc/1.21.0-GCC-10.2.0/lib64/libblosc.so"
-make_d="${make_d} -DZLIB_LIBRARIES=/apps/all/zlib/1.2.12-GCCcore-12.2.0/lib64/libz.so"
+make_d="${make_d} -DTBB_INCLUDE_DIRS=$lib_dir/lib-linux_x64/tbb/include"
+make_d="${make_d} -DOPENVDB_INCLUDE_DIRS=$lib_dir/lib-linux_x64/openvdb/include"
+make_d="${make_d} -DOPENVDB_LIBRARIES=$lib_dir/lib-linux_x64/openvdb/lib/libopenvdb.so;$lib_dir/lib-linux_x64/tbb/lib/libtbb.so" #$lib_dir/lib-linux_x64/blosc/lib/libblosc.so.1
+make_d="${make_d} -DOPENVDB_VERSION=12"
 
 make_d="${make_d} -DWITH_HDF5=OFF"
-make_d="${make_d} -DGADGET_READ_ID=ON"
-make_d="${make_d} -DGADGET_READ_ID64=OFF"
+make_d="${make_d} -DGADGET_READ_ID=OFF"
 make_d="${make_d} -DGADGET_MAX_HSML=ON"
 
 make_d="${make_d} -DWITH_OPENVDB=ON"
+
 make_d="${make_d} -DWITH_CUDAKDTREE=ON"
-make_d="${make_d} -DWITH_NANOFLANN=ON"
+
+make_d="${make_d} -DWITH_NANOFLANN=OFF"
 make_d="${make_d} -DWITH_GENERICIO=ON"
 make_d="${make_d} -DWITH_NO_DATA_TEMP=OFF"
 

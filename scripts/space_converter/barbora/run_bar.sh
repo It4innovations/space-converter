@@ -18,12 +18,12 @@
 #
 #####################################################################################################################
 
-module use $PWD/easybuild_bar/modules/all/
+# module use $PWD/easybuild_bar/modules/all/
 
-ml c-blosc/1.21.0-GCC-10.3.0
-ml tbb/2020.3-GCCcore-10.2.0
+# ml c-blosc/1.21.0-GCC-10.3.0
+# ml tbb/2020.3-GCCcore-10.2.0
 ml CMake/3.24.3-GCCcore-12.2.0
-ml Boost/1.81.0-GCC-12.2.0
+# ml Boost/1.81.0-GCC-12.2.0
 ml intel/2022b
 
 ROOT_DIR=${PWD}
@@ -36,7 +36,8 @@ src=${ROOT_DIR}/src
 data=${ROOT_DIR}/data
 out=${ROOT_DIR}/out
 
-export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${lib_dir}/openvdb_bar/lib64
+# export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${lib_dir}/openvdb_bar/lib64
+export LD_LIBRARY_PATH=$lib_dir/lib-linux_x64/openvdb/lib:$lib_dir/lib-linux_x64/tbb/lib:$LD_LIBRARY_PATH
 
 # Start the timer
 start_time=$(date +%s)

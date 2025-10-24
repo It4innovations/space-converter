@@ -48,7 +48,7 @@ src=${ROOT_DIR}/src
 mkdir ${ROOT_DIR}/build/space_converter_macos
 cd ${ROOT_DIR}/build/space_converter_macos
 
-make_d="${src}/space_converter"
+make_d="${src}/space-converter"
 
 make_d="${make_d} -DTBB_INCLUDE_DIRS=${CYCLES_DIR_LIB}/tbb/include"
 make_d="${make_d} -DOPENVDB_INCLUDE_DIRS=${CYCLES_DIR_LIB}/openvdb/include"

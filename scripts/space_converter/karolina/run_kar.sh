@@ -19,23 +19,23 @@
 #####################################################################################################################
 
 
-cd /mnt/proj3/open-28-64/blender/he_space/
+cd ~/he_space/
 
 ROOT_DIR=${PWD}
 
 #ml Forge 
 
-ml HDF5/1.14.0-gompi-2022b
+# ml HDF5/1.14.0-gompi-2022b
 
-ml c-blosc/1.21.0-GCC-10.2.0
-ml Boost/1.79.0-GCC-11.3.0
-ml tbb/2021.10.0-GCCcore-12.2.0
-ml VirtualGL/3.1-GCC-12.3.0
+# ml c-blosc/1.21.0-GCC-10.2.0
+# ml Boost/1.79.0-GCC-11.3.0
+# ml tbb/2021.10.0-GCCcore-12.2.0
+# ml VirtualGL/3.1-GCC-12.3.0
 
-ml Qt5/5.15.7-GCCcore-12.2.0
+# ml Qt5/5.15.7-GCCcore-12.2.0
 ml CMake/3.24.3-GCCcore-12.2.0
 ml GCC/12.2.0
-ml Mesa/22.2.4-GCCcore-12.2.0
+# ml Mesa/22.2.4-GCCcore-12.2.0
 # ml CUDA/12.4.0
 # ml OpenMPI/4.1.4-GCC-12.2.0
 
@@ -52,7 +52,8 @@ src=${ROOT_DIR}/src
 data=${ROOT_DIR}/data
 out=${ROOT_DIR}/out
 
-export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${lib_dir}/openvdb_kar/lib64
+# export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${lib_dir}/openvdb_kar/lib64
+export LD_LIBRARY_PATH=$lib_dir/lib-linux_x64/openvdb/lib:$lib_dir/lib-linux_x64/tbb/lib:$LD_LIBRARY_PATH
 
 out=/scratch/project/open-30-28/OpenGadget/out #${ROOT_DIR}/out
 out_t=${out}/remote
@@ -198,7 +199,7 @@ srun --overlap -u -n 4096 ${install}/bin/space_converter --data-type CHANGA_TIPS
 
 # export fix_filename="/mnt/proj3/open-30-28/adamiano/Centers_1e5_DFZ19.txt"
 
-# srun --overlap -u -n 1400 ${src}/space_converter/scripts/space_converter/karolina/bh_offset.sh ${install}/bin/space_converter ${example_snap}
+# srun --overlap -u -n 1400 ${src}/space-converter/scripts/space_converter/karolina/bh_offset.sh ${install}/bin/space_converter ${example_snap}
 
 # i=10
 # if [ "$i" -lt 1000 ]; then

@@ -120,11 +120,26 @@ if(WITH_CUDAKDTREE)
     )    
 
     add_library(cudakdtree_tool STATIC ${SRC_CUDAKDTREE})
-    target_include_directories(cudakdtree_tool PUBLIC ${PROJECT_SOURCE_DIR}/submodules/cudaKDTree ${INC})
+    
+    # Set CUDA language for the target
+    set_target_properties(cudakdtree_tool PROPERTIES 
+        CUDA_STANDARD 17
+        CUDA_STANDARD_REQUIRED ON
+    )
+    
+    target_include_directories(cudakdtree_tool 
+        PUBLIC 
+            ${PROJECT_SOURCE_DIR}/submodules/cudaKDTree 
+            ${INC}
+        PRIVATE
+            ${MPI_INCLUDE_PATH}
+            ${MPI_CXX_INCLUDE_PATH}
+    )
 
     target_link_libraries(
         cudakdtree_tool
-        MPI::MPI_CXX
+        PUBLIC
+            MPI::MPI_CXX
     )
         
     install (TARGETS cudakdtree_tool DESTINATION lib)

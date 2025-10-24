@@ -18,15 +18,15 @@
 #
 #####################################################################################################################
 
-cd /users/jaromila/scratch/space/OpenGadget
+cd ~/scratch/space/OpenGadget
 
 ml purge 
 
 ml LUMI/23.09  partition/C
 ml PrgEnv-gnu
 
-ml Blosc
-ml Boost
+# ml Blosc
+# ml Boost
 
 ROOT_DIR=${PWD}
 
@@ -34,28 +34,39 @@ lib_dir=${ROOT_DIR}/install
 output=${ROOT_DIR}/install/space_converter_lumi
 src=${ROOT_DIR}/src
 
+############DEPENDENCIES###############
+# cd ${lib_dir}
+# git-lfs clone -b blender-v4.5-release  https://projects.blender.org/blender/lib-linux_x64.git
+#######################################
+
 #rm -rf build/space_converter_lumi
 
 #-----------space_converter_lumi--------------
 mkdir ${ROOT_DIR}/build/space_converter_lumi
 cd ${ROOT_DIR}/build/space_converter_lumi
 
-make_d="${src}/space_converter-public"
+make_d="${src}/space-converter-public"
 
-make_d="${make_d} -DTBB_INCLUDE_DIRS=${src}/oneTBB/install/include" 
-make_d="${make_d} -DTBB_LIBRARIES="
+make_d="${make_d} -DTBB_INCLUDE_DIRS=$lib_dir/lib-linux_x64/tbb/include"
+make_d="${make_d} -DOPENVDB_INCLUDE_DIRS=$lib_dir/lib-linux_x64/openvdb/include"
+make_d="${make_d} -DOPENVDB_LIBRARIES=$lib_dir/lib-linux_x64/openvdb/lib/libopenvdb.so;$lib_dir/lib-linux_x64/tbb/lib/libtbb.so" #$lib_dir/lib-linux_x64/blosc/lib/libblosc.so.1
+make_d="${make_d} -DOPENVDB_VERSION=12"
 
-make_d="${make_d} -DBOOST_INCLUDE_DIRS=/appl/lumi/SW/LUMI-23.09/C/EB/Boost/1.82.0-cpeGNU-23.09/include"
-make_d="${make_d} -DBOOST_LIBRARIES="
+make_d="${make_d} -DWITH_HDF5=OFF"
+make_d="${make_d} -DGADGET_READ_ID=OFF"
+make_d="${make_d} -DGADGET_MAX_HSML=ON"
 
-make_d="${make_d} -DNANOVDB_INCLUDE_DIRS="
+make_d="${make_d} -DWITH_OPENVDB=ON"
 
-make_d="${make_d} -DOPENVDB_INCLUDE_DIRS=${lib_dir}/openvdb/include"
-make_d="${make_d} -DOPENVDB_LIBRARIES=${lib_dir}/openvdb/lib64/libopenvdb.so;${src}/oneTBB/install/lib64/libtbb.so;/appl/lumi/SW/LUMI-23.09/C/EB/zlib/1.2.13-cpeGNU-23.09/lib/libz.so;/appl/lumi/SW/LUMI-23.09/C/EB/Blosc/1.21.5-cpeGNU-23.09/lib/libblosc.so;/appl/lumi/SW/LUMI-23.09/C/EB/Boost/1.82.0-cpeGNU-23.09/lib/libboost_iostreams-mt-x64.so"
+make_d="${make_d} -DWITH_CUDAKDTREE=OFF"
+
+make_d="${make_d} -DWITH_NANOFLANN=ON"
+make_d="${make_d} -DWITH_GENERICIO=ON"
+make_d="${make_d} -DWITH_NO_DATA_TEMP=OFF"
 
 #make_d="${make_d} -DCMAKE_BUILD_TYPE=Debug"
-#make_d="${make_d} -DCMAKE_BUILD_TYPE=Release"
 make_d="${make_d} -DCMAKE_BUILD_TYPE=RelWithDebInfo"
+#make_d="${make_d} -DCMAKE_BUILD_TYPE=Release"
 make_d="${make_d} -DCMAKE_INSTALL_PREFIX=${output}"
 
 cmake ${make_d}

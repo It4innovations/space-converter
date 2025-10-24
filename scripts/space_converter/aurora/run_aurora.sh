@@ -32,12 +32,12 @@ echo "===================RUN"
 
 lib_dir=${ROOT_DIR}/install
 
-install=${ROOT_DIR}/install/space_converter_aurora
+install=${ROOT_DIR}/install/space-converter_aurora
 src=${ROOT_DIR}/src
 data=${ROOT_DIR}/data
 out=${ROOT_DIR}/out
 
-export LD_LIBRARY_PATH=$lib_dir/lib:$lib_dir/blosc/lib:$lib_dir/openvdb/lib64:$lib_dir/tbb/lib64:$lib_dir/boost/lib64:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=$lib_dir/lib-linux_x64/openvdb/lib:$lib_dir/lib-linux_x64/tbb/lib:$LD_LIBRARY_PATH
 
 out=${ROOT_DIR}/out
 out_t=${out}/remote
