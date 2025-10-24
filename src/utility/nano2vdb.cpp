@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
 	openvdb::initialize();  // Initialize OpenVDB if available.
 	auto handle = nanovdb::io::readGrid<nanovdb::HostBuffer>(file_nvdb);
 
-	auto openvdb_handle = nanovdb::nanoToOpenVDB(handle);
+	auto openvdb_handle = nanovdb::tools::nanoToOpenVDB(handle);
 
 	openvdb::io::File(file_vdb).write({ openvdb_handle });
 	printf("finished: %s\n", file_vdb.c_str());

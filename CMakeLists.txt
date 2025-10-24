@@ -70,17 +70,17 @@ if(WITH_OPENVDB)
     set(OPENVDB_LIBRARIES_DEBUG "" CACHE FILEPATH "")
     set(OPENVDB_VERSION "" CACHE STRING "")
 
-    set(BOOST_INCLUDE_DIRS "" CACHE PATH "")
-    set(BOOST_LIBRARIES "" CACHE FILEPATH "")
+    # set(BOOST_INCLUDE_DIRS "" CACHE PATH "")
+    # set(BOOST_LIBRARIES "" CACHE FILEPATH "")
 
-    set(BLOSC_INCLUDE_DIRS "" CACHE PATH "")
-    set(BLOSC_LIBRARIES "" CACHE FILEPATH "")
+    # set(BLOSC_INCLUDE_DIRS "" CACHE PATH "")
+    # set(BLOSC_LIBRARIES "" CACHE FILEPATH "")
 
-    set(ZLIB_INCLUDE_DIRS "" CACHE PATH "")
-    set(ZLIB_LIBRARIES "" CACHE FILEPATH "")
+    # set(ZLIB_INCLUDE_DIRS "" CACHE PATH "")
+    # set(ZLIB_LIBRARIES "" CACHE FILEPATH "")
 
-    set(ZSTD_INCLUDE_DIRS "" CACHE PATH "")
-    set(ZSTD_LIBRARIES "" CACHE FILEPATH "")
+    # set(ZSTD_INCLUDE_DIRS "" CACHE PATH "")
+    # set(ZSTD_LIBRARIES "" CACHE FILEPATH "")
 
     set(WITH_TBB ON)
 else()
@@ -114,14 +114,14 @@ if(WITH_EMBREE)
 endif()
 
 if(WITH_GENERICIO)
-    set(BLOSC_INCLUDE_DIRS "" CACHE PATH "")
-    set(BLOSC_LIBRARIES "" CACHE FILEPATH "")
+    # set(BLOSC_INCLUDE_DIRS "" CACHE PATH "")
+    # set(BLOSC_LIBRARIES "" CACHE FILEPATH "")
 
-    set(ZLIB_INCLUDE_DIRS "" CACHE PATH "")
-    set(ZLIB_LIBRARIES "" CACHE FILEPATH "")
+    # set(ZLIB_INCLUDE_DIRS "" CACHE PATH "")
+    # set(ZLIB_LIBRARIES "" CACHE FILEPATH "")
 
-    set(ZSTD_INCLUDE_DIRS "" CACHE PATH "")
-    set(ZSTD_LIBRARIES "" CACHE FILEPATH "")
+    # set(ZSTD_INCLUDE_DIRS "" CACHE PATH "")
+    # set(ZSTD_LIBRARIES "" CACHE FILEPATH "")
 endif()
 
 if(WITH_CUDAKDTREE)
@@ -141,6 +141,18 @@ if(WITH_CUDAKDTREE)
     set(CMAKE_CUDA_ARCHITECTURES ${CUKD_CUDA_ARCHITECTURES})
     
     enable_language(CUDA)
+endif()
+
+if(WITH_GENERICIO)
+    set(BUILD_SHARED OFF)
+    set(BUILD_TESTS OFF)
+    set(BUILD_TESTS OFF)
+    set(BUILD_BENCHMARKS OFF)
+
+    add_subdirectory(submodules/c-blosc)
+
+    set(BLOSC_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/submodules/c-blosc/include")
+    set(BLOSC_LIBRARIES blosc_static)
 endif()
 
 ########################################################

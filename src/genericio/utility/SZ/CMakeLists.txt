@@ -107,11 +107,11 @@ set(SZ_include_dirs
 include_directories(${SZ_include_dirs})
 add_library(sz_lib STATIC ${SZ_Sources})
 
-target_link_libraries(
-   sz_lib 
-   ${ZLIB_LIBRARIES}
-   ${ZSTD_LIBRARIES}
-)
+# target_link_libraries(
+#    sz_lib 
+#    ${ZLIB_LIBRARIES}
+#    ${ZSTD_LIBRARIES}
+# )
 
 #set_property(TARGET sz_lib PROPERTY C_STANDARD 99)
 #target_include_directories(sz_lib PRIVATE ${SZ_include_dirs})

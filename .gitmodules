@@ -7,3 +7,6 @@
 [submodule "submodules/cudaKDTree"]
 	path = submodules/cudaKDTree
 	url = https://github.com/jar091/cudaKDTree.git
+[submodule "submodules/c-blosc"]
+	path = submodules/c-blosc
+	url = https://github.com/Blosc/c-blosc.git

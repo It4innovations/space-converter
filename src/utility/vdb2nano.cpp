@@ -234,6 +234,7 @@ int main(int argc, char** argv) {
 #  endif
 
 #else
+						const openvdb::FloatGrid grid(*openvdb::gridConstPtrCast<openvdb::FloatGrid>(base_grid));
 						nanovdb::GridHandle<nanovdb::HostBuffer> nanogrid = nanovdb::tools::createNanoGrid<openvdb::FloatGrid, float>(grid);
 #endif				
 
