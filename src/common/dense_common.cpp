@@ -1383,9 +1383,6 @@ namespace common {
 			//GU.rho_cgs = 1;
 			//GU.x_cgs = 1;
 
-			double mass = get_particle_mass(pid);
-			double rho = get_particle_rho(pid);
-
 			double hsml = get_particle_radius(
 				pid,
 				bbox_dim,
@@ -1413,6 +1410,8 @@ namespace common {
 			//if (bin_q == 0.0 && !calc_mean) continue;
 
 #if 0
+			double mass = get_particle_mass(pid);
+			double rho = get_particle_rho(pid);
 
 			int Npixels[3] = { grid.x(), grid.y(), grid.z() };
 

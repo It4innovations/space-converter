@@ -450,6 +450,7 @@ namespace common {
 
 			double redshift = 0.0;
 			double hubble_param = 1.0;
+			double radius_particle_const = 0.0;
 
 #ifdef WITH_EMBREE
 			void* rtc_device;

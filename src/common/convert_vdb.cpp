@@ -1677,6 +1677,9 @@ namespace common {
 			float particle_fix_size,
 			int particle_type
 		) {
+			if (radius_particle_const > 0.0) {
+				return radius_particle_const;
+			}
 
 			double norm_fac = (double)bbox_dim / scale_space_diagonal;
 
