@@ -22,6 +22,7 @@
 #include <string>
 #include <vector>
 #include <float.h>
+#include <iomanip>
 
 #ifdef WITH_OPENMP
 # include <omp.h>
@@ -1762,6 +1763,56 @@ namespace common {
 		}
 		int ConvertVDBBase::get_particle_value_comp(int blocknr, uint64_t id) {
 			return get_particle_value_comp_internal(blocknr, id);
+		}
+
+		//std::string format_filename(const std::string& pattern, int number) {
+		//	// Create the formatted number as a string
+		//	std::ostringstream formattedNumber;
+		//	if (number < 1000) {
+		//		formattedNumber << std::setw(3) << std::setfill('0') << number;
+		//	}
+		//	else {
+		//		formattedNumber << number;
+		//	}
+
+		//	std::string result = pattern;
+		//	std::string placeholder = "{}";
+		//	size_t pos = result.find(placeholder);
+
+		//	while (pos != std::string::npos) {
+		//		// Replace the first occurrence of the placeholder with the formatted number
+		//		result.replace(pos, placeholder.length(), formattedNumber.str());
+
+		//		// Find the next occurrence of the placeholder
+		//		pos = result.find(placeholder, pos + formattedNumber.str().length());
+		//	}
+
+		//	return result;
+		//}
+
+		std::string ConvertVDBBase::format_filename(const std::string& pattern, int number) {
+			// Create the formatted number as a string
+			std::ostringstream formattedNumber;
+			if (number < 1000) {
+				formattedNumber << std::setw(3) << std::setfill('0') << number;
+			}
+			else {
+				formattedNumber << number;
+			}
+
+			std::string result = pattern;
+			std::string placeholder = "{}";
+			size_t pos = result.find(placeholder);
+
+			while (pos != std::string::npos) {
+				// Replace the first occurrence of the placeholder with the formatted number
+				result.replace(pos, placeholder.length(), formattedNumber.str());
+
+				// Find the next occurrence of the placeholder
+				pos = result.find(placeholder, pos + formattedNumber.str().length());
+			}
+
+			return result;
 		}
 
 	}//vdb

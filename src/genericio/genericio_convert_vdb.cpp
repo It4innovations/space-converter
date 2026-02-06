@@ -75,7 +75,11 @@ namespace genericio {
 
 		std::string vel_name_mass;
 		std::string vel_name_rho;
-		std::string vel_name_hsml;		
+		std::string vel_name_hsml;
+
+		bool use_anim = false;
+		int anim_start = -1;
+		int anim_end = -1;
 
 		for (int i = 1; i < argc; i++) {
 			const std::string arg = argv[i];
@@ -100,7 +104,23 @@ namespace genericio {
 			}
 			else if (arg == "--hsml-name") {
 				vel_name_hsml = argv[++i];
-			}			
+			}
+			else if (arg == "--anim") {
+				use_anim = true;
+				anim_start = std::stoi(argv[++i]);
+				anim_end = std::stoi(argv[++i]);
+			}
+		}
+
+		// Anim
+		if (use_anim) {
+			genericio_file = format_filename(genericio_file, anim_start + world_rank);
+			std::cout << "Reading timestep file: " << genericio_file << std::endl;
+		}
+
+		if (use_anim) {
+			world_rank = 0;
+			world_size = 1;
 		}
 
 		genericio::io::init_lib(genericio_file, world_rank, world_size, pos_names_vec, vel_names_vec, vel_name_mass, vel_name_rho, vel_name_hsml);

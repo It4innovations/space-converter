@@ -500,6 +500,8 @@ namespace common {
 			virtual int get_particle_value(int blocknr, uint64_t id, float* out_value);
 			virtual int get_particle_value_comp(int blocknr, uint64_t id);
 
+			std::string format_filename(const std::string& pattern, int number);
+
 		public:
 			// Abstract methods
 			virtual void print_CPU_steps() = 0;

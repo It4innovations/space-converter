@@ -54,14 +54,6 @@
 #define RETURN_ORIG_DVECTORN(v,n) for(int iv=0;iv<n;iv++) out_value[iv] = (float)v[iv]; RETURN_COMP_DVECTORN(v,n)
 #define RETURN_ORIG_FVECTORN(v,n) for(int iv=0;iv<n;iv++) out_value[iv] = (float)v[iv]; RETURN_COMP_FVECTORN(v,n)
 
-#ifdef _WIN32
-#	define STDMAX max
-#	define STDMIN min
-#else
-#	define STDMAX std::max
-#	define STDMIN std::min
-#endif
-
 namespace changa {
 	namespace tipsy {
 		namespace io {

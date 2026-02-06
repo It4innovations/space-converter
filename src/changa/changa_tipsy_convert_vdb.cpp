@@ -70,12 +70,31 @@ namespace changa {
 
 	void ConvertVDBChangaTipsy::init_lib(int argc, char** argv, int world_rank, int world_size) {
 		std::string base_file;
+		bool use_anim = false;
+		int anim_start = -1;
+		int anim_end = -1;
 
 		for (int i = 1; i < argc; i++) {
 			const std::string arg = argv[i];
 			if (arg == "--tipsy-file") {
 				base_file = argv[++i]; //std::stof(av[++i]);
 			}
+			else if (arg == "--anim") {
+				use_anim = true;
+				anim_start = std::stoi(argv[++i]);
+				anim_end = std::stoi(argv[++i]);
+			}
+		}
+
+		// Anim
+		if (use_anim) {
+			base_file = format_filename(base_file, anim_start + world_rank);
+			std::cout << "Reading timestep file: " << base_file << std::endl;
+		}
+
+		if (use_anim) {
+			world_rank = 0;
+			world_size = 1;
 		}
 
 		changa::tipsy::io::init_lib(base_file, world_rank, world_size);

@@ -21,55 +21,7 @@
 
 #include <iomanip>
 
-namespace gadget {
-	//std::string format_filename(const std::string& pattern, int number) {
-	//	// Find the formatting marker ({}) in the pattern
-	//	size_t start = pattern.find('{');
-	//	size_t end = pattern.find('}', start);
-
-	//	if (start == std::string::npos || end == std::string::npos) {
-	//		std::cerr << "Pattern must contain a format specifier enclosed in curly braces" << std::endl;
-	//	}
-
-	//	char temp[1024];
-	//	if (number < 999) {
-	//		sprintf(temp, "%03d", number);
-	//	}
-	//	else {
-	//		sprintf(temp, "%d", number);
-	//	}
-
-	//	// Construct the final filename by replacing the format specifier in the pattern
-	//	std::string result = pattern;
-	//	result.replace(start, end - start + 1, temp);
-
-	//	return result;
-	//}
-
-	std::string format_filename(const std::string& pattern, int number) {
-		// Create the formatted number as a string
-		std::ostringstream formattedNumber;
-		if (number < 1000) {
-			formattedNumber << std::setw(3) << std::setfill('0') << number;
-		}
-		else {
-			formattedNumber << number;
-		}
-
-		std::string result = pattern;
-		std::string placeholder = "{}";
-		size_t pos = result.find(placeholder);
-
-		while (pos != std::string::npos) {
-			// Replace the first occurrence of the placeholder with the formatted number
-			result.replace(pos, placeholder.length(), formattedNumber.str());
-
-			// Find the next occurrence of the placeholder
-			pos = result.find(placeholder, pos + formattedNumber.str().length());
-		}
-
-		return result;
-	}
+namespace gadget {	
 
 	void ConvertVDBGadget::print_CPU_steps() {
 		gadget::io::print_CPU_steps();

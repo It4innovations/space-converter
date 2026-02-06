@@ -22,6 +22,14 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
+#	define STDMAX max
+#	define STDMIN min
+#else
+#	define STDMAX std::max
+#	define STDMIN std::min
+#endif
+
 namespace common {
 
 	std::string ltrim(const std::string& s);

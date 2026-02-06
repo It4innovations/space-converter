@@ -18,6 +18,7 @@
 
 #include "data_communication.h"
 #include "data_common.h"
+#include "convert_common.h"
 
 #ifdef WITH_OPENMP
 # include <omp.h>
@@ -207,7 +208,7 @@ namespace space_converter {
 				dims_orig[1] = space_data.bbox_max_orig[1] - space_data.bbox_min_orig[1];
 				dims_orig[2] = space_data.bbox_max_orig[2] - space_data.bbox_min_orig[2];
 
-				float dims_orig_max = std::max(dims_orig[0], std::max(dims_orig[1], dims_orig[2]));
+				float dims_orig_max = STDMAX(dims_orig[0], STDMAX(dims_orig[1], dims_orig[2]));
 
 				//dims_bbox[0] = spaceDataBBox.bbox_max_orig[0] - spaceDataBBox.bbox_min_orig[0];
 				//dims_bbox[1] = spaceDataBBox.bbox_max_orig[1] - spaceDataBBox.bbox_min_orig[1];
