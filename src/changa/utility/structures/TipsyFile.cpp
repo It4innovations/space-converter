@@ -595,13 +595,16 @@ bool TipsyFile::loadfile() {
 
 PartialTipsyFile::PartialTipsyFile(const std::string& fn,
 				   const unsigned int begin,
-				   const unsigned int end) : myReader(fn) {
+				   const unsigned int end,
+	               std::string filter_aux) : myReader(fn) {
 	loadPartial(begin, end);
-	loadPartialAUX(fn, begin, end);
+	loadPartialAUX(fn, begin, end, filter_aux);
 }
 
-PartialTipsyFile::PartialTipsyFile(std::istream& is, const unsigned int begin,
-				   const unsigned int end) : myReader(is) {
+PartialTipsyFile::PartialTipsyFile(std::istream& is,
+				   const unsigned int begin,
+				   const unsigned int end,
+				   std::string filter_aux) : myReader(is) {
 	loadPartial(begin, end);
 	//TODO: loadPartialAUX
 }
@@ -656,7 +659,7 @@ void replaceCharacter(std::string& str, char target, char replacement) {
 //////////////////////////////////////////////////////////////////////////////////////
 
 bool PartialTipsyFile::loadPartialAUX(const std::string& full_path, const unsigned int beginParticle,
-	unsigned int endParticle) {
+	unsigned int endParticle, std::string filter_aux) {
 
 	fs::path file_path(full_path);
 
@@ -692,6 +695,10 @@ bool PartialTipsyFile::loadPartialAUX(const std::string& full_path, const unsign
 				if (suffix == "BFieldy" || suffix == "BFieldz" ||
 					suffix == "CurlBy" || suffix == "CurlBz") {
 					//skip
+					continue;
+				}
+
+				if (!filter_aux.empty() && suffix.find(filter_aux) == std::string::npos) {
 					continue;
 				}
 

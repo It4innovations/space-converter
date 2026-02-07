@@ -73,6 +73,8 @@ namespace changa {
 		bool use_anim = false;
 		int anim_start = -1;
 		int anim_end = -1;
+		int anim_step = -1;
+		std::string filter_in;
 
 		for (int i = 1; i < argc; i++) {
 			const std::string arg = argv[i];
@@ -83,12 +85,16 @@ namespace changa {
 				use_anim = true;
 				anim_start = std::stoi(argv[++i]);
 				anim_end = std::stoi(argv[++i]);
+				anim_step = std::stoi(argv[++i]);
+			}
+			else if (arg == "--filter-in") {
+				filter_in = argv[++i];
 			}
 		}
 
 		// Anim
 		if (use_anim) {
-			base_file = format_filename(base_file, anim_start + world_rank);
+			base_file = format_filename(base_file, anim_start + anim_step * world_rank);
 			std::cout << "Reading timestep file: " << base_file << std::endl;
 		}
 
@@ -97,7 +103,7 @@ namespace changa {
 			world_size = 1;
 		}
 
-		changa::tipsy::io::init_lib(base_file, world_rank, world_size);
+		changa::tipsy::io::init_lib(base_file, world_rank, world_size, filter_in);
 
 		print_CPU_steps();
 	}

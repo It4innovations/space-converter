@@ -244,7 +244,7 @@ private:
 			 const unsigned int endParticle);
 	
 	bool loadPartialAUX(const std::string& fn, const unsigned int beginParticle,
-		const unsigned int endParticle);
+		const unsigned int endParticle, std::string filter_aux);
 
 	bool loadMark(std::istream& markstream);
 	bool native;
@@ -300,9 +300,9 @@ public:
 	
 	/// Read in part of a tipsy file, taking particles between given on-disk indices
 	PartialTipsyFile(const std::string& fn, const unsigned int begin = 0,
-			 const unsigned int end = 1);
+			 const unsigned int end = 1, std::string filter_aux = "");
 	PartialTipsyFile(std::istream& is, const unsigned int begin = 0,
-			 const unsigned int end = 1);
+			 const unsigned int end = 1, std::string filter_aux = "");
 
 	//reloading a partial file from indices
 	bool reloadIndex(const std::string& fn, const unsigned int begin = 0,

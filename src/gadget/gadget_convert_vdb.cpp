@@ -78,6 +78,7 @@ namespace gadget {
 		bool use_anim = false;
 		int anim_start = -1;
 		int anim_end = -1;
+		int anim_step = -1;
 		int TotBHs = 1;
 
 		for (int i = 1; i < argc; i++) {
@@ -101,6 +102,7 @@ namespace gadget {
 				use_anim = true;
 				anim_start = std::stoi(argv[++i]);
 				anim_end = std::stoi(argv[++i]);
+				anim_step = std::stoi(argv[++i]);
 			}
 			else if (arg == "--bh-count") {
 				TotBHs = std::stoi(argv[++i]);
@@ -109,7 +111,7 @@ namespace gadget {
 
 		// Anim
 		if (use_anim) {
-			snap_file = format_filename(snap_file, anim_start + world_rank);
+			snap_file = format_filename(snap_file, anim_start + anim_step * world_rank);
 			std::cout << "Reading step file: " << snap_file << std::endl;
 		}
 

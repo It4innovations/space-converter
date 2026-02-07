@@ -115,7 +115,8 @@ namespace changa {
             // @param basedir: The base directory containing the Tipsy files.
             // @param world_rank: The rank of the current process in the communicator.
             // @param world_size: The total number of processes in the communicator.
-            void init_lib(std::string basedir, int world_rank, int world_size);
+            // @param filter_in: A filter string for selecting specific properties.
+            void init_lib(std::string basedir, int world_rank, int world_size, std::string filter_in);
 
             // Finalize and clean up the Tipsy library.
             void finish_lib();

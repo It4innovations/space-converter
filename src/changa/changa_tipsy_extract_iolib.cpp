@@ -69,7 +69,7 @@ namespace changa {
 
 			int g_smoothlength_blocknr = -1;
 
-			void init_lib(std::string basefile, int world_rank, int world_size) {
+			void init_lib(std::string basefile, int world_rank, int world_size, std::string filter_in) {
 				steps_time[0] = omp_get_wtime();
 
 				//tf_data = new Tipsy::TipsyFile(basefile);
@@ -83,7 +83,7 @@ namespace changa {
 				g_start_particles = world_rank * particles_per_process;
 				g_num_particles = (world_rank == world_size - 1) ? g_total_particles - g_start_particles : particles_per_process;
 
-				tf_data = new Tipsy::PartialTipsyFile(basefile, g_start_particles, g_start_particles + g_num_particles);
+				tf_data = new Tipsy::PartialTipsyFile(basefile, g_start_particles, g_start_particles + g_num_particles, filter_in);
 
 				//check smoothlength
 				for (int i = 0; i < tf_data->aux_values.size(); i++) {

@@ -96,6 +96,7 @@ namespace haccbin {
 		bool use_anim = false;
 		int anim_start = -1;
 		int anim_end = -1;
+		int anim_step = -1;
 
 		for (int i = 1; i < argc; i++) {
 			const std::string arg = argv[i];
@@ -106,12 +107,13 @@ namespace haccbin {
 				use_anim = true;
 				anim_start = std::stoi(argv[++i]);
 				anim_end = std::stoi(argv[++i]);
+				anim_step = std::stoi(argv[++i]);
 			}
 		}
 
 		// Anim
 		if (use_anim) {
-			haccbin_file = format_filename(haccbin_file, anim_start + world_rank);
+			haccbin_file = format_filename(haccbin_file, anim_start + anim_step * world_rank);
 			std::cout << "Reading timestep file: " << haccbin_file << std::endl;
 		}
 
@@ -123,72 +125,6 @@ namespace haccbin {
 		haccbin::io::init_lib(haccbin_file, world_rank, world_size);
 
 		print_CPU_steps();
-
-		//std::string param_file;
-		//std::string snap_file;
-		//int MaxMemSize = 1000;
-		//double BufferSize = 100;
-		//double PartAllocFactor = 1.2;
-		//bool use_anim = false;
-		//int anim_start = -1;
-		//int anim_end = -1;
-		//int TotBHs = 0;
-
-		//for (int i = 1; i < argc; i++) {
-		//	const std::string arg = argv[i];
-		//	if (arg == "--param-file") {
-		//		param_file = argv[++i]; //std::stof(av[++i]);
-		//	}
-		//	else if (arg == "--gadget-file") {
-		//		snap_file = argv[++i]; //std::stoi(argv[++i]);
-		//	}
-		//	else if (arg == "--max-mem-size") {
-		//		MaxMemSize = std::stoi(argv[++i]);
-		//	}
-		//	else if (arg == "--buffer-size") {
-		//		BufferSize = std::stof(argv[++i]);
-		//	}
-		//	else if (arg == "--part-alloc-factor") {
-		//		PartAllocFactor = std::stof(argv[++i]);
-		//	}
-		//	else if (arg == "--anim") {
-		//		use_anim = true;
-		//		anim_start = std::stoi(argv[++i]);
-		//		anim_end = std::stoi(argv[++i]);
-		//	}
-		//	else if (arg == "--bh-count") {
-		//		TotBHs = std::stoi(argv[++i]);
-		//	}
-		//}
-
-		//// Anim
-		//if (use_anim) {
-		//	snap_file = format_filename(snap_file, anim_start + world_rank);
-		//	std::cout << "Reading step file: " << snap_file << std::endl;
-		//}
-
-		//if (use_anim) {
-		//	world_rank = 0;
-		//	world_size = 1;
-		//}
-
-		//gadget::io::gadget_init_lib(world_rank, world_size);
-
-		////read_parameter_file(param_file, NULL, NULL, NULL, 0);
-		////void set_parameter(int ICFormat, int SnapFormat, int NumFilesWrittenInParallel, int MaxMemSize, double BufferSize, double PartAllocFactor)
-		//gadget::io::gadget_set_parameter(2, 2, world_size, MaxMemSize, BufferSize, PartAllocFactor, TotBHs);
-		//gadget::io::gadget_mymalloc_init();
-		//gadget::io::gadget_set_units();
-
-		//// Allocate memory for the char array
-		//std::vector<char> csnap_file(snap_file.length() + 1);
-
-		//// Copy the contents of the std::string to the char array
-		//std::strcpy(csnap_file.data(), snap_file.c_str());
-
-		//gadget::io::gadget_read_ic(csnap_file.data());
-
-		//print_CPU_steps();
 	}
 
 	void ConvertVDBHACCBin::finish_lib()

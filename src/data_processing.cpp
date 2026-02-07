@@ -58,6 +58,16 @@
 
 #endif
 
+#ifdef WITH_MERIC
+#	include <meric.h>
+// #define MERIC_INIT MERIC_Init()
+// #define MERIC_CLOSE MERIC_Close()
+
+// #define MERIC_MEASURE_START( name ) MERIC_MeasureStart( name )
+// #define MERIC_MEASURE_STOP( name ) MERIC_MeasureStop( name )
+// #define MERIC_MEASURE_STOPSTART( name1, name2 ) MERIC_MeasureStopStart( name1, name2 )
+#endif
+
 #ifdef _WIN32
 #	undef max              // disable the macro
 #	undef min              // disable the macro
@@ -462,6 +472,11 @@ namespace space_converter {
 
 //#if 1 //test
 
+		// Initialize the converter library with MPI rank and size
+#ifdef WITH_MERIC
+		MERIC_MeasureStart("init_lib");
+#endif
+
 		const char* converter_split_init_count = getenv("CONVERTER_SPLIT_INIT_COUNT");
 		if (converter_split_init_count) {
 			printf("WARNING (use CONVERTER_SPLIT_INIT_COUNT): This is a test version of the converter!\n");
@@ -516,6 +531,11 @@ namespace space_converter {
 		}
 	}
 
+		// Initialize the converter library with MPI rank and size
+#ifdef WITH_MERIC
+		MERIC_MeasureStop("init_lib");
+#endif
+
 #ifdef WITH_EMBREE
 		double t_embree = omp_get_wtime();
 		convert_vdb_base->create_embree_scene(/*particle_type*/ 0); //TODO
@@ -559,6 +579,9 @@ namespace space_converter {
 // #endif
 
 		// Calculate radius for particles
+#ifdef WITH_MERIC
+		MERIC_MeasureStart("calculate_radius");
+#endif
 		bool use_cycling = space_data.anim_type == common::SpaceData::AnimType::eNone;// || from_cl.use_anim_merge;		
 
 		std::string calc_radius_neigh_file = space_data.calc_radius_neigh_file;
@@ -597,6 +620,10 @@ namespace space_converter {
 		if (converter_radius_particle_const) {
 			convert_vdb_base->radius_particle_const = atof(converter_radius_particle_const);
 		}
+
+#ifdef WITH_MERIC
+		MERIC_MeasureStop("calculate_radius");
+#endif
 
 		return convert_vdb_base;
 	}
@@ -641,6 +668,10 @@ namespace space_converter {
 
 	void find_bbox(common::vdb::ConvertVDBBase* convert_vdb_base, space_converter::FromCL& from_cl, common::SpaceData& space_data, int particle_type)
 	{
+#ifdef WITH_MERIC
+		MERIC_MeasureStart("find_bbox");
+#endif
+
 		CALL_MPI_BARRIER;
 
 		double t_message_type2 = omp_get_wtime();
@@ -691,10 +722,17 @@ namespace space_converter {
 
 		if (from_cl.world_rank == 0)
 			printf("rank: %d: find bbox mpi: %f, box_size: %f\n", from_cl.world_rank, omp_get_wtime() - t_message_type2, space_data.bbox_size_orig);
+
+#ifdef WITH_MERIC
+		MERIC_MeasureStop("find_bbox");
+#endif
 	}
 
 	void create_grid(common::vdb::VDBParticles& grid_main, space_converter::FromCL& from_cl, common::SpaceData& space_data)
 	{
+#ifdef WITH_MERIC
+		MERIC_MeasureStart("create_grid");
+#endif
 		//Dense
 		if (space_data.extracted_type == common::SpaceData::ExtractedType::eDense) {
 			grid_main.type = common::vdb::VDBParticles::VDBParticleType::eDense;
@@ -720,10 +758,18 @@ namespace space_converter {
 			grid_main.vdb_grid->setName("density");
 #endif
 		}
+
+#ifdef WITH_MERIC
+		MERIC_MeasureStop("create_grid");
+#endif
 	}
 
 	void convert_to_grid(common::vdb::ConvertVDBBase* convert_vdb_base, space_converter::FromCL& from_cl, common::SpaceData& space_data, common::vdb::VDBParticles& grid_main)
 	{
+#ifdef WITH_MERIC
+		MERIC_MeasureStart("convert_to_grid");
+#endif
+
 		CALL_MPI_BARRIER;
 
 		double t_convert = omp_get_wtime();
@@ -795,10 +841,17 @@ namespace space_converter {
 				from_cl.world_rank, space_data.bbox_min[0], space_data.bbox_min[1], space_data.bbox_min[2],
 				space_data.bbox_max[0], space_data.bbox_max[1], space_data.bbox_max[2]);
 		}
+
+#ifdef WITH_MERIC
+		MERIC_MeasureStop("convert_to_grid");
+#endif
 	}
 
 	void find_minmax_value(space_converter::FromCL& from_cl, common::SpaceData& space_data)
 	{
+#ifdef WITH_MERIC
+		MERIC_MeasureStart("find_minmax_value");
+#endif
 		double t_find_minmax = omp_get_wtime();
 
 		// Use MPI_Allreduce to find the minimum across all arrays for each element
@@ -809,6 +862,10 @@ namespace space_converter {
 
 		if (from_cl.world_rank == 0)
 			printf("rank: %d: find minmax mpi: %f, particles_count: %lld\n", from_cl.world_rank, omp_get_wtime() - t_find_minmax, space_data.particles_count);
+
+#ifdef WITH_MERIC
+		MERIC_MeasureStop("find_minmax_value");
+#endif
 	}
 
 	void find_minmax_reduced_value(space_converter::FromCL& from_cl, common::SpaceData& space_data)
@@ -830,6 +887,9 @@ namespace space_converter {
 
 	void reduction(common::vdb::ConvertVDBBase* convert_vdb_base, space_converter::FromCL& from_cl, common::SpaceData& space_data, common::vdb::VDBParticles& grid_main, common::vdb::VDBParticles& grid_main_sum)
 	{
+#ifdef WITH_MERIC
+		MERIC_MeasureStart("reduction");
+#endif
 		CALL_MPI_BARRIER;
 
 		double t_grid = omp_get_wtime();
@@ -1012,6 +1072,10 @@ namespace space_converter {
 		if (from_cl.world_rank == 0) {
 			printf("rank: %d: merged time: %f\n", from_cl.world_rank, omp_get_wtime() - t_grid);
 		}
+
+#ifdef WITH_MERIC
+		MERIC_MeasureStop("reduction");
+#endif
 	}
 #ifdef WITH_MULTIRES
 	class Openvdb_Multi_Res_Grids{    
@@ -2375,6 +2439,9 @@ namespace space_converter {
 #endif
 	void finalize_grid(common::vdb::ConvertVDBBase* convert_vdb_base, FromCL& from_cl, common::SpaceData& space_data, common::vdb::VDBParticles& grid_main_sum, common::vdb::VDBParticles& grid_main_final)
 	{
+#ifdef WITH_MERIC
+		MERIC_MeasureStart("finalize_grid");
+#endif
 		if (from_cl.world_rank == 0 || space_data.anim_type != common::SpaceData::AnimType::eNone) {
 			//Dense
 			if (space_data.extracted_type == common::SpaceData::ExtractedType::eDense) {
@@ -2670,6 +2737,9 @@ namespace space_converter {
 				grid_main_sum.dense_grid.clear();
 			}
 		}
+#ifdef WITH_MERIC
+		MERIC_MeasureStop("finalize_grid");
+#endif
 	}
 
 

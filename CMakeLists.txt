@@ -43,6 +43,8 @@ option(WITH_CUDAKDTREE "Enable cudaKDTree" OFF)
 #option(WITH_CUDAKDTREE_CPU "Enable cudaKDTree on cpu" OFF)
 option(WITH_MULTIRES "Enable MultiRes" OFF)
 option(WITH_NO_DATA_TEMP "Enable No Data Temp" OFF)
+
+option(WITH_MERIC  "Enable MERIC" OFF)
 ########################################################
 
 if(WITH_OPENMP)
@@ -62,6 +64,11 @@ if(WITH_OPENMP)
   else()
     set(WITH_OPENMP OFF)
   endif()
+endif()
+
+if(WITH_MERIC)   
+    set(MERIC_INCLUDE_DIRS "" CACHE PATH "")
+    set(MERIC_LIBRARIES "" CACHE FILEPATH "")
 endif()
 
 if(WITH_OPENVDB)   

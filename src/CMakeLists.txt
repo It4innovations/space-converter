@@ -35,6 +35,7 @@ set(INC
     ${MPI_INCLUDE_DIRS}
     ${MPI_CXX_HEADER_DIR}
     ${PROJECT_SOURCE_DIR}/src/common
+    ${MERIC_INCLUDE_DIRS}
 )
 
 set(SRC
@@ -111,6 +112,10 @@ if(WITH_CUDAKDTREE)
 
 endif()
 
+if(WITH_MERIC)
+    add_definitions(-DWITH_MERIC)
+endif()
+
 include_directories(${INC})
 
 ########################################################
@@ -138,6 +143,7 @@ target_link_libraries(
    ${MPI_LIBRARIES}
    ${MPI_msmpi_LIBRARY}
    ${MPI_CUSTOM_LIBRARIES}
+   ${MERIC_LIBRARIES}
 )
 
 target_link_libraries(space_converter 

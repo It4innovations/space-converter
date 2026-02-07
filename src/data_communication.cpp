@@ -24,6 +24,16 @@
 # include <omp.h>
 #endif
 
+#ifdef WITH_MERIC
+#	include <meric.h>
+// #define MERIC_INIT MERIC_Init()
+// #define MERIC_CLOSE MERIC_Close()
+
+// #define MERIC_MEASURE_START( name ) MERIC_MeasureStart( name )
+// #define MERIC_MEASURE_STOP( name ) MERIC_MeasureStop( name )
+// #define MERIC_MEASURE_STOPSTART( name1, name2 ) MERIC_MeasureStopStart( name1, name2 )
+#endif
+
 #include <iostream>
 
  // file_type_items
@@ -82,6 +92,11 @@ namespace space_converter {
 	void init_mpi(int argc, char** argv, space_converter::FromCL& from_cl)
 	{
 		MPI_Init(&argc, &argv);
+		
+#ifdef WITH_MERIC
+		MERIC_Init();
+		MERIC_MeasureStart("Main");
+#endif		
 
 #ifdef WITH_OPENMP
 		t_start = omp_get_wtime();
@@ -123,6 +138,11 @@ namespace space_converter {
 			fflush(0);
 		}
 #endif
+
+#ifdef WITH_MERIC
+		MERIC_MeasureStop("Main");
+		MERIC_Close();
+#endif		
 
 		MPI_Finalize();
 	}

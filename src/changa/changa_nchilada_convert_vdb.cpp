@@ -73,6 +73,7 @@ namespace changa {
 		bool use_anim = false;
 		int anim_start = -1;
 		int anim_end = -1;
+		int anim_step = -1;
 
 		for (int i = 1; i < argc; i++) {
 			const std::string arg = argv[i];
@@ -83,12 +84,13 @@ namespace changa {
 				use_anim = true;
 				anim_start = std::stoi(argv[++i]);
 				anim_end = std::stoi(argv[++i]);
+				anim_step = std::stoi(argv[++i]);
 			}
 		}
 
 		// Anim
 		if (use_anim) {
-			base_dir = format_filename(base_dir, anim_start + world_rank);
+			base_dir = format_filename(base_dir, anim_start + anim_step * world_rank);
 			std::cout << "Reading timestep dir: " << base_dir << std::endl;
 		}
 

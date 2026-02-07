@@ -53,10 +53,6 @@ namespace space_converter {
 
 		//bool use_dense = false;            // Flag to indicate use of Dense format.
 		bool use_dense2file = false;       // Flag to export RAW dense matrix to file.
-		//bool use_anim = false;             // Flag to read timesteps.
-		//int anim_type = 0;                 // Flag to read timesteps and merge to one.
-		//int anim_start = -1;               // Start frame (-1 indicates not set).
-		//int anim_end = -1;                 // End frame (-1 indicates not set).
 
 #ifdef WITH_CUDAKDTREE
 		bool use_cudakdtree = false;

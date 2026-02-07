@@ -80,6 +80,7 @@ namespace genericio {
 		bool use_anim = false;
 		int anim_start = -1;
 		int anim_end = -1;
+		int anim_step = -1;
 
 		for (int i = 1; i < argc; i++) {
 			const std::string arg = argv[i];
@@ -109,12 +110,13 @@ namespace genericio {
 				use_anim = true;
 				anim_start = std::stoi(argv[++i]);
 				anim_end = std::stoi(argv[++i]);
+				anim_step = std::stoi(argv[++i]);
 			}
 		}
 
 		// Anim
 		if (use_anim) {
-			genericio_file = format_filename(genericio_file, anim_start + world_rank);
+			genericio_file = format_filename(genericio_file, anim_start + anim_step * world_rank);
 			std::cout << "Reading timestep file: " << genericio_file << std::endl;
 		}
 
