@@ -1,5 +1,5 @@
 #####################################################################################################################
-# Copyright(C) 2023-2025 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+# Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
 #
 # This program is free software : you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,7 +20,6 @@ set(INC
     .  
     ${OPENVDB_INCLUDE_DIRS}
     ${NANOVDB_INCLUDE_DIRS}
-    # ${BOOST_INCLUDE_DIRS}
     ${TBB_INCLUDE_DIRS}
     ${MPI_INCLUDE_DIRS}
     ${MPI_CXX_HEADER_DIR}
@@ -28,11 +27,10 @@ set(INC
     ${PROJECT_SOURCE_DIR}/src/common
     ${PROJECT_SOURCE_DIR}/src/utility
     ${PROJECT_SOURCE_DIR}/submodules/nanoflann/include
+    ${PROJECT_SOURCE_DIR}/submodules/braas-hpc-renderengine/src
 )
 
 set(SRC_COMMON
-    connection_tcp.cpp
-    connection_tcp.h
     convert_vdb.cpp
     convert_vdb.h
     convert_common.cpp
@@ -41,6 +39,9 @@ set(SRC_COMMON
     dense_common.h
 
     data_common.h
+
+    ${PROJECT_SOURCE_DIR}/submodules/braas-hpc-renderengine/src/renderengine_tcp.cpp
+    ${PROJECT_SOURCE_DIR}/submodules/braas-hpc-renderengine/src/renderengine_tcp.h
 
     ${PROJECT_SOURCE_DIR}/src/utility/dense_utility.h
 )
@@ -72,10 +73,6 @@ if(WITH_TBB)
     add_definitions(-DWITH_TBB)
 endif()
 
-if(WITH_EMBREE)
-    add_definitions(-DWITH_EMBREE)
-endif()
-
 if(WITH_GENERICIO)
     add_definitions(-DWITH_GENERICIO)
 endif()
@@ -93,10 +90,6 @@ if(WITH_CUDAKDTREE)
     # if (WITH_CUDAKDTREE_CPU)
     #     add_definitions(-DWITH_CUDAKDTREE_CPU)
     # endif()    
-endif()
-
-if(WITH_MULTIRES)
-    add_definitions(-DWITH_MULTIRES)
 endif()
 
 if(WITH_NO_DATA_TEMP)

@@ -51,51 +51,28 @@
 
 namespace common {
 	namespace vdb {
+		/**
+		 * @brief Structure to hold raw particle data for serialization and transmission
+		 * 
+		 * RawParticles stores particle data in a compact format suitable for serialization,
+		 * network transmission, and file I/O operations.
+		 */
 		struct RawParticles {
+			/**
+			 * @brief Single particle data attribute (position, velocity, etc.)
+			 */
 			struct ParticleData {
-				std::string name;
-				int num_comp = 0;
-				std::vector<float> values;
-
-				//// Assignment operator for ParticleData
-				//ParticleData& operator=(const ParticleData& other) {
-				//	if (this != &other) {
-				//		name = other.name;
-				//		num_comp = other.num_comp;
-				//		values = other.values;
-				//	}
-				//	return *this;
-				//}
-
-				//// Move assignment operator for ParticleData
-				//ParticleData& operator=(ParticleData&& other) noexcept {
-				//	if (this != &other) {
-				//		name = std::move(other.name);
-				//		num_comp = other.num_comp;
-				//		values = std::move(other.values);
-				//	}
-				//	return *this;
-				//}
+				std::string name;              ///< Name of the data attribute (e.g., "position", "velocity")
+				int num_comp = 0;              ///< Number of components per particle (3 for position, 1 for scalar)
+				std::vector<float> values;     ///< Flat array of values (size = num_particles * num_comp)
 			};
 
-			std::vector<ParticleData> data;
+			std::vector<ParticleData> data;  ///< Collection of all particle data attributes
 
-			//// Assignment operator for RawParticles
-			//RawParticles& operator=(const RawParticles& other) {
-			//	if (this != &other) {
-			//		data = other.data; // std::vector has its own assignment operator
-			//	}
-			//	return *this;
-			//}
-
-			//// Move assignment operator for RawParticles
-			//RawParticles& operator=(RawParticles&& other) noexcept {
-			//	if (this != &other) {
-			//		data = std::move(other.data);
-			//	}
-			//	return *this;
-			//}
-
+			/**
+			 * @brief Serialize particle data to a binary file
+			 * @param filename Path to output file
+			 */
 			void serialize(const std::string& filename) const {
 				std::ofstream out(filename, std::ios::binary);
 				if (!out) {
@@ -129,6 +106,10 @@ namespace common {
 				out.close();
 			}
 
+			/**
+			 * @brief Deserialize particle data from a binary file
+			 * @param filename Path to input file
+			 */
 			void deserialize(const std::string& filename) {
 				std::ifstream in(filename, std::ios::binary);
 				if (!in) {
@@ -166,6 +147,10 @@ namespace common {
 				in.close();
 			}
 
+			/**
+			 * @brief Serialize particle data to a binary buffer (for MPI/network transfer)
+			 * @param bin_data Output buffer to store serialized data
+			 */
 			void serialize(std::vector<uint8_t>& bin_data) const {
 				std::ostringstream oss(std::ios::binary);
 
@@ -196,7 +181,10 @@ namespace common {
 				const std::string& str = oss.str();
 				bin_data.assign(str.begin(), str.end());
 			}
-
+			/**
+			 * @brief Deserialize particle data from a binary buffer
+			 * @param bin_data Input buffer containing serialized data
+			 */
 			void deserialize(const std::vector<uint8_t>& bin_data) {
 				std::istringstream iss(std::string(bin_data.begin(), bin_data.end()), std::ios::binary);
 
@@ -229,6 +217,12 @@ namespace common {
 				}
 			}
 
+			/**
+			 * @brief Merge another RawParticles object into this one
+			 * @param other Source particle data to merge
+			 * 
+			 * Appends values for matching particle data names, or adds new data attributes.
+			 */
 			void merge(const RawParticles& other) {
 				for (const auto& otherParticle : other.data) {
 					auto it = std::find_if(data.begin(), data.end(), [&](const ParticleData& particle) {
@@ -246,26 +240,39 @@ namespace common {
 			}
 		};
 
+		/**
+		 * @brief Dense regular grid representation of particle data
+		 * 
+		 * Stores particle data rasterized onto a uniform 3D grid.
+		 * Used for volume rendering and analysis.
+		 */
 		struct DenseParticles
 		{
-			std::vector<float> data_density;
+			std::vector<float> data_density;   ///< Primary density/value data
 #ifndef WITH_NO_DATA_TEMP
-			std::vector<float> data_temp;
-#endif			
-			size_t dims[3] = { 0,0,0 };
-			//int type = 0;
-			size_t offset[3] = { 0,0,0 };
+			std::vector<float> data_temp;      ///< Temporary accumulation buffer for normalization
+#endif
+			size_t dims[3] = { 0,0,0 };        ///< Grid dimensions [x, y, z]
+			size_t offset[3] = { 0,0,0 };      ///< Grid offset in global coordinate space
 
+			/**
+			 * @brief Clear all grid data and reset dimensions
+			 */
 			void clear() {
 				data_density.clear();
-#ifndef WITH_NO_DATA_TEMP				
+#ifndef WITH_NO_DATA_TEMP
 				data_temp.clear();
-#endif				
-
+#endif
 				memset(dims, 0, 3 * sizeof(size_t));
 				memset(offset, 0, 3 * sizeof(size_t));
 			}
 
+			/**
+			 * @brief Create and initialize grid with specified dimensions
+			 * @param x Width of the grid
+			 * @param y Height of the grid
+			 * @param z Depth of the grid
+			 */
 			void create(size_t x, size_t y, size_t z) {
 				dims[0] = x;
 				dims[1] = y;
@@ -276,66 +283,110 @@ namespace common {
 #ifndef WITH_NO_DATA_TEMP
 				data_temp.resize(size());
 				memset(data_temp.data(), 0, memsize());
-#endif				
+#endif
 			}
 
+			/** @brief Get grid width */
 			size_t x() {
 				return dims[0];
 			}
 
+			/** @brief Get grid height */
 			size_t y() {
 				return dims[1];
 			}
 
+			/** @brief Get grid depth */
 			size_t z() {
 				return dims[2];
 			}
 
+			/** @brief Get total number of voxels */
 			size_t size() {
 				return dims[0] * dims[1] * dims[2];
 			}
 
+			/** @brief Get total memory size in bytes */
 			size_t memsize() {
 				return dims[0] * dims[1] * dims[2] * sizeof(float);
 			}
 
+			/**
+			 * @brief Convert 3D coordinates to linear index
+			 * @param x X coordinate
+			 * @param y Y coordinate
+			 * @param z Z coordinate
+			 * @return Linear array index
+			 */
 			size_t get_index(size_t x, size_t y, size_t z) {
 				return x + y * dims[0] + z * dims[0] * dims[1];
 			}
 		};
 
+		/**
+		 * @brief Container for different VDB grid representations
+		 * 
+		 * Can hold particle data in various formats: dense grid, sparse NanoVDB,
+		 * OpenVDB, serialized binary, or raw particle data.
+		 */
 		class VDBParticles
 		{
 		public:
-			DenseParticles dense_grid;
+			DenseParticles dense_grid;  ///< Dense regular grid representation
 #if OPENVDB_VERSION == 11
-			std::shared_ptr<nanovdb::build::FloatGrid> nano_grid;
+			std::shared_ptr<nanovdb::build::FloatGrid> nano_grid;  ///< NanoVDB sparse grid (v11)
 #else
-			std::shared_ptr<nanovdb::tools::build::FloatGrid> nano_grid;
+			std::shared_ptr<nanovdb::tools::build::FloatGrid> nano_grid;  ///< NanoVDB sparse grid
 #endif
 
 #ifdef WITH_OPENVDB
-			openvdb::FloatGrid::Ptr vdb_grid;
+			openvdb::FloatGrid::Ptr vdb_grid;  ///< OpenVDB sparse grid
 #endif
-			std::vector<uint8_t> vector_grid;
+			std::vector<uint8_t> vector_grid;  ///< Serialized binary grid data (for MPI transfer)
 
-			RawParticles raw_particles;
+			RawParticles raw_particles;  ///< Raw particle point cloud data
 
+			/**
+			 * @brief Type of VDB particle representation
+			 */
 			enum VDBParticleType
 			{
-				eDense,
-				eVector,
-				eNanoVDB,
-				eOpenVDB,
-				eRawParticles
+				eDense,        ///< Dense regular grid
+				eVector,       ///< Serialized binary format
+				eNanoVDB,      ///< NanoVDB sparse grid
+				eOpenVDB,      ///< OpenVDB sparse grid
+				eRawParticles  ///< Raw point cloud
 			};
 
-			VDBParticleType type;
+			VDBParticleType type;  ///< Current representation type
 		};
 
+		/**
+		 * @brief Base class for converting particle data to VDB grids
+		 * 
+		 * Provides functionality to convert various particle formats into VDB grid
+		 * representations (dense, sparse, or raw). Handles spatial indexing, filtering,
+		 * and normalization. Derived classes implement particle I/O library specifics.
+		 */
 		class ConvertVDBBase {
 		public:
 
+			/**
+			 * @brief Convert particle data from I/O library format to VDB grid
+			 * 
+			 * Main conversion function that reads particles and rasterizes them into the
+			 * specified grid type. Handles filtering, normalization, and spatial indexing.
+			 * 
+			 * @param particle_type Type of particles to convert
+			 * @param particle_fix_size Fixed particle size multiplier
+			 * @param grid_name Name for the output grid
+			 * @param grid_transform Grid transformation scale
+			 * @param bbox_min Bounding box minimum coordinates
+			 * @param bbox_max Bounding box maximum coordinates
+			 * @param bbox_dim Grid dimension (resolution)
+			 * @param dense_type Type of density calculation
+			 * @param grid Output VDB grid container
+			 */
 			void convert_iolib_to_grid(
 				int particle_type,
 				float particle_fix_size,
@@ -371,63 +422,69 @@ namespace common {
 				float *offset_position
 			);
 
+			/**
+			 * @brief Merge one VDB grid into another
+			 * 
+			 * Combines grid data from grid_recv into grid_dst, handling different
+			 * grid types (dense, sparse, serialized).
+			 */
+			/**
+			 * @brief Merge one VDB grid into another
+			 * @param grid_dst Destination grid to merge into
+			 * @param grid_recv Source grid to merge from
+			 * 
+			 * Combines grid data from grid_recv into grid_dst, handling different
+			 * grid types (dense, sparse, serialized).
+			 */
 			void merge_grid(
 				VDBParticles& grid_dst,
-				VDBParticles& grid_recv	
-			);		
-#if 0
-			void fill_voxels_v1(common::vdb::DenseParticles& grid,
-				size_t pid, int px, int py, int pz, float v,
-				int bbox_dim, int* bbox_min_orig, int* bbox_max_orig, double scale_space_diagonal);
+				VDBParticles& grid_recv
+			);
 
-			void fill_voxels_v2(common::vdb::DenseParticles& grid,
-				size_t pid, int px, int py, int pz, float value,
-				int bbox_dim, int* bbox_min_orig, int* bbox_max_orig, double scale_space_diagonal, float particle_fix_size);
-
-			void fill_voxels_v3(common::vdb::DenseParticles& grid,
-				size_t pid, float value,
-				int bbox_dim, int* bbox_min_orig, int* bbox_max_orig,
-				double scale_space_diagonal,
-				int dense_type, float particle_fix_size);
-
-			void fill_voxels_v4(
-				common::vdb::DenseParticles& grid,
-				size_t pid, 
-				float value,
-				int bbox_dim, 
-				int* bbox_min_orig, 
-				int* bbox_max_orig,
-				double scale_space_diagonal,
-				common::SpaceData::DenseType dense_type, 
-				float particle_fix_size,
-				int particle_type,
-				int block_name_id,
-				double *pos		
-				);
-#endif
-
+			/**
+			 * @brief Fill voxels with particle contribution using advanced splatting
+			 * @param grid Dense grid to fill
+			 * @param pid Particle ID
+			 * @param value Particle value to splat
+			 * @param bbox_dim Bounding box dimension
+			 * @param bbox_min_orig Bounding box minimum coordinates
+			 * @param bbox_size_orig Original bounding box size
+			 * @param scale_space_diagonal Diagonal scaling factor
+			 * @param dense_type Type of density calculation
+			 * @param dense_norm Normalization type
+			 * @param particle_fix_size Fixed particle size multiplier
+			 * @param particle_type Type of particle
+			 * @param block_name_id Data block identifier
+			 * @param pos Particle position
+			 */
 			void fill_voxels_v5(
 				common::vdb::DenseParticles& grid,
-				size_t pid, 
+				size_t pid,
 				float value,
-				int bbox_dim, 
-				int* bbox_min_orig, 
+				int bbox_dim,
+				int* bbox_min_orig,
 				double bbox_size_orig,
 				double scale_space_diagonal,
-				common::SpaceData::DenseType dense_type, 
+				common::SpaceData::DenseType dense_type,
 				common::SpaceData::DenseNorm dense_norm,
 				float particle_fix_size,
 				int particle_type,
 				int block_name_id,
-				double *pos		
-				);				
+				double *pos
+			);				
 
 #ifdef WITH_NANOVDB
 			
 
 #if OPENVDB_VERSION == 11
+			/**
+			 * @brief Convert dense grid to NanoVDB format (OpenVDB v11)
+			 */
 			std::shared_ptr<nanovdb::build::FloatGrid> dense_to_nanovdb(DenseParticles& particles, double transform_scale, common::SpaceData::DenseType dense_type, common::SpaceData::DenseNorm dense_norm);
 #else
+			/**
+			 * @brief Convert dense grid to NanoVDB format
+			 */
 			std::shared_ptr<nanovdb::tools::build::FloatGrid> dense_to_nanovdb(DenseParticles& particles, double transform_scale, common::SpaceData::DenseType dense_type, common::SpaceData::DenseNorm dense_norm);
 #endif
 
@@ -435,40 +492,105 @@ namespace common {
 
 
 #ifdef WITH_OPENVDB
+			/**
+			 * @brief Convert dense grid to OpenVDB format
+			 */
+			/**
+			 * @brief Convert dense grid to OpenVDB format
+			 * @param particles Dense particle grid
+			 * @param transform_scale Grid transformation scale
+			 * @param dense_type Type of density calculation
+			 * @param dense_norm Normalization type
+			 * @return OpenVDB grid pointer
+			 */
 			openvdb::FloatGrid::Ptr dense_to_openvdb(DenseParticles& particles, double transform_scale, common::SpaceData::DenseType dense_type, common::SpaceData::DenseNorm dense_norm);
-			//openvdb::FloatGrid::Ptr dense_to_openvdbE(DenseParticles& particles, double transform_scale);
-			//openvdb::FloatGrid::Ptr dense_to_openvdbI(DenseParticles& particles, double transform_scale);
 
+			/**
+			 * @brief Serialize OpenVDB grid to binary buffer
+			 * @param grid OpenVDB grid to serialize
+			 * @param file_content Output buffer for serialized data
+			 */
 			void openvdb_to_vector(openvdb::FloatGrid::Ptr grid, std::vector<uint8_t>& file_content);
+			
+			/**
+			 * @brief Serialize two OpenVDB grids to binary buffer
+			 */
 			void openvdb_to_vector2(openvdb::FloatGrid::Ptr grid1, openvdb::FloatGrid::Ptr grid2, std::vector<uint8_t>& file_content);
+			
+			/**
+			 * @brief Deserialize OpenVDB grid from binary buffer
+			 */
 			openvdb::FloatGrid::Ptr vector_to_openvdb(std::vector<uint8_t>& file_content);
 #endif
 
-			std::vector< std::vector<float> > radius_particles_per_ptype;
-			std::vector<size_t> particles_ptype_offset;
-			std::vector< std::vector<float> > rho_particles_per_ptype;
+			// Particle radius data organized by particle type
+			std::vector< std::vector<float> > radius_particles_per_ptype;  ///< Particle radii per type
+			std::vector<size_t> particles_ptype_offset;                    ///< Particle count offsets per type
+			std::vector< std::vector<float> > rho_particles_per_ptype;     ///< Density values per type
 
-			double redshift = 0.0;
-			double hubble_param = 1.0;
-			double radius_particle_const = 0.0;
+			// Cosmological simulation parameters
+			double redshift = 0.0;              ///< Cosmological redshift value
+			double hubble_param = 1.0;          ///< Hubble parameter (h)
+			double radius_particle_const = 0.0; ///< Constant particle radius value
 
 #ifdef WITH_EMBREE
-			void* rtc_device;
-			void* rtc_scene;
+			void* rtc_device;  ///< Embree ray tracing device
+			void* rtc_scene;   ///< Embree ray tracing scene
+			
+			/**
+			 * @brief Create Embree ray tracing scene for particle intersection
+			 * @param particle_type Type of particles to include in scene
+			 */
 			void create_embree_scene(int particle_type);
 #endif
 
+			/**
+			 * @brief Read particle radius data from file
+			 * @param calc_radius_neigh_file Path to radius data file
+			 */
 			void read_radius_from_file(std::string &calc_radius_neigh_file);
+			
+			/**
+			 * @brief Write particle radius data to file
+			 * @param calc_radius_neigh_file Path to output file
+			 */
 			void write_radius_from_file(std::string& calc_radius_neigh_file);
 
 #ifdef WITH_CUDAKDTREE
+			/**
+			 * @brief Calculate particle radii using CUDA KD-Tree neighbor search
+			 * @param calc_radius_neigh Number of neighbors to consider
+			 * @param calc_radius_neigh_file Output file for radius data
+			 * @param use_cycling Enable cycling boundary conditions
+			 * @param use_cudakdtree_cpu Use CPU fallback instead of GPU
+			 * @param maxRadius Maximum search radius
+			 * @param rho_kernel Density kernel type for SPH calculations
+			 */
 			void calculate_radius_by_cudakdtree(int calc_radius_neigh, std::string& calc_radius_neigh_file, bool use_cycling, bool use_cudakdtree_cpu, float maxRadius, common::SpaceData::DenseType& rho_kernel);
 #endif
 
 #ifdef WITH_NANOFLANN
+			/**
+			 * @brief Calculate particle radii using Nanoflann KD-Tree neighbor search
+			 * @param calc_radius_neigh Number of neighbors to consider
+			 * @param calc_radius_neigh_file Output file for radius data
+			 * @param use_cycling Enable cycling boundary conditions
+			 * @param rho_kernel Density kernel type for SPH calculations
+			 */
 			void calculate_radius_by_nanoflann(int calc_radius_neigh, std::string &calc_radius_neigh_file, bool use_cycling, common::SpaceData::DenseType& rho_kernel);
 #endif
 
+			/**
+			 * @brief Get effective radius for a particle
+			 * @param pid Particle ID
+			 * @param bbox_dim Bounding box dimension
+			 * @param bbox_min_orig Original bounding box minimum
+			 * @param bbox_size_orig Original bounding box size
+			 * @param scale_space_diagonal Diagonal scaling factor
+			 * @param particle_fix_size Fixed size multiplier
+			 * @param particle_type Type of particle
+			 * @return Particle radius in grid coordinates
+			 */
 			virtual double get_particle_radius(
 				uint64_t pid,
 				int bbox_dim,
@@ -479,6 +601,13 @@ namespace common {
 				int particle_type
 			);
 
+			/**
+			 * @brief Find bounding box for particles of given type
+			 * @param particle_type Type of particles to consider
+			 * @param bbox_min Output minimum coordinates
+			 * @param bbox_max Output maximum coordinates
+			 * @param offset_position Optional position offset
+			 */
 			virtual void iolib_find_bbox(
 				int particle_type,
 				float* bbox_min,
@@ -486,6 +615,13 @@ namespace common {
 				float* offset_position
 			);
 
+			/**
+			 * @brief Find minimum and maximum values for data block
+			 * @param particle_type Type of particles
+			 * @param block_nr Data block number
+			 * @param v_min Output minimum value
+			 * @param v_max Output maximum value
+			 */
 			virtual void iolib_find_minmax(
 				int particle_type,
 				int block_nr,
@@ -493,44 +629,121 @@ namespace common {
 				float& v_max
 			);
 
+			/**
+			 * @brief Get density value for particle
+			 * @param id Particle ID
+			 * @return Density value
+			 */
 			virtual double get_particle_rho(uint64_t id);
 
+			/**
+			 * @brief Get available particle types and data blocks
+			 * @param types_and_blocks Output vector of type/block pairs
+			 */
 			virtual void get_types_and_blocks(std::vector<int>& types_and_blocks);
+			
+			/**
+			 * @brief Get normalized value for particle in data block
+			 * @param blocknr Data block number
+			 * @param id Particle ID
+			 * @return Normalized value
+			 */
 			virtual float get_particle_norm_value(int blocknr, uint64_t id);
+			
+			/**
+			 * @brief Get value for particle in data block
+			 * @param blocknr Data block number
+			 * @param id Particle ID
+			 * @param out_value Output buffer for value(s)
+			 * @return Number of components
+			 */
 			virtual int get_particle_value(int blocknr, uint64_t id, float* out_value);
+			
+			/**
+			 * @brief Get number of components for particle value
+			 * @param blocknr Data block number
+			 * @param id Particle ID
+			 * @return Number of components
+			 */
 			virtual int get_particle_value_comp(int blocknr, uint64_t id);
 
+			/**
+			 * @brief Format filename with number substitution
+			 * @param pattern Filename pattern with format specifiers
+			 * @param number Number to substitute into pattern
+			 * @return Formatted filename
+			 */
 			std::string format_filename(const std::string& pattern, int number);
 
 		public:
-			// Abstract methods
+			// ============================================================
+			// Pure Virtual Methods - Must be implemented by derived classes
+			// ============================================================
+			
+			/** @brief Print CPU processing steps for debugging */
 			virtual void print_CPU_steps() = 0;
+			
+			/** @brief Get normalized particle value (internal implementation) */
 			virtual float get_particle_norm_value_internal(int blocknr, uint64_t id) = 0;
+			
+			/** @brief Get particle value (internal implementation) */
 			virtual int get_particle_value_internal(int blocknr, uint64_t id, float* out_value) = 0;
+			
+			/** @brief Get particle value component count (internal implementation) */
 			virtual int get_particle_value_comp_internal(int blocknr, uint64_t id) = 0;
+			
+			/** @brief Get particle type ID */
 			virtual int get_particle_type(uint64_t id) = 0;
+			
+			/** @brief Get particle position coordinates */
 			virtual void get_particle_position(uint64_t id, double* pos) const = 0;
+			
+			/** @brief Get number of particles on this MPI rank */
 			virtual size_t get_local_num_particles() const = 0;
+			
+			/** @brief Get total number of particles across all ranks */
 			virtual size_t get_global_num_particles() const = 0;
 
+			/** @brief Get particle smoothing length (SPH) */
 			virtual double get_particle_hsml(uint64_t id) = 0;
+			
+			/** @brief Get particle mass */
 			virtual double get_particle_mass(uint64_t id) = 0;
+			
+			/** @brief Get particle density (internal implementation) */
 			virtual double get_particle_rho_internal(uint64_t id) = 0;
+			
+			/** @brief Get data block number containing density values */
 			virtual int get_particle_rho_blocknr() = 0;
 
+			/** @brief Initialize I/O library with MPI parameters */
 			virtual void init_lib(int argc, char** argv, int world_rank, int world_size) = 0;
+			
+			/** @brief Finalize and cleanup I/O library */
 			virtual void finish_lib() = 0;
 
+			/** @brief Get particle types and data blocks (internal implementation) */
 			virtual void get_types_and_blocks_internal(std::vector<int>& types_and_blocks) = 0;
+			
+			/** @brief Print local particle types and blocks */
 			virtual void print_types_and_blocks_local() = 0;
+			
+			/** @brief Print particle types and blocks across all ranks */
 			virtual void print_types_and_blocks(std::vector<int>& types_and_blocks) = 0;
 
+			/** @brief Get human-readable name for particle type */
 			virtual std::string get_type_name(int type) = 0;
+			
+			/** @brief Get human-readable name for data block */
 			virtual std::string get_dataset_name(int blocknr) = 0;
 
+			/** @brief Get formatted string of all particle data type names */
 			virtual std::string get_particle_data_type_names(std::vector<int>& types_and_blocks) = 0;
 
+			/** @brief Get number of particle types */
 			virtual int get_num_types() = 0;
+			
+			/** @brief Get number of data blocks */
 			virtual int get_num_blocks() = 0;
 		};
 	}// vdb

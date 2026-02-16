@@ -1,5 +1,5 @@
 #####################################################################################################################
-# Copyright(C) 2023-2025 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+# Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
 #
 # This program is free software : you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -32,7 +32,6 @@ option(WITH_OPENVDB  "Enable OPENVDB" ON)
 
 option(WITH_HDF5  "Enable HDF5" OFF)
 option(WITH_GENERICIO  "Enable GENERICIO" OFF)
-option(WITH_EMBREE  "Enable embree" OFF)
 
 option(GADGET_MAX_HSML  "Enable loading of limited values from gadget files" OFF)
 option(GADGET_READ_ID  "Enable reading of ID" OFF)
@@ -40,8 +39,6 @@ option(GADGET_READ_ID64  "Enable reading of 64 bit ID" OFF)
 
 option(WITH_NANOFLANN  "Enable NANOFLANN" OFF)
 option(WITH_CUDAKDTREE "Enable cudaKDTree" OFF)
-#option(WITH_CUDAKDTREE_CPU "Enable cudaKDTree on cpu" OFF)
-option(WITH_MULTIRES "Enable MultiRes" OFF)
 option(WITH_NO_DATA_TEMP "Enable No Data Temp" OFF)
 
 option(WITH_MERIC  "Enable MERIC" OFF)
@@ -76,19 +73,6 @@ if(WITH_OPENVDB)
     set(OPENVDB_LIBRARIES "" CACHE FILEPATH "")
     set(OPENVDB_LIBRARIES_DEBUG "" CACHE FILEPATH "")
     set(OPENVDB_VERSION "" CACHE STRING "")
-
-    # set(BOOST_INCLUDE_DIRS "" CACHE PATH "")
-    # set(BOOST_LIBRARIES "" CACHE FILEPATH "")
-
-    # set(BLOSC_INCLUDE_DIRS "" CACHE PATH "")
-    # set(BLOSC_LIBRARIES "" CACHE FILEPATH "")
-
-    # set(ZLIB_INCLUDE_DIRS "" CACHE PATH "")
-    # set(ZLIB_LIBRARIES "" CACHE FILEPATH "")
-
-    # set(ZSTD_INCLUDE_DIRS "" CACHE PATH "")
-    # set(ZSTD_LIBRARIES "" CACHE FILEPATH "")
-
     set(WITH_TBB ON)
 else()
     set(OPENVDB_INCLUDE_DIRS "")
@@ -114,21 +98,6 @@ endif()
 
 if(WITH_NANOVDB)   
     set(NANOVDB_INCLUDE_DIRS "" CACHE PATH "")
-endif()
-
-if(WITH_EMBREE)
-    find_package(embree REQUIRED)
-endif()
-
-if(WITH_GENERICIO)
-    # set(BLOSC_INCLUDE_DIRS "" CACHE PATH "")
-    # set(BLOSC_LIBRARIES "" CACHE FILEPATH "")
-
-    # set(ZLIB_INCLUDE_DIRS "" CACHE PATH "")
-    # set(ZLIB_LIBRARIES "" CACHE FILEPATH "")
-
-    # set(ZSTD_INCLUDE_DIRS "" CACHE PATH "")
-    # set(ZSTD_LIBRARIES "" CACHE FILEPATH "")
 endif()
 
 if(WITH_CUDAKDTREE)

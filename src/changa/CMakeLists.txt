@@ -1,5 +1,5 @@
 #####################################################################################################################
-# Copyright(C) 2023-2025 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+# Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
 #
 # This program is free software : you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -21,7 +21,6 @@ set(INC
     .  
     ${OPENVDB_INCLUDE_DIRS}
     ${NANOVDB_INCLUDE_DIRS}
-    # ${BOOST_INCLUDE_DIRS}
     ${TBB_INCLUDE_DIRS}
     ${MPI_INCLUDE_DIRS}
     ${MPI_CXX_HEADER_DIR}

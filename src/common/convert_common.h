@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2023-2025 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+ * Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
  *
  * This program is free software : you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,14 +32,17 @@
 
 namespace common {
 
-	std::string ltrim(const std::string& s);
-	std::string rtrim(const std::string& s);
-	std::string trim(const std::string& s);
+	// String manipulation utilities
+	std::string ltrim(const std::string& s);        // Remove leading whitespace
+	std::string rtrim(const std::string& s);        // Remove trailing whitespace
+	std::string trim(const std::string& s);         // Remove leading and trailing whitespace
 
-	double gaussian_kernel(double x, double h = 1.0);
-	void generate_normalized_gaussian(std::vector<double>& densities, double h = 1.0);
+	// Gaussian kernel functions for smoothing and density estimation
+	double gaussian_kernel(double x, double h = 1.0);                            // Compute Gaussian kernel value
+	void generate_normalized_gaussian(std::vector<double>& densities, double h = 1.0);  // Generate normalized Gaussian distribution
 
-	double calculate_dmagnitude3(double x, double y, double z);
-	double calculate_dmagnituden(double* v, int n);
-	double calculate_fmagnituden(float* v, int n);
+	// Vector magnitude calculation utilities
+	double calculate_dmagnitude3(double x, double y, double z);  // Calculate 3D vector magnitude
+	double calculate_dmagnituden(double* v, int n);              // Calculate N-D vector magnitude (double)
+	double calculate_fmagnituden(float* v, int n);               // Calculate N-D vector magnitude (float)
 } //common

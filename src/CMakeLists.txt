@@ -1,5 +1,5 @@
 #####################################################################################################################
-# Copyright(C) 2023-2025 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+# Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
 #
 # This program is free software : you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -30,12 +30,12 @@ set(INC
     .  
     ${OPENVDB_INCLUDE_DIRS}
     ${NANOVDB_INCLUDE_DIRS}
-    # ${BOOST_INCLUDE_DIRS}
     ${TBB_INCLUDE_DIRS}
     ${MPI_INCLUDE_DIRS}
     ${MPI_CXX_HEADER_DIR}
     ${PROJECT_SOURCE_DIR}/src/common
     ${MERIC_INCLUDE_DIRS}
+    ${PROJECT_SOURCE_DIR}/submodules/braas-hpc-renderengine/src
 )
 
 set(SRC
@@ -78,20 +78,12 @@ if(WITH_TBB)
     add_definitions(-DWITH_TBB)
 endif()
 
-if(WITH_EMBREE)
-    add_definitions(-DWITH_EMBREE)
-endif()
-
 if(WITH_GENERICIO)
     add_definitions(-DWITH_GENERICIO)
 endif()
 
 if(WITH_NANOFLANN)
     add_definitions(-DWITH_NANOFLANN)
-endif()
-
-if(WITH_MULTIRES)
-    add_definitions(-DWITH_MULTIRES)
 endif()
 
 if(WITH_NO_DATA_TEMP)

@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2023-2025 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+ * Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
  *
  * This program is free software : you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,31 +22,46 @@
 
 namespace common {
 	namespace vdb {
+		/**
+		 * Structure for storing particle simulation parameters
+		 * Used in density projection and rendering algorithms
+		 */
 		struct particle_sim_v2
 		{
-			float e; //value
-			float x, y, z, r, I;
+			float e;          // Attribute value (e.g., temperature, energy)
+			float x, y, z;    // Particle position
+			float r;          // Particle radius/smoothing length
+			float I;          // Particle intensity/mass
 		};
 
 		double custom_asinh(double val);
 		//float custom_xexp(float v);
 
+		/**
+		 * Template class for fast exponential function evaluation using lookup tables
+		 * Provides significant speedup for repeated exponential calculations
+		 * @tparam T Floating point type (float or double)
+		 */
         template<typename T> 
         class exptable
         {
         private:
             T expfac, taylorlimit;
-            std::vector<T> tab1, tab2;
+            std::vector<T> tab1, tab2;  // Two-level lookup table for exponential values
             enum {
-                nbits = 10,
-                dim1 = 1 << nbits,
-                mask1 = dim1 - 1,
-                dim2 = (1 << nbits) << nbits,
-                mask2 = dim2 - 1,
-                mask3 = ~mask2
+                nbits = 10,                    // Number of bits for table indexing
+                dim1 = 1 << nbits,             // First dimension size (1024)
+                mask1 = dim1 - 1,              // Mask for first level (1023)
+                dim2 = (1 << nbits) << nbits,  // Second dimension size
+                mask2 = dim2 - 1,              // Mask for second level
+                mask3 = ~mask2                 // Mask for out-of-range check
             };
 
         public:
+            /**
+             * Constructor: Build exponential lookup tables
+             * @param maxexp Maximum exponent value to support
+             */
             exptable(T maxexp)
                 : expfac(dim2 / maxexp)
             {
@@ -54,27 +69,47 @@ namespace common {
                 tab2.resize(dim1);
 
                 using namespace std;
+                // Pre-compute exponential values for two-level lookup
                 for (int m = 0; m < dim1; ++m)
                 {
-                    tab1[m] = exp(m * dim1 / expfac);
-                    tab2[m] = exp(m / expfac);
+                    tab1[m] = exp(m * dim1 / expfac);  // First level: larger steps
+                    tab2[m] = exp(m / expfac);          // Second level: finer steps
                 }
+                // Compute threshold for Taylor series approximation
                 taylorlimit = sqrt(T(2) * abs(maxexp) / dim2);
             }
 
+            /**
+             * Get Taylor series threshold for small arguments
+             * For |arg| < taylorLimit(), use Taylor series instead of table lookup
+             * @return Threshold value for Taylor series approximation
+             */
             T taylorLimit() const { return taylorlimit; }
 
+            /**
+             * Compute exp(arg) using lookup table
+             * @param arg Exponent value
+             * @return Approximate value of exp(arg)
+             */
             T operator() (T arg) const
             {
                 int iarg = int(arg * expfac);
-                if (iarg & mask3)
+                if (iarg & mask3)  // Out of range check
                     return (iarg < 0) ? T(1) : T(0);
+                // Two-level lookup: multiply coarse and fine values
                 return tab1[iarg >> nbits] * tab2[iarg & mask1];
             }
+
+            /**
+             * Compute exp(arg) - 1 with better precision for small arguments
+             * For small |arg|, uses Taylor series: exp(x) - 1 ≈ x
+             * @param arg Exponent value
+             * @return Approximate value of exp(arg) - 1
+             */
             T expm1(T arg) const
             {
                 if (std::abs(arg) < taylorlimit) 
-                    return arg;
+                    return arg;  // Taylor series: exp(x) - 1 ≈ x for small x
 
                 return operator()(arg) - T(1);
             }

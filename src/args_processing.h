@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2023-2025 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+ * Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
  *
  * This program is free software : you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,71 +21,114 @@
 #include <string>
 #include "data_common.h"
 
- // Namespace space_converter provides functionality for converting simulation data
- // and managing command-line argument parsing for configuration.
+/**
+ * @namespace space_converter
+ * @brief Provides functionality for converting simulation data formats and
+ *        managing command-line argument parsing for configuration.
+ * 
+ * This namespace contains tools for parsing command-line arguments and
+ * converting various scientific simulation data formats (GADGET, TIPSY, HDF5, etc.)
+ * into volumetric representations suitable for visualization.
+ */
 namespace space_converter {
 
-	// Struct FromCL stores configuration options parsed from the command line.
+	/**
+	 * @struct FromCL
+	 * @brief Stores configuration options parsed from command-line arguments.
+	 * 
+	 * This structure holds all the parsed command-line options that control
+	 * the behavior of the space converter tool, including I/O settings,
+	 * processing options, and feature flags.
+	 */
 	struct FromCL {
-		std::string data_type = "GADGET";   // Type of data (e.g., "GADGET", "TIPSY").
-		//int grid_dim = 100;               // Dimension of the computational grid.
-		std::string output_path;           // Path to save the output data.
-		std::string server = "localhost";  // Server address for remote operations.
-		int port = 7000;                   // Port for server communication.
-		bool info = false;                 // Flag to display information.
+		// === Core Configuration ===
+		
+		/// Type of input data format (e.g., "GADGET", "TIPSY", "CSV", "HDF5")
+		std::string data_type = "GADGET";
+		
+		/// Output directory path for generated files
+		std::string output_path;
+		
+		/// Server address for remote operations (default: "localhost")
+		std::string server = "localhost";
+		
+		/// Port number for server communication (default: 7000)
+		int port = 7000;
+		
+		/// Flag to display dataset information only without processing
+		bool info = false;
 
-		bool remote = true;                // Flag for remote processing.
+		/// Flag to enable remote processing mode
+		bool remote = true;
 
-		//int export_type = -1;              // Export type (-1 indicates not set).
-		//int export_dataset = -1;           // Export dataset (-1 indicates not set).
-		//int export_extracted_type = 0;     // Export dataset (0 indicates Sparse).
-		//int export_dense_type = 0;         // Export dense_type (0 indicates not dense)
-		//int export_dense_norm = 0;         // Export dense_norm (0 indicates no normalization)
-
+		// === Output Format Options ===
+		
 #ifdef WITH_OPENVDB
-		bool use_nanovdb = false;          // Flag to indicate use of NanoVDB.
+		/// Flag to use NanoVDB format (GPU-friendly VDB variant)
+		bool use_nanovdb = false;
 #else
-		bool use_nanovdb = true;           // Flag to indicate use of NanoVDB.
+		/// Flag to use NanoVDB format (default when OpenVDB not available)
+		bool use_nanovdb = true;
 #endif
-		//bool use_raw_particles = false;    // Flag to indicate use of particles (no VDB).
+
+		/// Flag to save MPI rank information for parallel processing
 		bool use_save_mpirank = false;
-		bool use_rawpart2vdb = false;      // Flag to export RAW particles to vdb file.
+		
+		/// Flag to convert raw particle data to VDB file format
+		bool use_rawpart2vdb = false;
 
-		//bool use_dense = false;            // Flag to indicate use of Dense format.
-		bool use_dense2file = false;       // Flag to export RAW dense matrix to file.
+		/// Flag to export dense matrix representation directly to file
+		bool use_dense2file = false;
 
+		// === Neighbor Search Options ===
+		
 #ifdef WITH_CUDAKDTREE
+		/// Flag to use CUDA-accelerated KDTree for neighbor search
 		bool use_cudakdtree = false;
+		
+		/// Flag to use CPU-based implementation of CUDA KDTree
 		bool use_cudakdtree_cpu = false;
 #endif
 
 #ifdef WITH_NANOFLANN
+		/// Flag to use nanoflann library for neighbor search
 		bool use_nanoflann = false;
 #endif
 
-		//#if defined(WITH_CUDAKDTREE) || defined(WITH_NANOFLANN)
-		//        int calc_radius_neigh = -1;
-		//#endif
-		//        std::string calc_radius_neigh_file = "";
-		//
-		//        bool use_bbox_sphere = false;
-		//        float bbox_sphere_pos[3] = {0.0f,0.0f,0.0f};
-		//        float bbox_sphere_r = 0.0f;
-		//        bool use_simple_density = false;
-		//        float offset_position[3] = {0.0f,0.0f,0.0f};
-
+		// === Advanced Processing Options ===
+		
+		/// Flag to enable multi-resolution grid generation
 		bool use_multires = false;
-		//bool use_bbox = false;
-		//float bbox_pos[6] = { 0.0f,0.0f,0.0f, 0.0f,0.0f,0.0f };
 
-		int world_rank = 0;                // Rank of the current process in MPI.
-		int world_size = 1;                // Total number of processes in MPI.
+		// === MPI Configuration ===
+		
+		/// Rank of the current process in MPI (default: 0 for single process)
+		int world_rank = 0;
+		
+		/// Total number of processes in MPI communicator (default: 1 for single process)
+		int world_size = 1;
 	};
 
-	// Function parse_args parses command-line arguments and populates the FromCL structure.
-	// @param from_cl: Reference to the FromCL struct to populate with parsed values.
-	// @param argc: Number of command-line arguments.
-	// @param argv: Array of command-line argument strings.
+	/**
+	 * @brief Parse command-line arguments and populate configuration structures.
+	 * 
+	 * This function processes command-line arguments passed to the application and
+	 * fills both the FromCL structure (for general configuration) and SpaceData
+	 * structure (for spatial/simulation-specific parameters). It validates arguments
+	 * and calls usage() if insufficient arguments are provided.
+	 * 
+	 * @param from_cl Reference to FromCL structure to populate with parsed configuration
+	 * @param space_data Reference to SpaceData structure for spatial/simulation parameters
+	 * @param argc Number of command-line arguments (including program name)
+	 * @param argv Array of command-line argument strings
+	 * 
+	 * @note The function expects at least 3 arguments: program name, --data-type, and format.
+	 *       If fewer arguments are provided, it displays usage information and exits.
+	 * 
+	 * @see FromCL
+	 * @see common::SpaceData
+	 * @see usage()
+	 */
 	void parse_args(space_converter::FromCL& from_cl, common::SpaceData& space_data, int argc, char** argv);
 
 } // namespace space_converter

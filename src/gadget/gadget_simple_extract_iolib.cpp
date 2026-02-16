@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2023-2025 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+ * Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
  *
  * This program is free software : you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -303,7 +303,7 @@ namespace gadget_simple {
 		void get_fvalue3(size_t i, float v[3]) {
 			if (num_elements != 3) {
 				if (i == 0)
-					printf("Error: get_fvalue3 called with num_elements != 3 (%s: %d)\n", data_name.c_str(), num_elements);
+					printf("Error: get_fvalue3 called with num_elements != 3 (%s: %lld)\n", data_name.c_str(), num_elements);
 
 				v[0] = v[1] = v[2] = 0;
 				return;
@@ -326,7 +326,7 @@ namespace gadget_simple {
 		void get_dvalue3(size_t i, double v[3]) {
 			if (num_elements != 3) {
 				if (i == 0)
-					printf("Error: get_dvalue3 called with num_elements != 3 (%s: %d)\n", data_name.c_str(), num_elements);
+					printf("Error: get_dvalue3 called with num_elements != 3 (%s: %lld)\n", data_name.c_str(), num_elements);
 
 				v[0] = v[1] = v[2] = 0;
 				return;
