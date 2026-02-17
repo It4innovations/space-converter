@@ -424,8 +424,8 @@ namespace gadget_simple {
 
 	//std::vector<componentlist_t> components_list;
 	//io_header  snapheader;
-	double redshift = 0.0;		
-	double hubble_param = 1.0;
+	// double redshift = 0.0;		
+	// double hubble_param = 1.0;
 
 	double steps_time[2];
 	//
@@ -1911,14 +1911,14 @@ namespace gadget_simple {
 			return GADGET_MAX_BLOCKS;
 		}
 
-		double get_redshift()
-		{
-			return redshift;
-		}
+		// double get_redshift()
+		// {
+		// 	return redshift;
+		// }
 
-		double get_hubble_param()
-		{
-			return hubble_param;
-		}
+		// double get_hubble_param()
+		// {
+		// 	return hubble_param;
+		// }
 	}//io
 }//gadget

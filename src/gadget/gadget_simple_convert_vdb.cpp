@@ -137,8 +137,8 @@ namespace gadget_simple {
 
 		//gadget_simple::io::gadget_read_ic(snap_file);
 
-		redshift = gadget_simple::io::get_redshift();
-		hubble_param = gadget_simple::io::get_hubble_param();
+		// redshift = gadget_simple::io::get_redshift();
+		// hubble_param = gadget_simple::io::get_hubble_param();
 
 		print_CPU_steps();
 	}

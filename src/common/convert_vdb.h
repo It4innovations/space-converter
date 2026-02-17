@@ -24,6 +24,7 @@
 
 #include "convert_common.h"
 #include "data_common.h"
+#include "data_cache.h"
 
 #ifdef WITH_NANOVDB
 
@@ -522,27 +523,12 @@ namespace common {
 			 */
 			openvdb::FloatGrid::Ptr vector_to_openvdb(std::vector<uint8_t>& file_content);
 #endif
-
-			// Particle radius data organized by particle type
-			std::vector< std::vector<float> > radius_particles_per_ptype;  ///< Particle radii per type
-			std::vector<size_t> particles_ptype_offset;                    ///< Particle count offsets per type
-			std::vector< std::vector<float> > rho_particles_per_ptype;     ///< Density values per type
+			cache::CacheManager cache_manager; ///< Cache manager for storing intermediate data
 
 			// Cosmological simulation parameters
-			double redshift = 0.0;              ///< Cosmological redshift value
-			double hubble_param = 1.0;          ///< Hubble parameter (h)
+			// double redshift = 0.0;              ///< Cosmological redshift value
+			// double hubble_param = 1.0;          ///< Hubble parameter (h)
 			double radius_particle_const = 0.0; ///< Constant particle radius value
-
-#ifdef WITH_EMBREE
-			void* rtc_device;  ///< Embree ray tracing device
-			void* rtc_scene;   ///< Embree ray tracing scene
-			
-			/**
-			 * @brief Create Embree ray tracing scene for particle intersection
-			 * @param particle_type Type of particles to include in scene
-			 */
-			void create_embree_scene(int particle_type);
-#endif
 
 			/**
 			 * @brief Read particle radius data from file
@@ -555,6 +541,8 @@ namespace common {
 			 * @param calc_radius_neigh_file Path to output file
 			 */
 			void write_radius_from_file(std::string& calc_radius_neigh_file);
+
+			void find_particle_positions();
 
 #ifdef WITH_CUDAKDTREE
 			/**

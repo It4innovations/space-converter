@@ -51,10 +51,6 @@
 #include <mpi.h>
 #include <algorithm>
 
-#ifdef WITH_EMBREE
-#	include <embree4/rtcore.h>
-#endif
-
 #ifdef WITH_CUDAKDTREE
 #	include "cudakdtree_tool.h"
 #endif
@@ -78,7 +74,7 @@ namespace common {
 		void ConvertVDBBase::read_radius_from_file(std::string& calc_radius_neigh_file)
 		{
 			int ptype_count = get_num_types(); // Ensure that radius_particles is resized correctly based on the number of particle types
-			particles_ptype_offset.resize(ptype_count + 1, 0);
+			cache_manager.particles_ptype_offset.resize(ptype_count + 1, 0);
 
 			for (int ptype = 0; ptype < ptype_count; ptype++) {
 				std::string calc_radius_neigh_file_ptype = calc_radius_neigh_file + "." + std::to_string(ptype) + ".bin";
@@ -115,10 +111,10 @@ namespace common {
 
 				printf("Read %zu rho particles for particle type %d from file %s\n", size, ptype, calc_radius_neigh_file_ptype.c_str());
 
-				radius_particles_per_ptype.push_back(radius_particles); // Store the radius particles for this type
-				rho_particles_per_ptype.push_back(rho_particles); // Store the rho particles for this type
+				cache_manager.radius_particles_per_ptype.push_back(radius_particles); // Store the radius particles for this type
+				cache_manager.rho_particles_per_ptype.push_back(rho_particles); // Store the rho particles for this type
 
-				particles_ptype_offset[ptype + 1] = particles_ptype_offset[ptype] + radius_particles.size();
+				cache_manager.particles_ptype_offset[ptype + 1] = cache_manager.particles_ptype_offset[ptype] + radius_particles.size();
 
 				file.close();
 			}
@@ -143,7 +139,7 @@ namespace common {
 				}
 
 				// Write the size of the vector
-				size_t size = radius_particles_per_ptype[ptype].size();
+				size_t size = cache_manager.radius_particles_per_ptype[ptype].size();
 				if (!file.write(reinterpret_cast<const char*>(&size), sizeof(size_t))) {
 					printf("Error writing size to file %s\n", calc_radius_neigh_file_ptype.c_str());
 					file.close();
@@ -151,14 +147,14 @@ namespace common {
 				}
 
 				// Write the vector data
-				if (!file.write(reinterpret_cast<const char*>(radius_particles_per_ptype[ptype].data()), size * sizeof(float))) {
+				if (!file.write(reinterpret_cast<const char*>(cache_manager.radius_particles_per_ptype[ptype].data()), size * sizeof(float))) {
 					printf("Error writing data to file %s\n", calc_radius_neigh_file_ptype.c_str());
 					file.close();
 					return;
 				}
 
 				// Write the vector data
-				if (!file.write(reinterpret_cast<const char*>(rho_particles_per_ptype[ptype].data()), size * sizeof(float))) {
+				if (!file.write(reinterpret_cast<const char*>(cache_manager.rho_particles_per_ptype[ptype].data()), size * sizeof(float))) {
 					printf("Error writing data to file %s\n", calc_radius_neigh_file_ptype.c_str());
 					file.close();
 					return;
@@ -166,6 +162,80 @@ namespace common {
 
 				file.close();
 			}
+		}
+
+		void ConvertVDBBase::find_particle_positions()
+		{
+			double t_start = omp_get_wtime();
+
+			size_t no_points = get_local_num_particles();
+			int ptype_count = get_num_types();
+			
+			cache_manager.pos_particles_per_ptype.resize(ptype_count);
+			cache_manager.radius_particles_per_ptype.resize(ptype_count);
+			cache_manager.rho_particles_per_ptype.resize(ptype_count);
+			cache_manager.mass_particles_per_ptype.resize(ptype_count);
+			cache_manager.particles_ptype_offset.resize(ptype_count + 1, 0);
+
+			int num_threads = omp_get_max_threads();
+
+			for (int ptype = 0; ptype < ptype_count; ptype++) {
+
+				std::vector<float> points;
+				std::vector < std::vector<float> > points_thread(num_threads);
+
+				std::vector<float> pmass;
+				std::vector < std::vector<float> > pmass_thread(num_threads);
+
+				std::vector<float> radius;
+				std::vector < std::vector<float> > radius_thread(num_threads);
+
+				std::vector<size_t> particles_id;
+				std::vector < std::vector<size_t> > particles_id_thread(num_threads);
+
+#pragma omp parallel num_threads(num_threads) 
+				{
+					int tid = omp_get_thread_num();
+
+#pragma omp for
+					for (size_t i = 0; i < no_points; i++) {
+
+						if (get_particle_type(i) != ptype)
+							continue;
+
+						double Pos[3];
+						get_particle_position(i, Pos);
+
+						// Collect particle positions per thread
+						points_thread[tid].push_back(Pos[0]);
+						points_thread[tid].push_back(Pos[1]);
+						points_thread[tid].push_back(Pos[2]);
+
+						double mass = get_particle_mass(i);
+						pmass_thread[tid].push_back(mass);
+
+						double radius = get_particle_hsml(i);
+						radius_thread[tid].push_back(radius);
+
+						particles_id_thread[tid].push_back(i);
+					}
+				}
+
+				for (int t = 0; t < num_threads; ++t) {
+					points.insert(points.end(), points_thread[t].begin(), points_thread[t].end());
+					pmass.insert(pmass.end(), pmass_thread[t].begin(), pmass_thread[t].end());
+					radius.insert(radius.end(), radius_thread[t].begin(), radius_thread[t].end());
+					particles_id.insert(particles_id.end(), particles_id_thread[t].begin(), particles_id_thread[t].end());
+				}
+
+				cache_manager.pos_particles_per_ptype[ptype] = std::move(points);
+				cache_manager.radius_particles_per_ptype[ptype] = std::move(radius);
+				cache_manager.mass_particles_per_ptype[ptype] = std::move(pmass);
+				cache_manager.particles_id_ordered_per_ptype[ptype] = std::move(particles_id);
+				cache_manager.particles_ptype_offset[ptype + 1] = cache_manager.particles_ptype_offset[ptype] + points.size() / 3;
+			}
+
+			printf("find_particle_positions: Find positions: %f\n", omp_get_wtime() - t_start);
 		}
 
 #ifdef WITH_CUDAKDTREE
@@ -186,57 +256,57 @@ namespace common {
 				size_t no_points = get_local_num_particles();
 
 				int ptype_count = get_num_types();
-				radius_particles_per_ptype.resize(ptype_count);
-				rho_particles_per_ptype.resize(ptype_count);
-				particles_ptype_offset.resize(ptype_count + 1, 0);
+				// cache_manager.radius_particles_per_ptype.resize(ptype_count);
+				// cache_manager.rho_particles_per_ptype.resize(ptype_count);
+				// cache_manager.particles_ptype_offset.resize(ptype_count + 1, 0);
 
 				int num_threads = omp_get_max_threads();
 
 				for (int ptype = 0; ptype < ptype_count; ptype++) {
 
-					std::vector<float> points;
-					std::vector < std::vector<float> > points_thread(num_threads);
+// 					std::vector<float> points;
+// 					std::vector < std::vector<float> > points_thread(num_threads);
 
-					std::vector<float> pmass;
-					std::vector < std::vector<float> > pmass_thread(num_threads);
+// 					std::vector<float> pmass;
+// 					std::vector < std::vector<float> > pmass_thread(num_threads);
 
-#pragma omp parallel num_threads(num_threads) 
-					{
-						int tid = omp_get_thread_num();
+// #pragma omp parallel num_threads(num_threads) 
+// 					{
+// 						int tid = omp_get_thread_num();
 
-#pragma omp for
-						for (size_t i = 0; i < no_points; i++) {
+// #pragma omp for
+// 						for (size_t i = 0; i < no_points; i++) {
 
-							if (get_particle_type(i) != ptype)
-								continue;
+// 							if (get_particle_type(i) != ptype)
+// 								continue;
 
-							double Pos[3];
-							get_particle_position(i, Pos);
+// 							double Pos[3];
+// 							get_particle_position(i, Pos);
 
-							// Collect particle positions per thread
-							points_thread[tid].push_back(Pos[0]);
-							points_thread[tid].push_back(Pos[1]);
-							points_thread[tid].push_back(Pos[2]);
+// 							// Collect particle positions per thread
+// 							points_thread[tid].push_back(Pos[0]);
+// 							points_thread[tid].push_back(Pos[1]);
+// 							points_thread[tid].push_back(Pos[2]);
 
-							double mass = get_particle_mass(i);
-							pmass_thread[tid].push_back(mass);
-						}
-					}
+// 							double mass = get_particle_mass(i);
+// 							pmass_thread[tid].push_back(mass);
+// 						}
+// 					}
 
-// Merge thread-local results in order to maintain particle index consistency
-				// Thread order must be preserved to match particle IDs with computed radii
-					std::vector<float> result;
-					for (int t = 0; t < num_threads; ++t) {
-						points.insert(points.end(), points_thread[t].begin(), points_thread[t].end());
-						pmass.insert(pmass.end(), pmass_thread[t].begin(), pmass_thread[t].end());
-					}
+// 					// Merge thread-local results in order to maintain particle index consistency
+// 					// Thread order must be preserved to match particle IDs with computed radii
+// 					std::vector<float> result;
+// 					for (int t = 0; t < num_threads; ++t) {
+// 						points.insert(points.end(), points_thread[t].begin(), points_thread[t].end());
+// 						pmass.insert(pmass.end(), pmass_thread[t].begin(), pmass_thread[t].end());
+// 					}
 
-					particles_ptype_offset[ptype + 1] = particles_ptype_offset[ptype] + points.size() / 3;
+// 					cache_manager.particles_ptype_offset[ptype + 1] = cache_manager.particles_ptype_offset[ptype] + points.size() / 3;
 
-					printf("cudakdtree: init: %f\n", omp_get_wtime() - t_start);
+// 					printf("cudakdtree: init: %f\n", omp_get_wtime() - t_start);
 
 					// Run GPU/CPU-based k-Nearest Neighbor search
-					utility::cudakdtree::run_knn(points.data(), points.size() / 3, calc_radius_neigh + 1, radius_particles_per_ptype[ptype], rho_particles_per_ptype[ptype], pmass, !use_cudakdtree_cpu, use_cycling, maxRadius, rho_kernel);
+					utility::cudakdtree::run_knn(cache_manager.pos_particles_per_ptype[ptype].data(), cache_manager.pos_particles_per_ptype[ptype].size() / 3, calc_radius_neigh + 1, cache_manager.radius_particles_per_ptype[ptype], cache_manager.rho_particles_per_ptype[ptype], cache_manager.mass_particles_per_ptype[ptype], !use_cudakdtree_cpu, use_cycling, maxRadius, rho_kernel);
 				}
 
 				if (calc_radius_neigh_file.length() > 0) {
@@ -268,60 +338,60 @@ namespace common {
 				size_t no_points = get_local_num_particles();
 
 				int ptype_count = get_num_types();
-				radius_particles_per_ptype.resize(ptype_count);
-				rho_particles_per_ptype.resize(ptype_count);
-				particles_ptype_offset.resize(ptype_count + 1, 0);
+				// cache_manager.radius_particles_per_ptype.resize(ptype_count);
+				// cache_manager.rho_particles_per_ptype.resize(ptype_count);
+				// cache_manager.particles_ptype_offset.resize(ptype_count + 1, 0);
 
 				int num_threads = omp_get_max_threads();
 
 				for (int ptype = 0; ptype < ptype_count; ptype++) {
 
-					std::vector<float> points;
-					std::vector < std::vector<float> > points_thread(num_threads);
+// 					std::vector<float> points;
+// 					std::vector < std::vector<float> > points_thread(num_threads);
 
-					std::vector<float> pmass;
-					std::vector < std::vector<float> > pmass_thread(num_threads);
+// 					std::vector<float> pmass;
+// 					std::vector < std::vector<float> > pmass_thread(num_threads);
 
-#pragma omp parallel num_threads(num_threads) 
-					{
-						int tid = omp_get_thread_num();
+// #pragma omp parallel num_threads(num_threads) 
+// 					{
+// 						int tid = omp_get_thread_num();
 
-#pragma omp for
-						for (size_t i = 0; i < no_points; i++) {
+// #pragma omp for
+// 						for (size_t i = 0; i < no_points; i++) {
 
-							if (get_particle_type(i) != ptype)
-								continue;
+// 							if (get_particle_type(i) != ptype)
+// 								continue;
 
-							double Pos[3];
-							get_particle_position(i, Pos);
+// 							double Pos[3];
+// 							get_particle_position(i, Pos);
 
-							// Collect particle positions per thread (x, y, z interleaved)
-							points_thread[tid].push_back(Pos[0]);
-							points_thread[tid].push_back(Pos[1]);
-							points_thread[tid].push_back(Pos[2]);
+// 							// Collect particle positions per thread (x, y, z interleaved)
+// 							points_thread[tid].push_back(Pos[0]);
+// 							points_thread[tid].push_back(Pos[1]);
+// 							points_thread[tid].push_back(Pos[2]);
 
-							// Store mass for density computation
-							double mass = get_particle_mass(i);
-							pmass_thread[tid].push_back(mass);
-						}
-					}
+// 							// Store mass for density computation
+// 							double mass = get_particle_mass(i);
+// 							pmass_thread[tid].push_back(mass);
+// 						}
+// 					}
 
-					// Merge thread-local results in thread order to maintain particle index consistency
-					// This is critical for correct radius lookup later
-					std::vector<float> result;
-					for (int t = 0; t < num_threads; ++t) {
-						points.insert(points.end(), points_thread[t].begin(), points_thread[t].end());
-						pmass.insert(pmass.end(), pmass_thread[t].begin(), pmass_thread[t].end());
-					}
+// 					// Merge thread-local results in thread order to maintain particle index consistency
+// 					// This is critical for correct radius lookup later
+// 					std::vector<float> result;
+// 					for (int t = 0; t < num_threads; ++t) {
+// 						points.insert(points.end(), points_thread[t].begin(), points_thread[t].end());
+// 						pmass.insert(pmass.end(), pmass_thread[t].begin(), pmass_thread[t].end());
+// 					}
 
-					// Store particle count offset for this type (cumulative sum)
-					particles_ptype_offset[ptype + 1] = particles_ptype_offset[ptype] + points.size() / 3;
+// 					// Store particle count offset for this type (cumulative sum)
+// 					cache_manager.particles_ptype_offset[ptype + 1] = cache_manager.particles_ptype_offset[ptype] + points.size() / 3;
 
-					printf("nanoflann: init: %f\n", omp_get_wtime() - t_start);
+// 					printf("nanoflann: init: %f\n", omp_get_wtime() - t_start);
 
-					if (points.size() > 0) {
+					if (cache_manager.pos_particles_per_ptype[ptype].size() > 0) {
 						// Run k-NN search (calc_radius_neigh + 1 includes the query point itself)
-						utility::nanoflann_tool::run_knn(points.data(), points.size() / 3, calc_radius_neigh + 1, radius_particles_per_ptype[ptype], rho_particles_per_ptype[ptype], pmass, use_cycling, rho_kernel);
+						utility::nanoflann_tool::run_knn(cache_manager.pos_particles_per_ptype[ptype].data(), cache_manager.pos_particles_per_ptype[ptype].size() / 3, calc_radius_neigh + 1, cache_manager.radius_particles_per_ptype[ptype], cache_manager.rho_particles_per_ptype[ptype], cache_manager.mass_particles_per_ptype[ptype], use_cycling, rho_kernel);
 					}
 				}
 
@@ -1067,8 +1137,8 @@ namespace common {
 			double radius = hsml;
 
 			// Use precomputed radius from k-NN search if available (overrides hsml)
-			if (radius_particles_per_ptype.size() > 0 && radius_particles_per_ptype[particle_type].size() > 0) {
-				radius = radius_particles_per_ptype[particle_type][pid - particles_ptype_offset[particle_type]];
+			if (cache_manager.radius_particles_per_ptype.size() > 0 && cache_manager.radius_particles_per_ptype[particle_type].size() > 0) {
+				radius = cache_manager.radius_particles_per_ptype[particle_type][pid - cache_manager.particles_ptype_offset[particle_type]];
 			}
 
 			if (particle_fix_size != 0.0f) {
@@ -1091,10 +1161,10 @@ namespace common {
 		double ConvertVDBBase::get_particle_rho(uint64_t id) {
 			double mass = get_particle_mass(id);
 			if (mass != 0.0) {
-// Check if we have precomputed density for this particle
+			// Check if we have precomputed density for this particle
 			int particle_type = get_particle_type(id);
-				if (rho_particles_per_ptype.size() > 0 && rho_particles_per_ptype[particle_type].size() > 0) {
-					return rho_particles_per_ptype[particle_type][id - particles_ptype_offset[particle_type]];
+				if (cache_manager.rho_particles_per_ptype.size() > 0 && cache_manager.rho_particles_per_ptype[particle_type].size() > 0) {
+					return cache_manager.rho_particles_per_ptype[particle_type][id - cache_manager.particles_ptype_offset[particle_type]];
 				}
 			}
 
@@ -1115,7 +1185,7 @@ namespace common {
 
 			// Mark density block as available if we have precomputed rho values
 			for (int type = 0; type < num_types; type++) {
-				if (rho_particles_per_ptype.size() > 0 && rho_particles_per_ptype[type].size() > 0) {
+				if (cache_manager.rho_particles_per_ptype.size() > 0 && cache_manager.rho_particles_per_ptype[type].size() > 0) {
 					types_and_blocks[num_types * rho_blocknr + type]++;
 				}
 			}

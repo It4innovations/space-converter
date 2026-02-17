@@ -22,16 +22,8 @@
 #include <string>
 #include <vector>
 
-#ifdef max
-#	define STDMAX max
-#else
-#	define STDMAX std::max
-#endif
-#ifdef min
-#	define STDMIN min
-#else
-#	define STDMIN std::min
-#endif
+#define STDMAX std::max
+#define STDMIN std::min
 
 namespace common {
 

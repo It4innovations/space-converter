@@ -140,8 +140,8 @@ namespace gadget_simple {
 
         int get_num_types();
         int get_num_blocks();
-        double get_redshift();
-        double get_hubble_param();
+        // double get_redshift();
+        // double get_hubble_param();
 
     } // namespace io
 

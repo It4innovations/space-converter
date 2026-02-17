@@ -40,11 +40,21 @@ set(SRC_COMMON
 
     data_common.h
 
+    data_cache.h
+    data_cache.cpp
+
     ${PROJECT_SOURCE_DIR}/submodules/braas-hpc-renderengine/src/renderengine_tcp.cpp
     ${PROJECT_SOURCE_DIR}/submodules/braas-hpc-renderengine/src/renderengine_tcp.h
 
     ${PROJECT_SOURCE_DIR}/src/utility/dense_utility.h
 )
+
+if(WITH_GPU_CUDA_CACHE)
+    add_definitions(-DWITH_GPU_CUDA_CACHE)
+    list(APPEND SRC_COMMON
+        data_cache.cu
+    )
+endif()
 
 if(WITH_OPENMP)
     add_definitions(-DWITH_OPENMP)
@@ -85,11 +95,7 @@ if(WITH_NANOFLANN)
 endif()
 
 if(WITH_CUDAKDTREE)
-    add_definitions(-DWITH_CUDAKDTREE)
-
-    # if (WITH_CUDAKDTREE_CPU)
-    #     add_definitions(-DWITH_CUDAKDTREE_CPU)
-    # endif()    
+    add_definitions(-DWITH_CUDAKDTREE)  
 endif()
 
 if(WITH_NO_DATA_TEMP)

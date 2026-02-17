@@ -16,6 +16,10 @@
  *
  */
 
+#ifdef _WIN32
+#	define NOMINMAX
+#endif
+
 #include "data_communication.h"
 #include "data_common.h"
 #include "convert_common.h"

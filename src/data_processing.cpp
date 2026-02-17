@@ -174,13 +174,13 @@ namespace space_converter {
 				// Synchronize before next group proceeds
 				CALL_MPI_BARRIER;
 			}				
-				CALL_MPI_BARRIER;
-				double t_init_end = omp_get_wtime();
-				if (from_cl.world_rank == 0) {
-					printf("rank: %d: CONVERTER_SPLIT_INIT time: %f\n", from_cl.world_rank, t_init_end - t_init);
-				}
+			CALL_MPI_BARRIER;
+			double t_init_end = omp_get_wtime();
+			if (from_cl.world_rank == 0) {
+				printf("rank: %d: CONVERTER_SPLIT_INIT time: %f\n", from_cl.world_rank, t_init_end - t_init);
+			}
 
-				//printf("rank: %d: init_lib done\n", from_cl.world_rank);			
+			//printf("rank: %d: init_lib done\n", from_cl.world_rank);			
 		}
 		else {
 			CALL_MPI_BARRIER;
@@ -199,6 +199,14 @@ namespace space_converter {
 #ifdef WITH_MERIC
 		MERIC_MeasureStop("init_lib");
 #endif
+
+#ifdef WITH_MERIC
+		MERIC_MeasureStart("find_particle_positions");
+#endif
+		convert_vdb_base->find_particle_positions();
+#ifdef WITH_MERIC
+		MERIC_MeasureStop("find_particle_positions");
+#endif		
 
 		// Calculate particle radius using KD-tree algorithms
 		// Radius is needed for proper density estimation and particle size
