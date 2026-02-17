@@ -105,6 +105,25 @@ endif()
 include_directories(${INC})
 ########################################################
 add_library(space_common ${SRC_COMMON})
+
+if(WITH_GPU_CUDA_CACHE)
+    set_target_properties(space_common PROPERTIES
+        CUDA_STANDARD 17
+        CUDA_STANDARD_REQUIRED ON
+    )
+    
+    if(WIN32)
+        # Add MSVC standard conforming preprocessor flag for CUDA
+        target_compile_options(space_common PRIVATE
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:preprocessor>
+        )
+        # Suppress CUDA warnings about __host__ function calls from __host__ __device__ functions
+        target_compile_options(space_common PRIVATE
+            $<$<COMPILE_LANGUAGE:CUDA>:-diag-suppress=20011>
+        )
+    endif()
+endif()
+
 target_link_libraries(
    space_common 
    $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>

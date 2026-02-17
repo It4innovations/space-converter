@@ -458,7 +458,7 @@ namespace common {
 			 * @param block_name_id Data block identifier
 			 * @param pos Particle position
 			 */
-			void fill_voxels_v5(
+			void fill_voxels(
 				common::vdb::DenseParticles& grid,
 				size_t pid,
 				float value,

@@ -181,16 +181,19 @@ namespace common {
 
 			for (int ptype = 0; ptype < ptype_count; ptype++) {
 
-				std::vector<float> points;
+				std::vector<float> points_master;
 				std::vector < std::vector<float> > points_thread(num_threads);
 
-				std::vector<float> pmass;
+				std::vector<float> pmass_master;
 				std::vector < std::vector<float> > pmass_thread(num_threads);
 
-				std::vector<float> radius;
+				std::vector<float> rho_master;
+				std::vector < std::vector<float> > rho_thread(num_threads);
+
+				std::vector<float> radius_master;
 				std::vector < std::vector<float> > radius_thread(num_threads);
 
-				std::vector<size_t> particles_id;
+				std::vector<size_t> particles_id_master;
 				std::vector < std::vector<size_t> > particles_id_thread(num_threads);
 
 #pragma omp parallel num_threads(num_threads) 
@@ -214,6 +217,9 @@ namespace common {
 						double mass = get_particle_mass(i);
 						pmass_thread[tid].push_back(mass);
 
+						double rho = get_particle_rho(i);
+						rho_thread[tid].push_back(rho);
+
 						double radius = get_particle_hsml(i);
 						radius_thread[tid].push_back(radius);
 
@@ -222,17 +228,19 @@ namespace common {
 				}
 
 				for (int t = 0; t < num_threads; ++t) {
-					points.insert(points.end(), points_thread[t].begin(), points_thread[t].end());
-					pmass.insert(pmass.end(), pmass_thread[t].begin(), pmass_thread[t].end());
-					radius.insert(radius.end(), radius_thread[t].begin(), radius_thread[t].end());
-					particles_id.insert(particles_id.end(), particles_id_thread[t].begin(), particles_id_thread[t].end());
+					points_master.insert(points_master.end(), points_thread[t].begin(), points_thread[t].end());
+					pmass_master.insert(pmass_master.end(), pmass_thread[t].begin(), pmass_thread[t].end());
+					rho_master.insert(rho_master.end(), rho_thread[t].begin(), rho_thread[t].end());
+					radius_master.insert(radius_master.end(), radius_thread[t].begin(), radius_thread[t].end());
+					particles_id_master.insert(particles_id_master.end(), particles_id_thread[t].begin(), particles_id_thread[t].end());
 				}
 
-				cache_manager.pos_particles_per_ptype[ptype] = std::move(points);
-				cache_manager.radius_particles_per_ptype[ptype] = std::move(radius);
-				cache_manager.mass_particles_per_ptype[ptype] = std::move(pmass);
-				cache_manager.particles_id_ordered_per_ptype[ptype] = std::move(particles_id);
-				cache_manager.particles_ptype_offset[ptype + 1] = cache_manager.particles_ptype_offset[ptype] + points.size() / 3;
+				cache_manager.pos_particles_per_ptype[ptype] = std::move(points_master);
+				cache_manager.radius_particles_per_ptype[ptype] = std::move(radius_master);
+				cache_manager.mass_particles_per_ptype[ptype] = std::move(pmass_master);
+				cache_manager.rho_particles_per_ptype[ptype] = std::move(rho_master);
+				cache_manager.particles_id_ordered_per_ptype[ptype] = std::move(particles_id_master);
+				cache_manager.particles_ptype_offset[ptype + 1] = cache_manager.particles_ptype_offset[ptype] + cache_manager.pos_particles_per_ptype[ptype].size() / 3;
 			}
 
 			printf("find_particle_positions: Find positions: %f\n", omp_get_wtime() - t_start);
@@ -639,7 +647,7 @@ namespace common {
 
 				if (grid.type == VDBParticles::VDBParticleType::eDense) {
 					// Splat particle into dense grid using kernel function (SPH-like smoothing)
-					fill_voxels_v5(grid.dense_grid,
+					fill_voxels(grid.dense_grid,
 						i, v,
 						bbox_dim, bbox_min_orig, bbox_size_orig,
 						scale_space_diagonal,

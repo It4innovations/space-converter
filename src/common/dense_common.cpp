@@ -33,7 +33,7 @@
 
 namespace common {
 	namespace vdb {
-		void ConvertVDBBase::fill_voxels_v5(
+		void ConvertVDBBase::fill_voxels(
 			common::vdb::DenseParticles& grid,
 			size_t pid,
 			float value,
