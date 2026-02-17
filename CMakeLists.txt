@@ -94,6 +94,7 @@ endif()
 if(WITH_TBB)
   set(TBB_INCLUDE_DIRS "" CACHE PATH "")
   set(TBB_LIBRARIES "" CACHE FILEPATH "")
+  set(TBB_LIBRARIES_DEBUG "" CACHE FILEPATH "")
 endif()
 
 if(WITH_NANOVDB)   

@@ -101,10 +101,8 @@ include_directories(${INC})
 add_library(space_common ${SRC_COMMON})
 target_link_libraries(
    space_common 
-   ${OPENVDB_LIBRARIES}
-   ${BOOST_LIBRARIES}
-   ${EMBREE_LIBRARIES}
-   ${TBB_LIBRARIES}
+   $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>
+   $<IF:$<CONFIG:Debug>,${TBB_LIBRARIES_DEBUG},${TBB_LIBRARIES}>
    ${MPI_LIBRARIES}
    ${MPI_msmpi_LIBRARY}
    ${OpenMP_omp_LIBRARY}

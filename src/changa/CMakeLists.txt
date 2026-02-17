@@ -101,9 +101,8 @@ include_directories(${INC})
 add_library(changa_tipsy_converter ${SRC_TIPSY})
 target_link_libraries(
    changa_tipsy_converter 
-   ${OPENVDB_LIBRARIES}
-   ${BOOST_LIBRARIES}
-   ${TBB_LIBRARIES}
+   $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>
+   $<IF:$<CONFIG:Debug>,${TBB_LIBRARIES_DEBUG},${TBB_LIBRARIES}>
    ${MPI_LIBRARIES}
    ${MPI_msmpi_LIBRARY}
 )
@@ -115,9 +114,8 @@ install (TARGETS changa_tipsy_converter DESTINATION lib)
 add_library(changa_nchilada_converter ${SRC_NCHILADA})
 target_link_libraries(
    changa_nchilada_converter 
-   ${OPENVDB_LIBRARIES}
-   ${BOOST_LIBRARIES}
-   ${TBB_LIBRARIES}
+   $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>
+   $<IF:$<CONFIG:Debug>,${TBB_LIBRARIES_DEBUG},${TBB_LIBRARIES}>
    ${MPI_LIBRARIES}
    ${MPI_msmpi_LIBRARY}
 )

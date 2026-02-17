@@ -23,8 +23,6 @@
 #include <fstream>
 #include <vector>
 
-//#ifdef WITH_NANOVDB
-
 #ifdef WITH_TBB
 #define NANOVDB_USE_TBB
 #define NANOVDB_USE_INTRINSICS
@@ -33,6 +31,7 @@
 #ifdef WITH_OPENVDB
 #  include <openvdb/tools/Dense.h>
 #endif
+
 #ifdef WITH_NANOVDB
 #  define NANOVDB_USE_OPENVDB
 #  include <nanovdb/NanoVDB.h>
@@ -52,29 +51,6 @@
 #endif
 
 #endif
-
-//#if OPENVDB_VERSION == 11
-//#	include <nanovdb/util/GridBuilder.h>
-//#	include <nanovdb/util/IO.h>
-//#else
-//#	include <nanovdb/tools/GridBuilder.h>
-//#	include <nanovdb/io/IO.h>
-//#endif
-//
-//#include <nanovdb/NanoVDB.h>
-//#endif
-//
-//#if defined(WITH_OPENVDB) && defined(WITH_NANOVDB)
-//
-//#if OPENVDB_VERSION == 11
-//#	include <nanovdb/util/OpenToNanoVDB.h>
-//#else
-//#	include <nanovdb/tools/OpenToNanoVDB.h>
-//#endif
-//
-//#	include <openvdb/openvdb.h>
-//#	include <openvdb/io/Stream.h>
-//#endif
 
 int main(int argc, char** argv) {
 	

@@ -73,10 +73,6 @@ if(WITH_MPI)
     add_definitions(-DWITH_MPI)
 endif()
 
-if(WITH_TBB)
-    add_definitions(-DWITH_TBB)
-endif()
-
 if(GADGET_MAX_HSML)
     add_definitions(-DGADGET_MAX_HSML)
 endif()
@@ -105,9 +101,7 @@ add_subdirectory(utility)
 add_library(gadget_converter ${SRC})
 target_link_libraries(
    gadget_converter 
-   ${OPENVDB_LIBRARIES}
-   ${BOOST_LIBRARIES}
-   ${TBB_LIBRARIES}
+   $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>
    ${MPI_LIBRARIES}
    ${MPI_msmpi_LIBRARY}
 )
@@ -119,9 +113,7 @@ install (TARGETS gadget_converter DESTINATION lib)
 add_library(gadget_simple_converter ${SRC_SIMPLE})
 target_link_libraries(
    gadget_simple_converter
-   ${OPENVDB_LIBRARIES}
-   ${BOOST_LIBRARIES}
-   ${TBB_LIBRARIES}
+   $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>
    ${MPI_LIBRARIES}
    ${MPI_msmpi_LIBRARY}
 )

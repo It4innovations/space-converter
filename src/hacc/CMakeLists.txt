@@ -85,9 +85,8 @@ add_subdirectory(utility)
 add_library(hacc_genericio_converter ${SRC_GENERICIO})
 target_link_libraries(
    hacc_genericio_converter 
-   ${OPENVDB_LIBRARIES}
-   ${BOOST_LIBRARIES}
-   ${TBB_LIBRARIES}
+   $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>
+   $<IF:$<CONFIG:Debug>,${TBB_LIBRARIES_DEBUG},${TBB_LIBRARIES}>
    ${MPI_LIBRARIES}
    ${MPI_msmpi_LIBRARY}
 )
@@ -99,9 +98,8 @@ install (TARGETS hacc_genericio_converter DESTINATION lib)
 add_library(haccbin_converter ${SRC_HACCBIN})
 target_link_libraries(
    haccbin_converter 
-   ${OPENVDB_LIBRARIES}
-   ${BOOST_LIBRARIES}
-   ${TBB_LIBRARIES}
+   $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>
+   $<IF:$<CONFIG:Debug>,${TBB_LIBRARIES_DEBUG},${TBB_LIBRARIES}>
    ${MPI_LIBRARIES}
    ${MPI_msmpi_LIBRARY}
 )

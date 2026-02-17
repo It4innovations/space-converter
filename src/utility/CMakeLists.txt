@@ -65,9 +65,8 @@ if(WITH_NANOVDB AND WITH_OPENVDB)
     add_executable(nano2vdb ${SRC_NANOVDB})
     target_link_libraries(
         nano2vdb 
-        ${OPENVDB_LIBRARIES}
-        ${BOOST_LIBRARIES}
-        ${TBB_LIBRARIES}
+        $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>
+        $<IF:$<CONFIG:Debug>,${TBB_LIBRARIES_DEBUG},${TBB_LIBRARIES}>
         ${MPI_LIBRARIES}
         ${MPI_msmpi_LIBRARY}
     )
@@ -84,9 +83,8 @@ if(WITH_NANOVDB AND WITH_OPENVDB)
     add_executable(vdb2nano ${SRC_NANOVDB})
     target_link_libraries(
         vdb2nano 
-        ${OPENVDB_LIBRARIES}
-        ${BOOST_LIBRARIES}
-        ${TBB_LIBRARIES}
+        $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>
+        $<IF:$<CONFIG:Debug>,${TBB_LIBRARIES_DEBUG},${TBB_LIBRARIES}>
         ${MPI_LIBRARIES}
         ${MPI_msmpi_LIBRARY}
     )
@@ -102,9 +100,8 @@ if(WITH_OPENVDB)
     add_executable(vdb_merge ${SRC_VDB_MERGE})
     target_link_libraries(
         vdb_merge 
-        ${OPENVDB_LIBRARIES}
-        ${BOOST_LIBRARIES}
-        ${TBB_LIBRARIES}
+        $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>
+        $<IF:$<CONFIG:Debug>,${TBB_LIBRARIES_DEBUG},${TBB_LIBRARIES}>
         ${MPI_LIBRARIES}
         ${MPI_msmpi_LIBRARY}
     )
@@ -169,9 +166,8 @@ if(WITH_OPENVDB)
     add_executable(vdb2histo ${SRC_VDB2HISTO})
     target_link_libraries(
         vdb2histo 
-        ${OPENVDB_LIBRARIES}
-        ${BOOST_LIBRARIES}
-        ${TBB_LIBRARIES}
+        $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>
+        $<IF:$<CONFIG:Debug>,${TBB_LIBRARIES_DEBUG},${TBB_LIBRARIES}>
         ${MPI_LIBRARIES}
         ${MPI_msmpi_LIBRARY}
     )
@@ -187,9 +183,8 @@ if(WITH_OPENVDB)
     add_executable(vdb2png ${SRC_VDB2HISTO})
     target_link_libraries(
         vdb2png 
-        ${OPENVDB_LIBRARIES}
-        ${BOOST_LIBRARIES}
-        ${TBB_LIBRARIES}
+        $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>
+        $<IF:$<CONFIG:Debug>,${TBB_LIBRARIES_DEBUG},${TBB_LIBRARIES}>
         ${MPI_LIBRARIES}
         ${MPI_msmpi_LIBRARY}
     )

@@ -124,9 +124,8 @@ endif()
 add_executable(space_converter ${SRC})
 target_link_libraries(
    space_converter 
-   ${OPENVDB_LIBRARIES}
-   ${BOOST_LIBRARIES}
-   ${TBB_LIBRARIES}
+   $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>
+   $<IF:$<CONFIG:Debug>,${TBB_LIBRARIES_DEBUG},${TBB_LIBRARIES}>
    ${MPI_LIBRARIES}
    ${MPI_msmpi_LIBRARY}
    ${MPI_CUSTOM_LIBRARIES}

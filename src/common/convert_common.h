@@ -22,11 +22,14 @@
 #include <string>
 #include <vector>
 
-#ifdef _WIN32
+#ifdef max
 #	define STDMAX max
-#	define STDMIN min
 #else
 #	define STDMAX std::max
+#endif
+#ifdef min
+#	define STDMIN min
+#else
 #	define STDMIN std::min
 #endif
 
