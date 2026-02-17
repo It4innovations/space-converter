@@ -130,6 +130,10 @@ if(WITH_HACC)
 
     set(BLOSC_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/submodules/c-blosc/include")
     set(BLOSC_LIBRARIES blosc_static)
+    
+    # Set zlib and zstd include directories for SZ library
+    set(ZLIB_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/submodules/c-blosc/internal-complibs/zlib-1.3.1")
+    set(ZSTD_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/submodules/c-blosc/internal-complibs/zstd-1.5.6")
 endif()
 
 ########################################################
