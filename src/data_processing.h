@@ -42,7 +42,7 @@ namespace space_converter {
 	/**
 	 * @brief Initialize the VDB converter for a specific simulation format.
 	 * 
-	 * Creates a format-specific converter (GADGET, TIPSY, CSV, HDF5, etc.) based on
+	 * Creates a format-specific converter (GADGET, TIPSY, etc.) based on
 	 * command-line arguments. Initializes I/O libraries, allocates particle buffers,
 	 * and optionally computes particle radii using neighbor search algorithms.
 	 * 

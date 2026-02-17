@@ -73,8 +73,8 @@ if(WITH_TBB)
     add_definitions(-DWITH_TBB)
 endif()
 
-if(WITH_GENERICIO)
-    add_definitions(-DWITH_GENERICIO)
+if(WITH_HACC)
+    add_definitions(-DWITH_HACC)
 endif()
 
 if(WITH_NANOFLANN)

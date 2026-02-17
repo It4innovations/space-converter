@@ -29,7 +29,7 @@ namespace space_converter {
 	 */
 	void usage()
 	{
-		std::cout << "./space_converter --data-type [GADGET, GADGET_SIMPLE, CHANGA_TIPSY, CHANGA_NCHILADA, CSV, GENERICIO, HDF5, HACCBIN] <options> <args>" << std::endl;
+		std::cout << "./space_converter --data-type [GADGET, GADGET_SIMPLE, CHANGA_TIPSY, CHANGA_NCHILADA, HACC_GENERICIO, HACC_BIN] <options> <args>" << std::endl;
 
 		// === General Options ===
 		std::cout << "options:" << std::endl;
@@ -67,7 +67,6 @@ namespace space_converter {
 #endif
 	
 		// === Advanced Options ===
-		std::cout << "\t--multires                         : Enable multi-resolution processing" << std::endl;
 		std::cout << "\t--bbox x1 y1 z1 x2 y2 z2           : Define axis-aligned bounding box" << std::endl;
 		std::cout << "\t--save-mpi-rank                    : Save MPI rank information                    : Save MPI rank information" << std::endl;
 
@@ -89,18 +88,12 @@ namespace space_converter {
 		std::cout << "\nCHANGA_NCHILADA args:" << std::endl;
 		std::cout << "\t--nc-dir X                  : NChilada data directory" << std::endl;
 
-		std::cout << "\nCSV args:" << std::endl;
-		std::cout << "\t--csv-file X                : CSV input file path" << std::endl;
-
-		std::cout << "\nGENERICIO args:" << std::endl;
+		std::cout << "\nHACC_GENERICIO args:" << std::endl;
 		std::cout << "\t--genericio-file X          : GenericIO format file path" << std::endl;
 		std::cout << "\t--pos-names x y z           : Position field names in GenericIO file" << std::endl;
 		std::cout << "\t--vel-names vx vy vz        : Velocity field names in GenericIO file" << std::endl;
 
-		std::cout << "\nHDF5 args:" << std::endl;
-		std::cout << "\t--hdf5-file X               : HDF5 input file path" << std::endl;
-
-		std::cout << "\nHACCBIN args:" << std::endl;
+		std::cout << "\nHACC_BIN args:" << std::endl;
 		std::cout << "\t--haccbin-file X            : HACC binary format file path" << std::endl;
 
 		exit(0);
@@ -131,7 +124,7 @@ namespace space_converter {
 			
 			// === Core Configuration ===
 			if (arg == "--data-type") {
-				// Specify input data format (GADGET, CSV, HDF5, etc.)
+				// Specify input data format (GADGET, HACC, etc.)
 				from_cl.data_type = argv[++i];
 			}
 			else if (arg == "--grid-dim") {
@@ -277,13 +270,7 @@ namespace space_converter {
 				// Use nanoflann library for neighbor search
 				from_cl.use_nanoflann = true;
 			}
-#endif
-			
-			// === Advanced Features ===
-			else if (arg == "--multires") {
-				// Enable multi-resolution grid generation
-				from_cl.use_multires = true;
-			}			
+#endif		
 			else if (arg == "-h" || arg == "--help") {
 				// Display usage information
 				usage();
@@ -397,25 +384,16 @@ namespace space_converter {
 //--data-type GADGET_SIMPLE --gadget-file e:\temp\gadget\very_small_example\snap_081 --output-path e:\temp\ --port 5000 --calc-radius-neigh 32 --cudakdtree
 
 
-// === CSV Format Examples ===
-
-// CSV with info display
-//--data-type CSV --grid-dim 100 --csv-file e:\temp\csv\data.csv --export-data 0 0 0 --output-path f:\temp\ --info
-
-// CSV with raw data export
-//--data-type CSV --grid-dim 100 --csv-file e:\temp\csv\data3.csv --output-path f:\temp\ --raw2file
-
-
-// === GenericIO Format Examples ===
+// === HACC_GenericIO Format Examples ===
 
 // GenericIO with info display
-//--data-type GENERICIO --genericio-file e:\data\jar091\down\m000.mpicosmo.499 --grid-dim 1000 --output-path f:\temp\ --info
+//--data-type HACC_GENERICIO --genericio-file e:\data\jar091\down\m000.mpicosmo.499 --grid-dim 1000 --output-path f:\temp\ --info
 
 // GenericIO with remote server
-//--data-type GENERICIO --genericio-file e:\temp\hacc\farpoint\m000p-499.select.mpicosmo --grid-dim 1000 --output-path f:\temp\ --port 5000
+//--data-type HACC_GENERICIO --genericio-file e:\temp\hacc\farpoint\m000p-499.select.mpicosmo --grid-dim 1000 --output-path f:\temp\ --port 5000
 
 
 // === HACCBIN Format Examples ===
 
 // HACC binary format with info
-//--data-type HACCBIN --haccbin-file e:\temp\hacc\Full.cosmo.0 --grid-dim 1000 --output-path f:\temp\ --info
+//--data-type HACC_BIN --haccbin-file e:\temp\hacc\Full.cosmo.0 --grid-dim 1000 --output-path f:\temp\ --info

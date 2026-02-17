@@ -31,7 +31,7 @@ set(WITH_NANOVDB ON)
 option(WITH_OPENVDB  "Enable OPENVDB" ON)
 
 option(WITH_HDF5  "Enable HDF5" OFF)
-option(WITH_GENERICIO  "Enable GENERICIO" OFF)
+option(WITH_HACC  "Enable HACC" OFF)
 
 option(GADGET_MAX_HSML  "Enable loading of limited values from gadget files" OFF)
 option(GADGET_READ_ID  "Enable reading of ID" OFF)
@@ -119,11 +119,12 @@ if(WITH_CUDAKDTREE)
     enable_language(CUDA)
 endif()
 
-if(WITH_GENERICIO)
+if(WITH_HACC)
     set(BUILD_SHARED OFF)
     set(BUILD_TESTS OFF)
     set(BUILD_TESTS OFF)
     set(BUILD_BENCHMARKS OFF)
+    set(BUILD_FUZZERS OFF)
 
     add_subdirectory(submodules/c-blosc)
 

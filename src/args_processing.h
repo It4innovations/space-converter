@@ -43,7 +43,7 @@ namespace space_converter {
 	struct FromCL {
 		// === Core Configuration ===
 		
-		/// Type of input data format (e.g., "GADGET", "TIPSY", "CSV", "HDF5")
+		/// Type of input data format (e.g., "GADGET", "TIPSY")
 		std::string data_type = "GADGET";
 		
 		/// Output directory path for generated files
@@ -94,11 +94,6 @@ namespace space_converter {
 		/// Flag to use nanoflann library for neighbor search
 		bool use_nanoflann = false;
 #endif
-
-		// === Advanced Processing Options ===
-		
-		/// Flag to enable multi-resolution grid generation
-		bool use_multires = false;
 
 		// === MPI Configuration ===
 		

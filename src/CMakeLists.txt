@@ -78,8 +78,8 @@ if(WITH_TBB)
     add_definitions(-DWITH_TBB)
 endif()
 
-if(WITH_GENERICIO)
-    add_definitions(-DWITH_GENERICIO)
+if(WITH_HACC)
+    add_definitions(-DWITH_HACC)
 endif()
 
 if(WITH_NANOFLANN)
@@ -115,16 +115,11 @@ add_subdirectory(common)
 add_subdirectory(utility)
 add_subdirectory(gadget)
 add_subdirectory(changa)
-add_subdirectory(csv)
-add_subdirectory(haccbin)
 
-if(WITH_GENERICIO)
-    add_subdirectory(genericio)
+if(WITH_HACC)
+    add_subdirectory(hacc)
 endif()
 
-if(WITH_HDF5)
-    add_subdirectory(hdf5)
-endif()
 ########################################################
 add_executable(space_converter ${SRC})
 target_link_libraries(
@@ -143,31 +138,17 @@ target_link_libraries(space_converter
     gadget_converter
     gadget_simple_converter
     changa_tipsy_converter
-    changa_nchilada_converter
-    csv_converter    
-    haccbin_converter    
+    changa_nchilada_converter        
 )
 
 if(NOT WIN32 AND NOT APPLE)
     target_link_libraries(space_converter stdc++fs)
 endif()
 
-if(WITH_GENERICIO)
-    target_link_libraries(space_converter genericio_converter)
+if(WITH_HACC)
+    target_link_libraries(space_converter hacc_genericio_converter haccbin_converter)
 endif()
 
-if(WITH_HDF5)
-    target_link_libraries(space_converter hdf5_converter)
-endif()
-
-# Add this conditional block to link CUDA libraries
-# if(WITH_CUDAKDTREE)
-#     target_link_libraries(space_converter 
-#         cudakdtree_tool
-#         ${CUDA_LIBRARIES}
-#         ${CUDA_CUDART_LIBRARY}
-#     )
-# endif()
 if(WITH_CUDAKDTREE)
     set_target_properties(space_converter PROPERTIES
          CUDA_SEPARABLE_COMPILATION ON

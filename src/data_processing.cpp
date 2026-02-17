@@ -28,17 +28,11 @@
 #include "gadget/gadget_simple_convert_vdb.h"
 #include "changa/changa_nchilada_convert_vdb.h"
 #include "changa/changa_tipsy_convert_vdb.h"
-#include "csv/csv_convert_vdb.h"
 #include "common/convert_vdb.h"
-#include "haccbin/haccbin_convert_vdb.h"
 
-#ifdef WITH_GENERICIO
-#	include "genericio/genericio_convert_vdb.h"
-#endif
-
-
-#ifdef WITH_HDF5
-#	include "hdf5/hdf5_convert_vdb.h"
+#ifdef WITH_HACC
+#	include "hacc/haccbin_convert_vdb.h"
+#	include "hacc/hacc_genericio_convert_vdb.h"
 #endif
 
 #ifdef WITH_OPENMP
@@ -114,10 +108,9 @@ namespace space_converter {
 	 *   - GADGET_SIMPLE: Simplified Gadget format
 	 *   - CHANGA_TIPSY: ChaNGa Tipsy format
 	 *   - CHANGA_NCHILADA: ChaNGa NChilada format
-	 *   - CSV: Comma-separated values
-	 *   - GENERICIO: GenericIO format (if compiled with support)
+	 *   - HACC_GENERICIO: HACC GenericIO format (if compiled with support)
 	 *   - HDF5: HDF5 format (if compiled with support)
-	 *   - HACCBIN: HACC binary format
+	 *   - HACC_BIN: HACC binary format
 	 */
 	common::vdb::ConvertVDBBase* init_converter(int argc, char** argv, space_converter::FromCL& from_cl, common::SpaceData& space_data)
 	{
@@ -139,24 +132,16 @@ namespace space_converter {
 		else if (from_cl.data_type == "CHANGA_NCHILADA") {
 			convert_vdb_base = new changa::ConvertVDBChangaNchilada();
 		}
-		else if (from_cl.data_type == "CSV") {
-			convert_vdb_base = new csv::ConvertVDBCSV();
+#ifdef WITH_HACC
+		else if (from_cl.data_type == "HACC_GENERICIO") {
+			convert_vdb_base = new genericio::ConvertVDBHACCGenericIO();
 		}
-#ifdef WITH_GENERICIO
-		else if (from_cl.data_type == "GENERICIO") {
-			convert_vdb_base = new genericio::ConvertVDBGenericIO();
-		}
-#endif
-#ifdef WITH_HDF5
-		else if (from_cl.data_type == "HDF5") {
-			convert_vdb_base = new hdf5::ConvertVDBHDF5();
-		}
-#endif
-		else if (from_cl.data_type == "HACCBIN") {
+		else if (from_cl.data_type == "HACC_BIN") {
 			convert_vdb_base = new haccbin::ConvertVDBHACCBin();
 		}
+#endif		
 		else {
-			throw std::runtime_error("Unknown data type [GADGET, CHANGA_TIPSY, CHANGA_NCHILADA, CSV, GENERICIO, HDF5, HACCBIN]): " + from_cl.data_type);
+			throw std::runtime_error("Unknown data type [GADGET, CHANGA_TIPSY, CHANGA_NCHILADA, HACC_GENERICIO, HACC_BIN]): " + from_cl.data_type);
 		}
 
 		// Initialize the converter library with MPI rank and size

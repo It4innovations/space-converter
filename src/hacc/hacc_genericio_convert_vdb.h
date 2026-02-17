@@ -20,12 +20,12 @@
 
 #include "convert_vdb.h"
 
- // Namespace csv contains functionality for handling VDB data conversion specific to the CSV format (mainly for testing).
-namespace csv {
+ // Namespace genericio contains functionality for handling VDB data conversion specific to the GenericIO format (mainly for testing).
+namespace genericio {
 
-    // ConvertVDBCSV is a derived class from common::vdb::ConvertVDBBase.
-    // This class implements methods for converting particle data from CSV/Excel format into VDB format.
-    class ConvertVDBCSV : public common::vdb::ConvertVDBBase {
+    // ConvertVDBHACCGenericIO is a derived class from common::vdb::ConvertVDBBase.
+    // This class implements methods for converting particle data from GenericIO/Excel format into VDB format.
+    class ConvertVDBHACCGenericIO : public common::vdb::ConvertVDBBase {
     public:
         // Print the steps executed on the CPU during the conversion process.
         void print_CPU_steps() override;
@@ -117,6 +117,6 @@ namespace csv {
         int get_num_types() override;
         int get_num_blocks() override;
 
-    }; // class ConvertVDBCSV
+    }; // class ConvertVDBHACCGenericIO
 
-} // namespace csv
+} // namespace genericio

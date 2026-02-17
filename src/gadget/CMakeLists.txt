@@ -77,10 +77,6 @@ if(WITH_TBB)
     add_definitions(-DWITH_TBB)
 endif()
 
-if(WITH_HDF5)
-    find_package(HDF5 REQUIRED)
-endif()
-
 if(GADGET_MAX_HSML)
     add_definitions(-DGADGET_MAX_HSML)
 endif()

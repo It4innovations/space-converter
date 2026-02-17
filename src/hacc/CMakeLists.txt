@@ -23,14 +23,19 @@ set(INC
     ${TBB_INCLUDE_DIRS}
     ${MPI_INCLUDE_DIRS}
     ${MPI_CXX_HEADER_DIR}    
-    ${HDF5_INCLUDE_DIRS}
 
     ${PROJECT_SOURCE_DIR}/src/common
+    utility/GenericIO
 )
 
-set(SRC
-    hdf5_extract_iolib.cpp
-    hdf5_extract_iolib.h
+set(SRC_GENERICIO
+    hacc_genericio_extract_iolib.cpp
+    hacc_genericio_extract_iolib.h
+)
+
+set(SRC_HACCBIN
+    haccbin_extract_iolib.cpp
+    haccbin_extract_iolib.h
 )
 
 if(WITH_OPENMP)
@@ -38,10 +43,15 @@ if(WITH_OPENMP)
 endif()
 
 if(WITH_OPENVDB OR WITH_NANOVDB)
-    list(APPEND SRC
-        hdf5_convert_vdb.cpp
-        hdf5_convert_vdb.h
+    list(APPEND SRC_GENERICIO
+        hacc_genericio_convert_vdb.cpp
+        hacc_genericio_convert_vdb.h
     )
+
+    list(APPEND SRC_HACCBIN
+        haccbin_convert_vdb.cpp
+        haccbin_convert_vdb.h
+    )    
 endif()
 
 if(WITH_NANOVDB)
@@ -67,27 +77,35 @@ if(WITH_TBB)
     add_definitions(-DWITH_TBB)
 endif()
 
-find_package(HDF5 REQUIRED COMPONENTS C CXX)
-
 include_directories(${INC})
 
 ########################################################
-add_library(hdf5_converter ${SRC})
+add_subdirectory(utility)
+########################################################
+add_library(hacc_genericio_converter ${SRC_GENERICIO})
 target_link_libraries(
-   hdf5_converter
+   hacc_genericio_converter 
    ${OPENVDB_LIBRARIES}
    ${BOOST_LIBRARIES}
    ${TBB_LIBRARIES}
    ${MPI_LIBRARIES}
    ${MPI_msmpi_LIBRARY}
-   ${HDF5_C_LIBRARIES}
-   ${HDF5_CXX_LIBRARIES}
-
-   space_common
 )
 
-#target_compile_definitions(hdf5_converter PUBLIC -DHAVE_HDF5 -DH5_BUILT_AS_DYNAMIC_LIB)
-target_compile_definitions(hdf5_converter PRIVATE ${HDF5_DEFINITIONS})
+target_link_libraries(hacc_genericio_converter space_common genericio_lib_static sz_lib)
     
-install (TARGETS hdf5_converter DESTINATION lib)
+install (TARGETS hacc_genericio_converter DESTINATION lib)
 ########################################################
+add_library(haccbin_converter ${SRC_HACCBIN})
+target_link_libraries(
+   haccbin_converter 
+   ${OPENVDB_LIBRARIES}
+   ${BOOST_LIBRARIES}
+   ${TBB_LIBRARIES}
+   ${MPI_LIBRARIES}
+   ${MPI_msmpi_LIBRARY}
+)
+
+target_link_libraries(haccbin_converter space_common)
+    
+install (TARGETS haccbin_converter DESTINATION lib)

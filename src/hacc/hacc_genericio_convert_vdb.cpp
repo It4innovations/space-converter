@@ -16,57 +16,57 @@
  *
  */
 
-#include "genericio_convert_vdb.h"
-#include "genericio_extract_iolib.h"
+#include "hacc_genericio_convert_vdb.h"
+#include "hacc_genericio_extract_iolib.h"
 
 namespace genericio {
-	void ConvertVDBGenericIO::print_CPU_steps() {
+	void ConvertVDBHACCGenericIO::print_CPU_steps() {
 		genericio::io::print_CPU_steps();
 	}
 
-	float ConvertVDBGenericIO::get_particle_norm_value_internal(int blocknr, uint64_t id) {
+	float ConvertVDBHACCGenericIO::get_particle_norm_value_internal(int blocknr, uint64_t id) {
 		return genericio::io::get_particle_norm_value(blocknr, id);
 	}
-	int ConvertVDBGenericIO::get_particle_value_internal(int blocknr, uint64_t id, float* value) {
+	int ConvertVDBHACCGenericIO::get_particle_value_internal(int blocknr, uint64_t id, float* value) {
 		return genericio::io::get_particle_value(blocknr, id, value);
 	}
-	int ConvertVDBGenericIO::get_particle_value_comp_internal(int blocknr, uint64_t id) {
+	int ConvertVDBHACCGenericIO::get_particle_value_comp_internal(int blocknr, uint64_t id) {
 		return genericio::io::get_particle_value_comp(blocknr, id);
 	}
-	int ConvertVDBGenericIO::get_particle_type(uint64_t id) {
+	int ConvertVDBHACCGenericIO::get_particle_type(uint64_t id) {
 		return genericio::io::get_particle_type(id);
 	}
-	void ConvertVDBGenericIO::get_particle_position(uint64_t id, double* pos) const {
+	void ConvertVDBHACCGenericIO::get_particle_position(uint64_t id, double* pos) const {
 		genericio::io::get_particle_position(id, pos);
 	}
-	size_t ConvertVDBGenericIO::get_local_num_particles() const {
+	size_t ConvertVDBHACCGenericIO::get_local_num_particles() const {
 		return genericio::io::get_local_num_particles();
 	}
-	size_t ConvertVDBGenericIO::get_global_num_particles() const {
+	size_t ConvertVDBHACCGenericIO::get_global_num_particles() const {
 		return genericio::io::get_global_num_particles();
 	}
 
-	//double ConvertVDBGenericIO::get_particle_radius(uint64_t id) {
+	//double ConvertVDBHACCGenericIO::get_particle_radius(uint64_t id) {
 	//	return genericio::io::get_particle_radius(id);
 	//}
 
-	double ConvertVDBGenericIO::get_particle_hsml(uint64_t id) {
+	double ConvertVDBHACCGenericIO::get_particle_hsml(uint64_t id) {
 		return genericio::io::get_particle_hsml(id);
 	}
 
-	double ConvertVDBGenericIO::get_particle_mass(uint64_t id) {
+	double ConvertVDBHACCGenericIO::get_particle_mass(uint64_t id) {
 		return genericio::io::get_particle_mass(id);
 	}
 
-	double ConvertVDBGenericIO::get_particle_rho_internal(uint64_t id) {
+	double ConvertVDBHACCGenericIO::get_particle_rho_internal(uint64_t id) {
 		return genericio::io::get_particle_rho(id);
 	}
 
-	int ConvertVDBGenericIO::get_particle_rho_blocknr() {
+	int ConvertVDBHACCGenericIO::get_particle_rho_blocknr() {
 		return genericio::io::get_particle_rho_blocknr();
 	}
 
-	void ConvertVDBGenericIO::init_lib(int argc, char** argv, int world_rank, int world_size) {	
+	void ConvertVDBHACCGenericIO::init_lib(int argc, char** argv, int world_rank, int world_size) {	
 		std::string genericio_file;
 		// std::string pos_names = "x,y,z";
 		// std::string vel_names = "vx,vy,vz";
@@ -130,15 +130,15 @@ namespace genericio {
 		print_CPU_steps();
 	}
 
-	void ConvertVDBGenericIO::finish_lib()
+	void ConvertVDBHACCGenericIO::finish_lib()
 	{
 		genericio::io::finish_lib();
 	}
 
-	void ConvertVDBGenericIO::get_types_and_blocks_internal(std::vector<int>& types_and_blocks) {
+	void ConvertVDBHACCGenericIO::get_types_and_blocks_internal(std::vector<int>& types_and_blocks) {
 		genericio::io::get_types_and_blocks(types_and_blocks);
 	}
-	void ConvertVDBGenericIO::print_types_and_blocks_local() {
+	void ConvertVDBHACCGenericIO::print_types_and_blocks_local() {
 		std::vector<int> types_and_blocks;
 		genericio::io::get_types_and_blocks(types_and_blocks);
 
@@ -157,7 +157,7 @@ namespace genericio {
 		}
 	}
 
-	void ConvertVDBGenericIO::print_types_and_blocks(std::vector<int>& types_and_blocks) {
+	void ConvertVDBHACCGenericIO::print_types_and_blocks(std::vector<int>& types_and_blocks) {
 		printf("\nAll snapshots contain:\n");
 
 		//char buf[500];
@@ -173,7 +173,7 @@ namespace genericio {
 		}
 	}
 
-	std::string ConvertVDBGenericIO::get_type_name(int type) {		
+	std::string ConvertVDBHACCGenericIO::get_type_name(int type) {		
 
 		genericio::GenericIOParticleType pt = (genericio::GenericIOParticleType)type;
 		switch (pt) {
@@ -186,11 +186,11 @@ namespace genericio {
 		}
 		return "Unknown";
 	}
-	std::string ConvertVDBGenericIO::get_dataset_name(int blocknr) {
+	std::string ConvertVDBHACCGenericIO::get_dataset_name(int blocknr) {
 		return genericio::io::get_dataset_name(blocknr);
 	}
 
-	std::string ConvertVDBGenericIO::get_particle_data_type_names(std::vector<int>& types_and_blocks) {
+	std::string ConvertVDBHACCGenericIO::get_particle_data_type_names(std::vector<int>& types_and_blocks) {
 		std::string particle_data_types = "";
 
 		for (int t = 0; t < genericio::GenericIOParticleType::PTMax; t++) {
@@ -205,10 +205,10 @@ namespace genericio {
 		return particle_data_types;
 	}
 
-	int ConvertVDBGenericIO::get_num_types() {
+	int ConvertVDBHACCGenericIO::get_num_types() {
 		return genericio::GenericIOParticleType::PTMax;
 	}
-	int ConvertVDBGenericIO::get_num_blocks() {
+	int ConvertVDBHACCGenericIO::get_num_blocks() {
 		std::vector<int> types_and_blocks;
 		genericio::io::get_types_and_blocks(types_and_blocks);
 		return types_and_blocks.size() / genericio::GenericIOParticleType::PTMax;

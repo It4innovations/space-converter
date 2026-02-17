@@ -45,8 +45,8 @@ export DYLD_LIBRARY_PATH=${CYCLES_DIR_LIB}/openvdb/lib:${CYCLES_DIR_LIB}/tbb/lib
 
 #mpirun -n 4 ${install}/bin/space_converter --data-type GADGET --gadget-file ${data}/very_small_example/snap_081 --max-mem-size 100000 --buffer-size 150.0 --part-alloc-factor 1.5 --bh-count 1 --grid-dim 100 --output-path ${out} --info 
 # mpirun -n 4 
-#${install}/bin/space_converter --data-type GADGET --gadget-file ${data}/very_small_example/snap_081 --max-mem-size 100000 --buffer-size 150.0 --part-alloc-factor 1.5 --bh-count 1 --grid-dim 100 --output-path ${out} --port 5001 --multires
+#${install}/bin/space_converter --data-type GADGET --gadget-file ${data}/very_small_example/snap_081 --max-mem-size 100000 --buffer-size 150.0 --part-alloc-factor 1.5 --bh-count 1 --grid-dim 100 --output-path ${out} --port 5001
 
-${install}/bin/space_converter --data-type GADGET --gadget-file ${data}/notsosmall_example/snap_091 --max-mem-size 100000 --buffer-size 150.0 --part-alloc-factor 1.2 --grid-dim 100 --output-path ${out} --port 5001 --bh-count 110 --multires
+${install}/bin/space_converter --data-type GADGET --gadget-file ${data}/notsosmall_example/snap_091 --max-mem-size 100000 --buffer-size 150.0 --part-alloc-factor 1.2 --grid-dim 100 --output-path ${out} --port 5001 --bh-count 110
 
 #mpirun -n 8 ${install}/bin/space_converter --data-type CHANGA_TIPSY --tipsy-file ${data}/changa_tipsy/LOW_64XLARGEMHDVERTDENSWend64FBSB1mergb0.00410  --grid-dim 100 --output-path ${out} --port 8000

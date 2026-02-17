@@ -57,7 +57,6 @@ make_d="${make_d} -DOPENVDB_INCLUDE_DIRS=$lib_dir/lib-linux_x64/openvdb/include"
 make_d="${make_d} -DOPENVDB_LIBRARIES=$lib_dir/lib-linux_x64/openvdb/lib/libopenvdb.so;$lib_dir/lib-linux_x64/tbb/lib/libtbb.so" #$lib_dir/lib-linux_x64/blosc/lib/libblosc.so.1
 make_d="${make_d} -DOPENVDB_VERSION=12"
 
-make_d="${make_d} -DWITH_HDF5=OFF"
 make_d="${make_d} -DGADGET_READ_ID=OFF"
 make_d="${make_d} -DGADGET_MAX_HSML=ON"
 
@@ -66,7 +65,7 @@ make_d="${make_d} -DWITH_OPENVDB=ON"
 make_d="${make_d} -DWITH_CUDAKDTREE=OFF"
 
 make_d="${make_d} -DWITH_NANOFLANN=ON"
-make_d="${make_d} -DWITH_GENERICIO=ON"
+make_d="${make_d} -DWITH_HACC=ON"
 make_d="${make_d} -DWITH_NO_DATA_TEMP=OFF"
 
 #make_d="${make_d} -DCMAKE_BUILD_TYPE=Debug"
