@@ -417,11 +417,15 @@ namespace common {
 		 * @brief Main conversion function: converts particle data to VDB grids
 		 * 
 		 * This is the core function that:
-		 * 1. Iterates through all particles
+		 * 1. Iterates through cached particles of a specific type
 		 * 2. Filters by type, bounding box, and value ranges
 		 * 3. Rasterizes particles into voxel grid (dense or sparse)
 		 * 4. Applies smoothing kernels for SPH-like density estimation
 		 * 5. Tracks min/max values for normalization
+		 * 
+		 * Note: Uses cached particle data (pos_particles_per_ptype) for better performance
+		 * instead of calling get_particle_position() for each particle.
+		 * GPU implementation (use_gpu_cuda) is reserved for future development.
 		 */
 		void ConvertVDBBase::convert_iolib_to_grid(
 			int particle_type,
@@ -530,6 +534,22 @@ namespace common {
 				grid.dense_grid.offset[2] = (size_t)(bbox_z_min_norm * (double)bbox_dim / scale_space_diagonal);
 			}
 
+			// Get cached particle data for this particle type
+			if (particle_type < 0 || particle_type >= (int)cache_manager.pos_particles_per_ptype.size()) {
+				printf("Warning: Invalid particle type %d in convert_iolib_to_grid\n", particle_type);
+				particles_count = 0;
+				return;
+			}
+
+			const float* pos_particles = cache_manager.pos_particles_per_ptype[particle_type].data();
+			const size_t* particle_ids = cache_manager.particles_id_ordered_per_ptype[particle_type].data();
+			size_t num_particles = cache_manager.pos_particles_per_ptype[particle_type].size() / 3;
+
+			if (num_particles == 0) {
+				particles_count = 0;
+				return;
+			}
+
 			// Track value range and particle count (for parallel reduction)
 			float min = FLT_MAX;
 			float max = -FLT_MAX;
@@ -546,10 +566,9 @@ namespace common {
 
 #pragma omp parallel for reduction(min : min) reduction(max : max) reduction(+ : particles_count_temp) num_threads(nthreads) schedule(dynamic, 256)
 #endif
-			for (size_t i = 0; i < no_points; i++) {
-				// Filter by particle type
-				if (get_particle_type(i) != particle_type)
-					continue;
+			for (size_t cached_idx = 0; cached_idx < num_particles; cached_idx++) {
+				// Get original particle ID for method calls that need it
+				size_t i = particle_ids[cached_idx];
 
 				// Filter by animation frame if extracting specific frame
 				if (anim_type == common::SpaceData::AnimType::eFrameExtract) {
@@ -557,8 +576,11 @@ namespace common {
 						continue;
 				}
 
+				// Get position from cached data instead of calling get_particle_position()
 				double Pos[3];
-				get_particle_position(i, Pos);
+				Pos[0] = pos_particles[cached_idx * 3 + 0];
+				Pos[1] = pos_particles[cached_idx * 3 + 1];
+				Pos[2] = pos_particles[cached_idx * 3 + 2];
 
 				// Apply position offset if specified
 				if (offset_position[0] != 0.0f || offset_position[1] != 0.0f || offset_position[2] != 0.0f) {
