@@ -51,6 +51,10 @@ set(SRC
     args_processing.cpp
 )
 
+if(WITH_GPU_CUDA)
+    add_definitions(-DWITH_GPU_CUDA)
+endif()
+
 if(WITH_OPENMP)
     add_definitions(-DWITH_OPENMP)
 endif()

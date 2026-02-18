@@ -95,6 +95,11 @@ namespace space_converter {
 		bool use_nanoflann = false;
 #endif
 
+#ifdef WITH_GPU_CUDA
+		/// Flag to enable GPU acceleration for CUDA-based computations
+		bool use_gpu_cuda = false;
+#endif
+
 		// === MPI Configuration ===
 		
 		/// Rank of the current process in MPI (default: 0 for single process)

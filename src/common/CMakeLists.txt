@@ -43,16 +43,20 @@ set(SRC_COMMON
     data_cache.h
     data_cache.cpp
 
+    convert_vdb_kernel.h
+    convert_vdb_kernel.cpp
+
     ${PROJECT_SOURCE_DIR}/submodules/braas-hpc-renderengine/src/renderengine_tcp.cpp
     ${PROJECT_SOURCE_DIR}/submodules/braas-hpc-renderengine/src/renderengine_tcp.h
 
     ${PROJECT_SOURCE_DIR}/src/utility/dense_utility.h
 )
 
-if(WITH_GPU_CUDA_CACHE)
-    add_definitions(-DWITH_GPU_CUDA_CACHE)
+if(WITH_GPU_CUDA)
+    add_definitions(-DWITH_GPU_CUDA)
     list(APPEND SRC_COMMON
         data_cache.cu
+        convert_vdb_kernel.cu
     )
 endif()
 
@@ -106,7 +110,7 @@ include_directories(${INC})
 ########################################################
 add_library(space_common ${SRC_COMMON})
 
-if(WITH_GPU_CUDA_CACHE)
+if(WITH_GPU_CUDA)
     set_target_properties(space_common PROPERTIES
         CUDA_STANDARD 17
         CUDA_STANDARD_REQUIRED ON

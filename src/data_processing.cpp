@@ -144,6 +144,14 @@ namespace space_converter {
 			throw std::runtime_error("Unknown data type [GADGET, CHANGA_TIPSY, CHANGA_NCHILADA, HACC_GENERICIO, HACC_BIN]): " + from_cl.data_type);
 		}
 
+		// Other params
+#ifdef WITH_GPU_CUDA
+		if (from_cl.use_gpu_cuda) {
+			printf("Using GPU CUDA for computations\n");
+		}		
+		convert_vdb_base->cache_manager.use_gpu_cuda = from_cl.use_gpu_cuda;
+#endif
+
 		// Initialize the converter library with MPI rank and size
 #ifdef WITH_MERIC
 		MERIC_MeasureStart("init_lib");
@@ -250,7 +258,7 @@ namespace space_converter {
 		// Override with constant radius if specified via environment variable
 		const char* converter_radius_particle_const = getenv("CONVERTER_RADIUS_PARTICLE_CONST");
 		if (converter_radius_particle_const) {
-			convert_vdb_base->radius_particle_const = atof(converter_radius_particle_const);
+			convert_vdb_base->cache_manager.radius_particle_const = atof(converter_radius_particle_const);
 		}
 
 #ifdef WITH_MERIC

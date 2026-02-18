@@ -70,6 +70,10 @@ namespace space_converter {
 		std::cout << "\t--bbox x1 y1 z1 x2 y2 z2           : Define axis-aligned bounding box" << std::endl;
 		std::cout << "\t--save-mpi-rank                    : Save MPI rank information                    : Save MPI rank information" << std::endl;
 
+#ifdef WITH_GPU_CUDA
+		std::cout << "\t--gpu-cuda                         : Enable GPU acceleration for CUDA-based computations" << std::endl;
+#endif		
+
 		// === Format-Specific Arguments ===
 		std::cout << "\nGADGET args:" << std::endl;
 		std::cout << "\t--param-file X              : GADGET parameter file" << std::endl;
@@ -271,6 +275,12 @@ namespace space_converter {
 				from_cl.use_nanoflann = true;
 			}
 #endif		
+#ifdef WITH_GPU_CUDA
+			else if (arg == "--gpu-cuda") {
+				// Enable GPU acceleration for CUDA-based computations
+				from_cl.use_gpu_cuda = true;
+			}
+#endif
 			else if (arg == "-h" || arg == "--help") {
 				// Display usage information
 				usage();

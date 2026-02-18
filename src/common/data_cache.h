@@ -53,6 +53,14 @@ namespace common {
             std::vector<float*> d_rho_particles_per_ptype;              ///< GPU density values per type
             std::vector<float*> d_mass_particles_per_ptype;             ///< GPU mass values per type
 
+            // Others
+            double radius_particle_const = 0.0; ///< Constant particle radius value
+
+            /// Flag to enable GPU acceleration for CUDA-based computations
+            bool use_gpu_cuda = false;
+
+        public:
+
             // Methods for GPU data transfer
             void copy_particles_to_gpu();                               ///< Copy all particle data from CPU to GPU
             void free_gpu_memory();                                     ///< Free all GPU memory allocations

@@ -41,7 +41,7 @@ option(WITH_NANOFLANN  "Enable NANOFLANN" OFF)
 option(WITH_CUDAKDTREE "Enable cudaKDTree" OFF)
 option(WITH_NO_DATA_TEMP "Enable No Data Temp" OFF)
 
-option(WITH_GPU_CUDA_CACHE "Enable GPU CUDA Cache" OFF)
+option(WITH_GPU_CUDA "Enable GPU CUDA" OFF)
 
 option(WITH_MERIC  "Enable MERIC" OFF)
 ########################################################

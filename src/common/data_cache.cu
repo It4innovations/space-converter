@@ -17,6 +17,7 @@
  */
 
  #include "data_cache.h"
+ #include "../utility/gpu_utility.h"
  #include <cuda_runtime.h>
  #include <thrust/device_vector.h>
  #include <thrust/sort.h>
@@ -36,9 +37,9 @@ namespace common {
             for (size_t i = 0; i < pos_particles_per_ptype.size(); ++i) {
                 size_t size_bytes = pos_particles_per_ptype[i].size() * sizeof(float);
                 if (size_bytes > 0) {
-                    cudaMalloc(&d_pos_particles_per_ptype[i], size_bytes);
-                    cudaMemcpy(d_pos_particles_per_ptype[i], pos_particles_per_ptype[i].data(), 
-                             size_bytes, cudaMemcpyHostToDevice);
+                    CUDA_CHECK_ERROR(cudaMalloc(&d_pos_particles_per_ptype[i], size_bytes));
+                    CUDA_CHECK_ERROR(cudaMemcpy(d_pos_particles_per_ptype[i], pos_particles_per_ptype[i].data(), 
+                             size_bytes, cudaMemcpyHostToDevice));
                 } else {
                     d_pos_particles_per_ptype[i] = nullptr;
                 }
@@ -49,9 +50,9 @@ namespace common {
             for (size_t i = 0; i < particles_id_ordered_per_ptype.size(); ++i) {
                 size_t size_bytes = particles_id_ordered_per_ptype[i].size() * sizeof(size_t);
                 if (size_bytes > 0) {
-                    cudaMalloc(&d_particles_id_ordered_per_ptype[i], size_bytes);
-                    cudaMemcpy(d_particles_id_ordered_per_ptype[i], particles_id_ordered_per_ptype[i].data(), 
-                             size_bytes, cudaMemcpyHostToDevice);
+                    CUDA_CHECK_ERROR(cudaMalloc(&d_particles_id_ordered_per_ptype[i], size_bytes));
+                    CUDA_CHECK_ERROR(cudaMemcpy(d_particles_id_ordered_per_ptype[i], particles_id_ordered_per_ptype[i].data(), 
+                             size_bytes, cudaMemcpyHostToDevice));
                 } else {
                     d_particles_id_ordered_per_ptype[i] = nullptr;
                 }
@@ -62,9 +63,9 @@ namespace common {
             for (size_t i = 0; i < radius_particles_per_ptype.size(); ++i) {
                 size_t size_bytes = radius_particles_per_ptype[i].size() * sizeof(float);
                 if (size_bytes > 0) {
-                    cudaMalloc(&d_radius_particles_per_ptype[i], size_bytes);
-                    cudaMemcpy(d_radius_particles_per_ptype[i], radius_particles_per_ptype[i].data(), 
-                             size_bytes, cudaMemcpyHostToDevice);
+                    CUDA_CHECK_ERROR(cudaMalloc(&d_radius_particles_per_ptype[i], size_bytes));
+                    CUDA_CHECK_ERROR(cudaMemcpy(d_radius_particles_per_ptype[i], radius_particles_per_ptype[i].data(), 
+                             size_bytes, cudaMemcpyHostToDevice));
                 } else {
                     d_radius_particles_per_ptype[i] = nullptr;
                 }
@@ -74,9 +75,9 @@ namespace common {
             d_particles_ptype_offset = nullptr;
             if (!particles_ptype_offset.empty()) {
                 size_t size_bytes = particles_ptype_offset.size() * sizeof(size_t);
-                cudaMalloc(&d_particles_ptype_offset, size_bytes);
-                cudaMemcpy(d_particles_ptype_offset, particles_ptype_offset.data(), 
-                         size_bytes, cudaMemcpyHostToDevice);
+                CUDA_CHECK_ERROR(cudaMalloc(&d_particles_ptype_offset, size_bytes));
+                CUDA_CHECK_ERROR(cudaMemcpy(d_particles_ptype_offset, particles_ptype_offset.data(), 
+                         size_bytes, cudaMemcpyHostToDevice));
             }
 
             // Allocate and copy rho_particles_per_ptype
@@ -84,9 +85,9 @@ namespace common {
             for (size_t i = 0; i < rho_particles_per_ptype.size(); ++i) {
                 size_t size_bytes = rho_particles_per_ptype[i].size() * sizeof(float);
                 if (size_bytes > 0) {
-                    cudaMalloc(&d_rho_particles_per_ptype[i], size_bytes);
-                    cudaMemcpy(d_rho_particles_per_ptype[i], rho_particles_per_ptype[i].data(), 
-                             size_bytes, cudaMemcpyHostToDevice);
+                    CUDA_CHECK_ERROR(cudaMalloc(&d_rho_particles_per_ptype[i], size_bytes));
+                    CUDA_CHECK_ERROR(cudaMemcpy(d_rho_particles_per_ptype[i], rho_particles_per_ptype[i].data(), 
+                             size_bytes, cudaMemcpyHostToDevice));
                 } else {
                     d_rho_particles_per_ptype[i] = nullptr;
                 }
@@ -97,26 +98,23 @@ namespace common {
             for (size_t i = 0; i < mass_particles_per_ptype.size(); ++i) {
                 size_t size_bytes = mass_particles_per_ptype[i].size() * sizeof(float);
                 if (size_bytes > 0) {
-                    cudaMalloc(&d_mass_particles_per_ptype[i], size_bytes);
-                    cudaMemcpy(d_mass_particles_per_ptype[i], mass_particles_per_ptype[i].data(), 
-                             size_bytes, cudaMemcpyHostToDevice);
+                    CUDA_CHECK_ERROR(cudaMalloc(&d_mass_particles_per_ptype[i], size_bytes));
+                    CUDA_CHECK_ERROR(cudaMemcpy(d_mass_particles_per_ptype[i], mass_particles_per_ptype[i].data(), 
+                             size_bytes, cudaMemcpyHostToDevice));
                 } else {
                     d_mass_particles_per_ptype[i] = nullptr;
                 }
             }
 
             // Check for CUDA errors
-            cudaError_t error = cudaGetLastError();
-            if (error != cudaSuccess) {
-                std::cerr << "CUDA error in copy_particles_to_gpu: " << cudaGetErrorString(error) << std::endl;
-            }
+            CUDA_CHECK_LAST_ERROR();
         }
 
         void CacheManager::free_gpu_memory() {
             // Free pos_particles_per_ptype
             for (auto ptr : d_pos_particles_per_ptype) {
                 if (ptr != nullptr) {
-                    cudaFree(ptr);
+                    CUDA_CHECK_ERROR(cudaFree(ptr));
                 }
             }
             d_pos_particles_per_ptype.clear();
@@ -124,7 +122,7 @@ namespace common {
             // Free particles_id_ordered_per_ptype
             for (auto ptr : d_particles_id_ordered_per_ptype) {
                 if (ptr != nullptr) {
-                    cudaFree(ptr);
+                    CUDA_CHECK_ERROR(cudaFree(ptr));
                 }
             }
             d_particles_id_ordered_per_ptype.clear();
@@ -132,21 +130,21 @@ namespace common {
             // Free radius_particles_per_ptype
             for (auto ptr : d_radius_particles_per_ptype) {
                 if (ptr != nullptr) {
-                    cudaFree(ptr);
+                    CUDA_CHECK_ERROR(cudaFree(ptr));
                 }
             }
             d_radius_particles_per_ptype.clear();
 
             // Free particles_ptype_offset
             if (d_particles_ptype_offset != nullptr) {
-                cudaFree(d_particles_ptype_offset);
+                CUDA_CHECK_ERROR(cudaFree(d_particles_ptype_offset));
                 d_particles_ptype_offset = nullptr;
             }
 
             // Free rho_particles_per_ptype
             for (auto ptr : d_rho_particles_per_ptype) {
                 if (ptr != nullptr) {
-                    cudaFree(ptr);
+                    CUDA_CHECK_ERROR(cudaFree(ptr));
                 }
             }
             d_rho_particles_per_ptype.clear();
@@ -154,16 +152,13 @@ namespace common {
             // Free mass_particles_per_ptype
             for (auto ptr : d_mass_particles_per_ptype) {
                 if (ptr != nullptr) {
-                    cudaFree(ptr);
+                    CUDA_CHECK_ERROR(cudaFree(ptr));
                 }
             }
             d_mass_particles_per_ptype.clear();
 
             // Check for CUDA errors
-            cudaError_t error = cudaGetLastError();
-            if (error != cudaSuccess) {
-                std::cerr << "CUDA error in free_gpu_memory: " << cudaGetErrorString(error) << std::endl;
-            }
+            CUDA_CHECK_LAST_ERROR();
         }
 
         void CacheManager::sort_particles_by_radius_gpu() {
@@ -197,10 +192,7 @@ namespace common {
             }
 
             // Check for CUDA errors
-            cudaError_t error = cudaGetLastError();
-            if (error != cudaSuccess) {
-                std::cerr << "CUDA error in sort_particles_by_radius_gpu: " << cudaGetErrorString(error) << std::endl;
-            }
+            CUDA_CHECK_LAST_ERROR();
         }
 
         void CacheManager::sort_particles_by_radius_gpu_inplace() {
@@ -240,10 +232,7 @@ namespace common {
             }
 
             // Check for CUDA errors
-            cudaError_t error = cudaGetLastError();
-            if (error != cudaSuccess) {
-                std::cerr << "CUDA error in sort_particles_by_radius_gpu_inplace: " << cudaGetErrorString(error) << std::endl;
-            }
+            CUDA_CHECK_LAST_ERROR();
         }
     }
 }

@@ -17,6 +17,7 @@
  */
 
 #include "convert_vdb.h"
+#include "convert_vdb_kernel.h"
 
 #include <iostream>
 #include <string>
@@ -810,6 +811,7 @@ namespace common {
 		 * 
 		 * Computes min/max coordinates across all particles of a given type.
 		 * Used to determine grid extents before conversion.
+		 * Uses cached particle positions and dispatches to CPU or GPU kernel.
 		 */
 		void ConvertVDBBase::iolib_find_bbox(
 			int particle_type,
@@ -818,49 +820,41 @@ namespace common {
 			float* offset_position
 		)
 		{
-			size_t no_points = get_local_num_particles();
+			// Initialize with extreme values in case no particles match
+			bbox_min[0] = bbox_min[1] = bbox_min[2] = FLT_MAX;
+			bbox_max[0] = bbox_max[1] = bbox_max[2] = -FLT_MAX;
 
-			float min_x = FLT_MAX, min_y = FLT_MAX, min_z = FLT_MAX;
-			float max_x = -FLT_MAX, max_y = -FLT_MAX, max_z = -FLT_MAX;
-
-			// Parallel reduction to find min/max coordinates
-#pragma omp parallel for reduction(min : min_x, min_y, min_z) reduction(max : max_x, max_y, max_z)
-			for (size_t i = 0; i < no_points; ++i) {
-
-				if (particle_type != -1 && get_particle_type(i) != particle_type)
-					continue;
-
-				double Pos[3];
-				get_particle_position(i, Pos);
-
-				if (offset_position[0] != 0.0f || offset_position[1] != 0.0f || offset_position[2] != 0.0f) {
-					Pos[0] -= offset_position[0];
-					Pos[1] -= offset_position[1];
-					Pos[2] -= offset_position[2];
-				}
-
-				if (Pos[0] < min_x) 
-					min_x = Pos[0];
-				if (Pos[1] < min_y) 
-					min_y = Pos[1];
-				if (Pos[2] < min_z) 
-					min_z = Pos[2];
-
-				if (Pos[0] > max_x) 
-					max_x = Pos[0];
-				if (Pos[1] > max_y) 
-					max_y = Pos[1];
-				if (Pos[2] > max_z) 
-					max_z = Pos[2];
+			// Validate particle type
+			if (particle_type < 0 || particle_type >= (int)cache_manager.pos_particles_per_ptype.size()) {
+				printf("Warning: Invalid particle type %d in iolib_find_bbox\n", particle_type);
+				bbox_min[0] = bbox_min[1] = bbox_min[2] = 0.0f;
+				bbox_max[0] = bbox_max[1] = bbox_max[2] = 0.0f;
+				return;
 			}
 
-			bbox_min[0] = min_x;
-			bbox_min[1] = min_y;
-			bbox_min[2] = min_z;
+			// Get particle positions for this type
+			size_t num_particles = cache_manager.pos_particles_per_ptype[particle_type].size() / 3;
 
-			bbox_max[0] = max_x;
-			bbox_max[1] = max_y;
-			bbox_max[2] = max_z;
+			if (num_particles == 0) {
+				// No particles of this type
+				bbox_min[0] = bbox_min[1] = bbox_min[2] = 0.0f;
+				bbox_max[0] = bbox_max[1] = bbox_max[2] = 0.0f;
+				return;
+			}
+
+#ifdef WITH_GPU_CUDA
+			if (cache_manager.use_gpu_cuda) {
+				// Use GPU kernel with cached GPU particle positions
+				const float* d_pos_particles = cache_manager.d_pos_particles_per_ptype[particle_type];
+				kernel::find_bbox_gpu(d_pos_particles, num_particles, offset_position, bbox_min, bbox_max);
+			}
+			else
+#endif
+			{
+				// Use CPU kernel with cached CPU particle positions
+				const float* pos_particles = cache_manager.pos_particles_per_ptype[particle_type].data();
+				kernel::find_bbox_cpu(pos_particles, num_particles, offset_position, bbox_min, bbox_max);
+			}
 		}
 
 		/**
@@ -1130,8 +1124,8 @@ namespace common {
 			float particle_fix_size,
 			int particle_type
 		) {
-			if (radius_particle_const > 0.0) {
-				return radius_particle_const;
+			if (cache_manager.radius_particle_const > 0.0) {
+				return cache_manager.radius_particle_const;
 			}
 
 			// Conversion factor from world space to voxel space

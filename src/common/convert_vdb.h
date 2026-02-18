@@ -371,6 +371,9 @@ namespace common {
 		 */
 		class ConvertVDBBase {
 		public:
+			cache::CacheManager cache_manager; ///< Cache manager for storing intermediate data
+
+		public:
 
 			/**
 			 * @brief Convert particle data from I/O library format to VDB grid
@@ -523,12 +526,6 @@ namespace common {
 			 */
 			openvdb::FloatGrid::Ptr vector_to_openvdb(std::vector<uint8_t>& file_content);
 #endif
-			cache::CacheManager cache_manager; ///< Cache manager for storing intermediate data
-
-			// Cosmological simulation parameters
-			// double redshift = 0.0;              ///< Cosmological redshift value
-			// double hubble_param = 1.0;          ///< Hubble parameter (h)
-			double radius_particle_const = 0.0; ///< Constant particle radius value
 
 			/**
 			 * @brief Read particle radius data from file
@@ -542,6 +539,9 @@ namespace common {
 			 */
 			void write_radius_from_file(std::string& calc_radius_neigh_file);
 
+			/**
+			 * @brief Find particle positions
+			 */
 			void find_particle_positions();
 
 #ifdef WITH_CUDAKDTREE
@@ -595,6 +595,7 @@ namespace common {
 			 * @param bbox_min Output minimum coordinates
 			 * @param bbox_max Output maximum coordinates
 			 * @param offset_position Optional position offset
+			 * @param use_gpu_cuda Flag to use GPU (true) or CPU (false) implementation
 			 */
 			virtual void iolib_find_bbox(
 				int particle_type,
