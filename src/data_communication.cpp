@@ -486,7 +486,7 @@ namespace space_converter {
 	 */
 	void send_vdb(TcpConnection& tcp_connection, space_converter::FromCL& from_cl, common::SpaceData& space_data, common::vdb::VDBParticles& grid_handle)
 	{
-		if (from_cl.world_rank == 0 && grid_handle.type == common::vdb::VDBParticles::VDBParticleType::eVector) {
+		if (from_cl.world_rank == 0 && grid_handle.type == common::vdb::VDBParticleType::eVector) {
 			double t = omp_get_wtime();
 			
 			// Get grid data size
@@ -542,7 +542,7 @@ namespace space_converter {
 	 */
 	void send_path(TcpConnection& tcp_connection, space_converter::FromCL& from_cl, common::SpaceData& space_data, common::vdb::VDBParticles& grid_handle)
 	{
-		if (from_cl.world_rank == 0 && grid_handle.type == common::vdb::VDBParticles::VDBParticleType::eVector) {
+		if (from_cl.world_rank == 0 && grid_handle.type == common::vdb::VDBParticleType::eVector) {
 			double t = omp_get_wtime();
 
 			// Send file path type identifier

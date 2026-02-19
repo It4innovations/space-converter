@@ -30,6 +30,15 @@ namespace common {
         CacheManager::CacheManager() {
             // Initialize GPU pointers to nullptr
             d_particles_ptype_offset = nullptr;
+            d_values_particles = nullptr;
+            
+            // Initialize GPU vector pointers (will be empty vectors)
+            // d_pos_particles_per_ptype, d_particles_id_ordered_per_ptype, etc. are std::vectors
+            // and will be automatically initialized as empty
+            
+            // Initialize scalar values
+            radius_particle_const = 0.0;
+            use_gpu_cuda = false;
         }
 
         CacheManager::~CacheManager() {
@@ -52,6 +61,17 @@ namespace common {
             particles_ptype_offset.clear();
             rho_particles_per_ptype.clear();
             mass_particles_per_ptype.clear();
+            values_particles.clear();
+            
+            // Clear GPU vector pointers
+            d_pos_particles_per_ptype.clear();
+            d_particles_id_ordered_per_ptype.clear();
+            d_radius_particles_per_ptype.clear();
+            d_rho_particles_per_ptype.clear();
+            d_mass_particles_per_ptype.clear();
+            
+            // Reset scalar values
+            radius_particle_const = 0.0;
         }
 
         void CacheManager::sort_particles_by_radius_cpu() {

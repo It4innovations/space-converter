@@ -35,8 +35,14 @@ set(SRC_COMMON
     convert_vdb.h
     convert_common.cpp
     convert_common.h
+
     dense_common.cpp
     dense_common.h
+
+    sparse_common.h
+    sparse_common.cpp
+
+    raw_common.h
 
     data_common.h
 
@@ -57,6 +63,7 @@ if(WITH_GPU_CUDA)
     list(APPEND SRC_COMMON
         data_cache.cu
         convert_vdb_kernel.cu
+        sparse_common.cu
     )
 endif()
 

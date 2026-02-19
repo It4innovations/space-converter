@@ -3,6 +3,11 @@
 #include <string>
 #include <float.h>
 #include <cstring>
+#include <vector>
+#include <memory>
+
+#include "dense_common.h"
+#include "raw_common.h"
 
 #define FDATA_EPSILON 1e-8f  // Small epsilon value for floating-point comparisons
 
@@ -10,6 +15,49 @@
  * Namespace common provides functionality for handling spatial data conversions
  */
 namespace common {
+
+	namespace vdb {
+
+		/**
+		 * @brief Type of VDB particle representation
+		 */
+		enum VDBParticleType
+		{
+			eDense,        ///< Dense regular grid
+			eVector,       ///< Serialized binary format
+			eNanoVDB,      ///< NanoVDB sparse grid
+			eOpenVDB,      ///< OpenVDB sparse grid
+			eRawParticles  ///< Raw point cloud
+		};
+
+		class VoxelManager {
+		public:
+			void set_transform(double transform_scale) {
+				this->transform_scale = transform_scale;
+			}
+
+			virtual void insertOrUpdatePackedSequential(uint64_t key, float value) {};
+		private:
+			double transform_scale;
+		};
+
+		/**
+		 * @brief Container for different VDB grid representations
+		 *
+		 * Can hold particle data in various formats: dense grid, sparse NanoVDB,
+		 * OpenVDB, serialized binary, or raw particle data.
+		 */
+		class VDBParticles
+		{
+		public:
+			DenseParticles dense_grid;  ///< Dense regular grid representation
+			std::vector<uint8_t> vector_grid;  ///< Serialized binary grid data (for MPI transfer)
+			std::shared_ptr<VoxelManager> sparse_particles;  ///< Simple sparse grid representation (i, j, k, value)
+			RawParticles raw_particles;  ///< Raw particle point cloud data
+
+			VDBParticleType type;  ///< Current representation type
+		};
+	}
 
 	/**
 	 * SpaceData class stores and manages configuration and metadata for spatial data conversions

@@ -422,10 +422,6 @@ namespace common {
 		 * 3. Rasterizes particles into voxel grid (dense or sparse)
 		 * 4. Applies smoothing kernels for SPH-like density estimation
 		 * 5. Tracks min/max values for normalization
-		 * 
-		 * Note: Uses cached particle data (pos_particles_per_ptype) for better performance
-		 * instead of calling get_particle_position() for each particle.
-		 * GPU implementation (use_gpu_cuda) is reserved for future development.
 		 */
 		void ConvertVDBBase::convert_iolib_to_grid(
 			int particle_type,
@@ -489,17 +485,18 @@ namespace common {
 			RawParticles::ParticleData raw_frame;
 
 			// Set grid transform (voxel size in world space units)
-			if (grid.type == VDBParticles::VDBParticleType::eNanoVDB) {
-				grid.nano_grid->setTransform(transform_scale);
+			if (grid.type == VDBParticleType::eNanoVDB || grid.type == VDBParticleType::eOpenVDB) {
+				//grid.nano_grid->setTransform(transform_scale);
+				grid.sparse_particles->set_transform(transform_scale);
 			}
-#ifdef WITH_OPENVDB
-			else if (grid.type == VDBParticles::VDBParticleType::eOpenVDB) {
-				// Create linear transform for OpenVDB grid
-				openvdb::math::Transform::Ptr transform = openvdb::math::Transform::createLinearTransform(transform_scale);
-				grid.vdb_grid->setTransform(transform);
-			}
-#endif
-			else if (grid.type == VDBParticles::VDBParticleType::eRawParticles) {
+// #ifdef WITH_OPENVDB
+// 			else if (grid.type == VDBParticleType::eOpenVDB) {
+// 				// Create linear transform for OpenVDB grid
+// 				openvdb::math::Transform::Ptr transform = openvdb::math::Transform::createLinearTransform(transform_scale);
+// 				grid.vdb_grid->setTransform(transform);
+// 			}
+// #endif
+			else if (grid.type == VDBParticleType::eRawParticles) {
 				// Reserve space for raw particle arrays
 				raw_positions.values.reserve(no_points);
 				raw_positions.num_comp = 3;
@@ -526,7 +523,7 @@ namespace common {
 			float bbox_z_min_norm = bbox_min[2] / (float)object_size;
 			float bbox_z_max_norm = bbox_max[2] / (float)object_size;
 
-			if (grid.type == VDBParticles::VDBParticleType::eDense) {
+			if (grid.type == VDBParticleType::eDense) {
 				// Set grid offset for dense grids (position in global coordinate system)
 				// This allows tiled dense grids to know their position in the full domain
 				grid.dense_grid.offset[0] = (size_t)(bbox_x_min_norm * (double)bbox_dim / scale_space_diagonal);
@@ -541,216 +538,123 @@ namespace common {
 				return;
 			}
 
-			const float* pos_particles = cache_manager.pos_particles_per_ptype[particle_type].data();
-			const size_t* particle_ids = cache_manager.particles_id_ordered_per_ptype[particle_type].data();
 			size_t num_particles = cache_manager.pos_particles_per_ptype[particle_type].size() / 3;
-
 			if (num_particles == 0) {
 				particles_count = 0;
 				return;
 			}
 
-			// Track value range and particle count (for parallel reduction)
-			float min = FLT_MAX;
-			float max = -FLT_MAX;
+#ifdef WITH_GPU_CUDA
+			if (cache_manager.use_gpu_cuda) {
+				// Use GPU kernel with cached GPU particle positions
+				const float* d_pos_particles = cache_manager.d_pos_particles_per_ptype[particle_type];
+				const size_t* d_particles_id_ordered = cache_manager.d_particles_id_ordered_per_ptype[particle_type];
+				const float* d_radius_particles = cache_manager.d_radius_particles_per_ptype[particle_type];
+				const float* d_value_particles = cache_manager.d_values_particles;
 
-			size_t particles_count_temp = 0;
-
-#ifdef WITH_OPENMP			
-			int nthreads = 1;
-			if (grid.type == VDBParticles::VDBParticleType::eDense) {
-				// Dense grids support parallel writes (no race conditions)
-				// Sparse grids (NanoVDB, OpenVDB) require serial access
-				nthreads = omp_get_max_threads();
+				kernel::convert_iolib_to_grid_gpu(
+					d_pos_particles,
+					d_particles_id_ordered,
+					d_radius_particles,
+					d_value_particles,
+					particle_type,
+					particle_fix_size,
+					grid_name,
+					grid_transform,
+					bbox_min,
+					bbox_max,
+					bbox_dim,
+					bbox_min_orig,
+					bbox_size_orig,
+					extracted_type,
+					dense_type,
+					dense_norm,
+					block_name_id,
+					object_size,
+					min_value,
+					max_value,
+					min_value_global,
+					max_value_global,
+					particles_count,
+					grid,
+					transform_scale,
+					filter_min,
+					filter_max,
+					min_rho,
+					max_rho,
+					anim_type,
+					frame_req,
+					frame,
+					bbox_sphere_pos,
+					bbox_sphere_r,
+					use_simple_density,
+					bbox_x_min_norm,
+					bbox_x_max_norm,
+					bbox_y_min_norm,
+					bbox_y_max_norm,
+					bbox_z_min_norm,
+					bbox_z_max_norm,
+					scale_space_diagonal,
+					offset_position
+				);				
 			}
-
-#pragma omp parallel for reduction(min : min) reduction(max : max) reduction(+ : particles_count_temp) num_threads(nthreads) schedule(dynamic, 256)
+			else
 #endif
-			for (size_t cached_idx = 0; cached_idx < num_particles; cached_idx++) {
-				// Get original particle ID for method calls that need it
-				size_t i = particle_ids[cached_idx];
+			{
+				// Use CPU kernel with cached CPU particle positions
+				const float* pos_particles = cache_manager.pos_particles_per_ptype[particle_type].data();
+				const size_t* particle_ids = cache_manager.particles_id_ordered_per_ptype[particle_type].data();
+				const float* radius_particles = cache_manager.radius_particles_per_ptype[particle_type].data();
+				const float* value_particles = cache_manager.values_particles.data();
+				kernel::convert_iolib_to_grid_cpu(
+					pos_particles,
+					particle_ids,
+					radius_particles,
+					value_particles,
+					particle_type,
+					particle_fix_size,
+					grid_name,
+					grid_transform,
+					bbox_min,
+					bbox_max,
+					bbox_dim,
+					bbox_min_orig,
+					bbox_size_orig,
+					extracted_type,
+					dense_type,
+					dense_norm,
+					block_name_id,
+					object_size,
+					min_value,
+					max_value,
+					min_value_global,
+					max_value_global,
+					particles_count,
+					grid,
+					transform_scale,
+					filter_min,
+					filter_max,
+					min_rho,
+					max_rho,
+					anim_type,
+					frame_req,
+					frame,
+					bbox_sphere_pos,
+					bbox_sphere_r,
+					use_simple_density,
 
-				// Filter by animation frame if extracting specific frame
-				if (anim_type == common::SpaceData::AnimType::eFrameExtract) {
-					if (frame_req != frame)
-						continue;
-				}
+					bbox_x_min_norm,
+					bbox_x_max_norm,
+					bbox_y_min_norm,
+					bbox_y_max_norm,
+					bbox_z_min_norm,
+					bbox_z_max_norm,
+					scale_space_diagonal,
 
-				// Get position from cached data instead of calling get_particle_position()
-				double Pos[3];
-				Pos[0] = pos_particles[cached_idx * 3 + 0];
-				Pos[1] = pos_particles[cached_idx * 3 + 1];
-				Pos[2] = pos_particles[cached_idx * 3 + 2];
-
-				// Apply position offset if specified
-				if (offset_position[0] != 0.0f || offset_position[1] != 0.0f || offset_position[2] != 0.0f) {
-					Pos[0] -= offset_position[0];
-					Pos[1] -= offset_position[1];
-					Pos[2] -= offset_position[2];
-				}
-
-				// Normalize position to [0,1] range based on bounding box
-				double px_norm = ((double)Pos[0] - (double)bbox_min_orig[0]) / bbox_size_orig;
-				double py_norm = ((double)Pos[1] - (double)bbox_min_orig[1]) / bbox_size_orig;
-				double pz_norm = ((double)Pos[2] - (double)bbox_min_orig[2]) / bbox_size_orig;
-
-				// Check if particle is within bounding box
-				// Dense grids need extended bounds (particle radius) for proper splatting
-				if (grid.type == VDBParticles::VDBParticleType::eDense) {
-					// Get particle radius for boundary check with tolerance
-					double radiusxyz_max = get_particle_radius(
-						i,
-						1,
-						bbox_min_orig,
-						bbox_size_orig,
-						1,
-						particle_fix_size,
-						particle_type
-					);
-
-					if (px_norm + radiusxyz_max < bbox_x_min_norm || px_norm - radiusxyz_max > bbox_x_max_norm)
-						continue;
-
-					if (py_norm + radiusxyz_max < bbox_y_min_norm || py_norm - radiusxyz_max > bbox_y_max_norm)
-						continue;
-
-					if (pz_norm + radiusxyz_max < bbox_z_min_norm || pz_norm - radiusxyz_max > bbox_z_max_norm)
-						continue;
-				}
-				else {
-				// Simple point-in-box test for sparse grids
-						continue;
-
-					if (py_norm < bbox_y_min_norm || py_norm > bbox_y_max_norm)
-						continue;
-
-					if (pz_norm < bbox_z_min_norm || pz_norm > bbox_z_max_norm)
-						continue;
-				}
-
-				// Convert normalized position to voxel coordinates
-				int px = static_cast<int>((double)px_norm * (double)bbox_dim / scale_space_diagonal);
-				int py = static_cast<int>((double)py_norm * (double)bbox_dim / scale_space_diagonal);
-				int pz = static_cast<int>((double)pz_norm * (double)bbox_dim / scale_space_diagonal);
-
-				// Get particle value (density, temperature, etc.)
-				float v_orig = get_particle_norm_value(block_name_id, i);
-				if (use_simple_density) {
-					// Simple density mode: treat all particles with uniform weight
-					v_orig = 1;
-				}
-
-				// Apply value range filter
-				if (v_orig < filter_min || v_orig > filter_max)
-					continue;
-
-				// Apply spherical bounding filter if specified (radius > 0)
-				if(bbox_sphere_r > 0.0f)
-				{
-					// Compute squared distance from particle to sphere center
-					// Using squared distance avoids expensive sqrt operation
-					double distSquared = 
-					(Pos[0] - bbox_sphere_pos[0]) * (Pos[0] - bbox_sphere_pos[0]) +
-					(Pos[1] - bbox_sphere_pos[1]) * (Pos[1] - bbox_sphere_pos[1]) +
-					(Pos[2] - bbox_sphere_pos[2]) * (Pos[2] - bbox_sphere_pos[2]);
-
-					// Skip particles outside the spherical region
-					if (distSquared > (bbox_sphere_r * bbox_sphere_r)) {
-						continue;
-					}
-				}
-				particles_count_temp++;
-
-				// Track min/max values for normalization
-				if (v_orig < min) min = v_orig;
-				if (v_orig > max) max = v_orig;
-
-				// Rasterize particle into grid based on grid type
-				float v = v_orig;
-
-				if (grid.type == VDBParticles::VDBParticleType::eDense) {
-					// Splat particle into dense grid using kernel function (SPH-like smoothing)
-					fill_voxels(grid.dense_grid,
-						i, v,
-						bbox_dim, bbox_min_orig, bbox_size_orig,
-						scale_space_diagonal,
-						dense_type, dense_norm,
-						particle_fix_size, particle_type, block_name_id, Pos);
-				}
-				else if (grid.type == VDBParticles::VDBParticleType::eNanoVDB) {
-					nanovdb::Coord xyz(px, py, pz);
-					auto acc = grid.nano_grid->getAccessor();
-					// Accumulate value if voxel already contains data (multiple particles per voxel)
-					if (acc.isValueOn(xyz)) {
-						v += acc.getValue(xyz);
-					}
-
-					acc.setValue(xyz, v);
-				}
-#ifdef WITH_OPENVDB
-				else if (grid.type == VDBParticles::VDBParticleType::eOpenVDB) {
-					openvdb::Coord xyz(px, py, pz);
-					auto acc = grid.vdb_grid->getAccessor();
-
-					// Use probeValue for faster lookup (avoids double tree traversal: check + set)
-					float dst_value;
-					bool dst_exists = acc.probeValue(xyz, dst_value);
-
-					if (dst_exists) {
-						// Accumulate values (multiple particles contribute to same voxel)
-						acc.setValue(xyz, v + dst_value);
-					}
-					else {
-						// First particle contributing to this voxel
-						acc.setValue(xyz, v);
-					}
-				}
-#endif
-				else if (grid.type == VDBParticles::VDBParticleType::eRawParticles) {
-					// Store raw particle data (no rasterization)
-					// Position is stored in world space coordinates
-					raw_positions.values.push_back((double)px_norm * (double)object_size);
-					raw_positions.values.push_back((double)py_norm * (double)object_size);
-					raw_positions.values.push_back((double)pz_norm * (double)object_size);
-
-					// Get particle attribute values (may be multi-component, e.g., velocity vector)
-					int n_comp = get_particle_value_comp(block_name_id, i);
-					std::vector<float> values(n_comp);
-					get_particle_value(block_name_id, i, values.data());
-
-					raw_values.num_comp = n_comp;
-					raw_values.values.insert(raw_values.values.end(), values.begin(), values.end());
-	
-					double pr = get_particle_radius(
-						i,
-						object_size,
-						bbox_min_orig,
-						bbox_size_orig,
-						1.0f,
-						particle_fix_size,
-						particle_type
-					);
-
-					raw_radius.values.push_back(pr);
-				
-					// Store animation frame number for temporal data
-					raw_frame.values.push_back(frame);
-				}
+					offset_position
+				);
 			}
 
-			// Store final particle count after filtering
-			particles_count = particles_count_temp;
-
-			// Store raw particle data arrays in output structure
-			if (grid.type == VDBParticles::VDBParticleType::eRawParticles) {
-				grid.raw_particles.data.push_back(raw_positions);
-				grid.raw_particles.data.push_back(raw_values);
-				grid.raw_particles.data.push_back(raw_radius);
-				grid.raw_particles.data.push_back(raw_frame);
-			}
-
-			min_value = min;
-			max_value = max;
 
 #ifdef WITH_OPENMP
 			t_step = omp_get_wtime();
@@ -769,7 +673,7 @@ namespace common {
 			VDBParticles& grid_recv
 		)
 		{
-			if (grid_dst.type == VDBParticles::VDBParticleType::eDense && grid_recv.type == VDBParticles::VDBParticleType::eDense) {
+			if (grid_dst.type == VDBParticleType::eDense && grid_recv.type == VDBParticleType::eDense) {
 				// Merge dense grids by summing voxel values (element-wise addition)
 #pragma omp parallel for
 				for (int z = 0; z < grid_dst.dense_grid.dims[2]; z++) {
@@ -785,43 +689,44 @@ namespace common {
 				}
 			}
 
-			else if (grid_dst.type == VDBParticles::VDBParticleType::eNanoVDB && grid_recv.type == VDBParticles::VDBParticleType::eVector) {
-				// Deserialize and merge sparse NanoVDB grid
-				auto acc_dst = grid_dst.nano_grid->getAccessor();
-				auto* grid_src_float = (nanovdb::NanoGrid<float>*)grid_recv.vector_grid.data();
-
-				// Traverse NanoVDB sparse tree hierarchy ( Root -> Upper Internal -> Lower Internal -> Leaf )
-				for (auto it2 = grid_src_float->tree().root().cbeginChild(); it2; ++it2) {
-					// Iterate over upper internal nodes (level 2)
-					for (auto it1 = it2->cbeginChild(); it1; ++it1) {
-						// Iterate over lower internal nodes (level 1)
-						for (auto it0 = it1->cbeginChild(); it0; ++it0) {
-							// Iterate over active voxels in leaf nodes
-							for (auto it = it0->cbeginValueOn(); it; ++it) {
-								float v = *it;
-
-								nanovdb::Coord xyz = it.getCoord();
-
-								// Accumulate values if voxel exists in destination, otherwise set new value
-								if (acc_dst.isValueOn(xyz)) {
-									v += acc_dst.getValue(xyz);
-								}
-								acc_dst.setValue(xyz, v);
-							}
-						}
-					}
-				}
-			}
-#ifdef WITH_OPENVDB
-			else if (grid_dst.type == VDBParticles::VDBParticleType::eOpenVDB && grid_recv.type == VDBParticles::VDBParticleType::eVector) {
-				// Deserialize OpenVDB grid from vector
-				auto grid_src_float = vector_to_openvdb(grid_recv.vector_grid);
-
-				// Use OpenVDB's optimized composite operation for summing grids
-				openvdb::tools::compSum(*grid_dst.vdb_grid, *grid_src_float);
-			}
-#endif
-			else if (grid_dst.type == VDBParticles::VDBParticleType::eRawParticles && grid_recv.type == VDBParticles::VDBParticleType::eVector) {
+			// TODO: VoxelManager			
+//			else if (grid_dst.type == VDBParticleType::eNanoVDB && grid_recv.type == VDBParticleType::eVector) {
+//				// Deserialize and merge sparse NanoVDB grid
+//				auto acc_dst = grid_dst.nano_grid->getAccessor();
+//				auto* grid_src_float = (nanovdb::NanoGrid<float>*)grid_recv.vector_grid.data();
+//
+//				// Traverse NanoVDB sparse tree hierarchy ( Root -> Upper Internal -> Lower Internal -> Leaf )
+//				for (auto it2 = grid_src_float->tree().root().cbeginChild(); it2; ++it2) {
+//					// Iterate over upper internal nodes (level 2)
+//					for (auto it1 = it2->cbeginChild(); it1; ++it1) {
+//						// Iterate over lower internal nodes (level 1)
+//						for (auto it0 = it1->cbeginChild(); it0; ++it0) {
+//							// Iterate over active voxels in leaf nodes
+//							for (auto it = it0->cbeginValueOn(); it; ++it) {
+//								float v = *it;
+//
+//								nanovdb::Coord xyz = it.getCoord();
+//
+//								// Accumulate values if voxel exists in destination, otherwise set new value
+//								if (acc_dst.isValueOn(xyz)) {
+//									v += acc_dst.getValue(xyz);
+//								}
+//								acc_dst.setValue(xyz, v);
+//							}
+//						}
+//					}
+//				}
+//			}
+//#ifdef WITH_OPENVDB
+//			else if (grid_dst.type == VDBParticleType::eOpenVDB && grid_recv.type == VDBParticleType::eVector) {
+//				// Deserialize OpenVDB grid from vector
+//				auto grid_src_float = vector_to_openvdb(grid_recv.vector_grid);
+//
+//				// Use OpenVDB's optimized composite operation for summing grids
+//				openvdb::tools::compSum(*grid_dst.vdb_grid, *grid_src_float);
+//			}
+//#endif
+			else if (grid_dst.type == VDBParticleType::eRawParticles && grid_recv.type == VDBParticleType::eVector) {
 				RawParticles temp;
 				temp.deserialize(grid_recv.vector_grid);
 				grid_dst.raw_particles.merge(temp);

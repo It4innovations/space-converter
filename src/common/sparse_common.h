@@ -1,0 +1,299 @@
+/*
+ * Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+ *
+ * This program is free software : you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
+
+#pragma once
+
+//#include "convert_vdb.h"
+
+#include <cstdint>
+#include "data_common.h"
+
+#define COORD_BITS 21
+#define COORD_BIAS (1 << (COORD_BITS - 1)) // 2^20
+#define COORD_MASK ((1ull << COORD_BITS) - 1ull)
+
+namespace common {
+	namespace vdb {
+		namespace sparse {
+			/**
+			 * @brief Single voxel entry in the sparse grid
+			 */
+			struct Voxel {
+				int i;         ///< X coordinate (voxel index)
+				int j;         ///< Y coordinate (voxel index)
+				int k;         ///< Z coordinate (voxel index)
+				float value;   ///< Voxel value (density, temperature, etc.)
+
+#ifdef __CUDACC__
+				__host__ __device__ 
+#endif
+				Voxel() : i(0), j(0), k(0), value(0.0f) {}
+				
+#ifdef __CUDACC__
+				__host__ __device__ 
+#endif					
+				Voxel(int _i, int _j, int _k, float _value) 
+					: i(_i), j(_j), k(_k), value(_value) {}
+			};
+
+			// /**
+			//  * @brief Sparse grid representation storing only non-empty voxels
+			//  * 
+			//  * Stores sparse voxel data as (i, j, k, value) tuples, replacing
+			//  * the NanoVDB and OpenVDB grid representations with a simpler format.
+			//  * Used for VDBParticleType::eSparse representation.
+			//  */
+			// struct SparseParticles
+			// {
+			// 	std::vector<Voxel> voxels;  ///< Collection of non-empty voxels
+
+			// 	/**
+			// 	 * @brief Add a voxel to the sparse grid
+			// 	 * @param i X coordinate
+			// 	 * @param j Y coordinate
+			// 	 * @param k Z coordinate
+			// 	 * @param value Voxel value
+			// 	 */
+			// 	void add_voxel(int i, int j, int k, float value) {
+			// 		voxels.emplace_back(i, j, k, value);
+			// 	}
+
+			// 	/**
+			// 	 * @brief Clear all voxel data
+			// 	 */
+			// 	void clear() {
+			// 		voxels.clear();
+			// 	}
+
+			// 	/**
+			// 	 * @brief Get the number of active voxels
+			// 	 * @return Number of voxels in the sparse grid
+			// 	 */
+			// 	size_t size() const {
+			// 		return voxels.size();
+			// 	}
+
+			// 	/**
+			// 	 * @brief Reserve space for voxels to avoid reallocation
+			// 	 * @param count Expected number of voxels
+			// 	 */
+			// 	void reserve(size_t count) {
+			// 		voxels.reserve(count);
+			// 	}
+
+			// 	/**
+			// 	 * @brief Serialize sparse grid data to a binary file
+			// 	 * @param filename Path to output file
+			// 	 */
+			// 	void serialize(const std::string& filename) const {
+			// 		std::ofstream out(filename, std::ios::binary);
+			// 		if (!out) {
+			// 			throw std::runtime_error("Failed to open file for writing");
+			// 		}
+
+			// 		// Write the number of voxels
+			// 		size_t voxel_count = voxels.size();
+			// 		out.write(reinterpret_cast<const char*>(&voxel_count), sizeof(voxel_count));
+
+			// 		// Write all voxel data
+			// 		out.write(reinterpret_cast<const char*>(voxels.data()), voxel_count * sizeof(Voxel));
+
+			// 		out.close();
+			// 	}
+
+			// 	/**
+			// 	 * @brief Deserialize sparse grid data from a binary file
+			// 	 * @param filename Path to input file
+			// 	 */
+			// 	void deserialize(const std::string& filename) {
+			// 		std::ifstream in(filename, std::ios::binary);
+			// 		if (!in) {
+			// 			throw std::runtime_error("Failed to open file for reading");
+			// 		}
+
+			// 		// Read the number of voxels
+			// 		size_t voxel_count;
+			// 		in.read(reinterpret_cast<char*>(&voxel_count), sizeof(voxel_count));
+
+			// 		// Read all voxel data
+			// 		voxels.resize(voxel_count);
+			// 		in.read(reinterpret_cast<char*>(voxels.data()), voxel_count * sizeof(Voxel));
+
+			// 		in.close();
+			// 	}
+
+			// 	/**
+			// 	 * @brief Serialize sparse grid data to a binary buffer (for MPI/network transfer)
+			// 	 * @param bin_data Output buffer to store serialized data
+			// 	 */
+			// 	void serialize(std::vector<uint8_t>& bin_data) const {
+			// 		size_t voxel_count = voxels.size();
+			// 		size_t total_size = sizeof(voxel_count) + voxel_count * sizeof(Voxel);
+					
+			// 		bin_data.resize(total_size);
+			// 		uint8_t* ptr = bin_data.data();
+
+			// 		// Write voxel count
+			// 		memcpy(ptr, &voxel_count, sizeof(voxel_count));
+			// 		ptr += sizeof(voxel_count);
+
+			// 		// Write voxel data
+			// 		memcpy(ptr, voxels.data(), voxel_count * sizeof(Voxel));
+			// 	}
+
+			// 	/**
+			// 	 * @brief Deserialize sparse grid data from a binary buffer
+			// 	 * @param bin_data Input buffer containing serialized data
+			// 	 */
+			// 	void deserialize(const std::vector<uint8_t>& bin_data) {
+			// 		const uint8_t* ptr = bin_data.data();
+
+			// 		// Read voxel count
+			// 		size_t voxel_count;
+			// 		memcpy(&voxel_count, ptr, sizeof(voxel_count));
+			// 		ptr += sizeof(voxel_count);
+
+			// 		// Read voxel data
+			// 		voxels.resize(voxel_count);
+			// 		memcpy(voxels.data(), ptr, voxel_count * sizeof(Voxel));
+			// 	}
+
+			// 	/**
+			// 	 * @brief Merge another SparseParticles object into this one
+			// 	 * @param other Source sparse grid to merge
+			// 	 * 
+			// 	 * Appends all voxels from the other sparse grid into this one.
+			// 	 */
+			// 	void merge(const SparseParticles& other) {
+			// 		voxels.insert(voxels.end(), other.voxels.begin(), other.voxels.end());
+			// 	}
+			// };
+
+			// ---------------------------------------------
+			// Key packing (lossless within chosen range)
+			// 21 bits per axis => range [-2^20, 2^20-1]
+			// i,j,k must be within [-1,048,576, 1,048,575]
+			// ---------------------------------------------
+			//static constexpr int   COORD_BITS = 21;
+			//static constexpr int   COORD_BIAS = 1 << (COORD_BITS - 1); // 2^20
+			//static constexpr uint64_t COORD_MASK = (1ull << COORD_BITS) - 1ull;
+
+#ifdef __CUDACC__
+			__host__ __device__ 
+#endif			
+			inline uint64_t packCoord3(int x, int y, int z)
+			{
+				// Note: for production, you may want to clamp or assert in debug.
+				uint64_t ux = (uint64_t)(x + COORD_BIAS) & COORD_MASK;
+				uint64_t uy = (uint64_t)(y + COORD_BIAS) & COORD_MASK;
+				uint64_t uz = (uint64_t)(z + COORD_BIAS) & COORD_MASK;
+
+				return (ux) | (uy << COORD_BITS) | (uz << (2 * COORD_BITS));
+			}
+
+#ifdef __CUDACC__			
+			__host__ __device__ 
+#endif			
+			inline void unpackCoord3(uint64_t key, int &x, int &y, int &z)
+			{
+				uint64_t ux = (key) & COORD_MASK;
+				uint64_t uy = (key >> COORD_BITS) & COORD_MASK;
+				uint64_t uz = (key >> (2 * COORD_BITS)) & COORD_MASK;
+
+				x = (int)ux - COORD_BIAS;
+				y = (int)uy - COORD_BIAS;
+				z = (int)uz - COORD_BIAS;
+			}
+
+			// Hash map entry for voxel storage
+			struct VoxelHashEntry {
+				int i, j, k;
+				float value;
+				int occupied;  // 0 = empty, -1 = being written, 1 = fully written
+			};
+
+			// ---------------------------------------------
+			// OpenMP-based CPU voxel manager
+			// ---------------------------------------------
+			class VoxelOpenMPManager: public common::vdb::VoxelManager {
+			private:
+				VoxelHashEntry* hash_table;
+				unsigned int table_size;
+				int insert_count;
+				
+				// Hash function for 3D coordinates (CPU version)
+				inline unsigned int hash3D_cpu(int i, int j, int k) const;
+				
+			public:
+				VoxelOpenMPManager(unsigned int expected_voxels);
+				~VoxelOpenMPManager();
+				
+				// Helper for sequential insertion
+				void insertOrUpdatePackedSequential(uint64_t key, float value) override;
+				
+				// Insert or update voxels using OpenMP parallelization with thread-local pre-aggregation
+				void insertOrUpdate(Voxel* h_voxels, int num_voxels);
+				
+				// Extract all voxels from hash table using OpenMP
+				int extractAll(Voxel** h_output_voxels);
+				
+				// Clear hash table
+				void clear();
+			};
+
+			// ---------------------------------------------
+			// GPU-based voxel manager using sort+reduce
+			// ---------------------------------------------
+			class VoxelGPUManagerSortReduce : public common::vdb::VoxelManager {
+			public:
+				VoxelGPUManagerSortReduce(size_t max_particles);
+				~VoxelGPUManagerSortReduce();
+
+				// Accumulate a batch of voxels: output becomes unique (i,j,k) with summed values
+				// Returns number of unique voxels in the batch.
+				int insertOrUpdate(const Voxel* h_voxels, int num_voxels, bool print_timing = true);
+
+				// Extract the last accumulated unique voxels back to host
+				int extractAll(Voxel** h_output_voxels, bool print_timing = true);
+
+			private:
+				size_t m_max = 0;
+				int    m_last_count = 0;
+
+				Voxel* d_inVoxels = nullptr;
+
+				uint64_t* d_keys = nullptr;
+				float* d_vals = nullptr;
+
+				uint64_t* d_keys_alt = nullptr;
+				float* d_vals_alt = nullptr;
+
+				uint64_t* d_keys_out = nullptr;
+				float* d_vals_out = nullptr;
+
+				int* d_num_out = nullptr;
+
+				void* d_sort_temp = nullptr;
+				size_t    m_sort_temp_bytes = 0;
+
+				void* d_reduce_temp = nullptr;
+				size_t    m_reduce_temp_bytes = 0;
+			};
+		}
+	}// vdb
+} //common

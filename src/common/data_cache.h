@@ -45,6 +45,8 @@ namespace common {
 			std::vector< std::vector<float> > rho_particles_per_ptype;     ///< Density values per type
             std::vector< std::vector<float> > mass_particles_per_ptype;     ///< Mass values per type
 
+            std::vector<float> values_particles; ///< Particle values for extracted type (e.g., density, temperature)
+
             // GPU data pointers
             std::vector<float*> d_pos_particles_per_ptype;              ///< GPU particle positions per type
             std::vector<size_t*> d_particles_id_ordered_per_ptype;      ///< GPU particle IDs ordered by radius per type
@@ -52,6 +54,8 @@ namespace common {
             size_t* d_particles_ptype_offset;                           ///< GPU particle count offsets per type
             std::vector<float*> d_rho_particles_per_ptype;              ///< GPU density values per type
             std::vector<float*> d_mass_particles_per_ptype;             ///< GPU mass values per type
+
+            float* d_values_particles;                    ///< GPU particle values for extracted type (e.g., density, temperature)
 
             // Others
             double radius_particle_const = 0.0; ///< Constant particle radius value

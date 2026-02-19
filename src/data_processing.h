@@ -207,7 +207,7 @@ namespace space_converter {
 	 * @param particle_type Type of VDB data (FloatGrid, NanoVDB, RawParticles)
 	 * @param only_rank0 If true, only rank 0 writes output (default: true)
 	 */
-	void save_vdb(common::vdb::ConvertVDBBase* convert_vdb_base, FromCL& from_cl, common::SpaceData& space_data, common::vdb::VDBParticles& grid_main_final, common::vdb::VDBParticles::VDBParticleType particle_type, bool only_rank0 = true);
+	void save_vdb(common::vdb::ConvertVDBBase* convert_vdb_base, FromCL& from_cl, common::SpaceData& space_data, common::vdb::VDBParticles& grid_main_final, common::vdb::VDBParticleType particle_type, bool only_rank0 = true);
 
 	/**
 	 * @brief Save dense volume as raw binary file.
