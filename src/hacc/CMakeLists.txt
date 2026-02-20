@@ -60,13 +60,10 @@ if(WITH_NANOVDB)
     list(APPEND INC
         ${NANOVDB_INCLUDE_DIRS}
     )    
-
-    add_definitions(-DOPENVDB_VERSION=${OPENVDB_VERSION})
 endif()
 
 if(WITH_OPENVDB)
     add_definitions(-DWITH_OPENVDB)
-    add_definitions(-DOPENVDB_VERSION=${OPENVDB_VERSION})
 endif()
 
 if(WITH_MPI)

@@ -32,12 +32,30 @@ namespace common {
 
 		class VoxelManager {
 		public:
-			void set_transform(double transform_scale) {
+			virtual void set_transform(double transform_scale) {
 				this->transform_scale = transform_scale;
 			}
 
+			virtual void init(unsigned int expected_voxels) {};
+			
+			// Helper for sequential insertion
 			virtual void insertOrUpdatePackedSequential(uint64_t key, float value) {};
-		private:
+
+			// Serialization: write current voxel data to binary buffer
+			virtual void serialize(uint8_t *bin_data) {};
+			
+			// Deserialization: read voxel data from binary buffer
+			virtual void deserialize(uint8_t *bin_data) {};
+			
+			// Merge: combine voxels from another manager (accumulate values)
+			virtual void merge(common::vdb::VoxelManager* other) {};
+
+			virtual void merge(uint8_t* bin_data) {};
+
+			virtual size_t mem_size() const {
+				return 0;
+			}
+		public:
 			double transform_scale;
 		};
 

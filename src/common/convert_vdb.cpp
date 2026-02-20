@@ -40,11 +40,7 @@
 #	include <openvdb/tools/PointScatter.h>
 #	include <openvdb/tools/Dense.h>
 
-#if OPENVDB_VERSION == 11
-#	include <nanovdb/util/NanoToOpenVDB.h>
-#else
 #	include <nanovdb/tools/NanoToOpenVDB.h>
-#endif
 #endif
 
 #include "dense_common.h"
@@ -245,6 +241,85 @@ namespace common {
 			}
 
 			printf("find_particle_positions: Find positions: %f\n", omp_get_wtime() - t_start);
+		}
+
+		bool ConvertVDBBase::find_particle_values(int ptype, int block_name_id)
+		{
+			//int cached_value_ptype = -1; ///< Cached particle type for values_particles (to track which type's values are currently cached)
+			//int cached_value_block_name_id = -1; ///< Cached block name ID for values_particles (to track which block's values are currently cached)
+			if (cache_manager.cached_value_ptype == ptype && cache_manager.cached_value_block_name_id == block_name_id) {
+				// Values are already cached for this particle type and block, no need to recompute
+				return false;
+			}
+
+			double t_start = omp_get_wtime();
+
+			size_t no_points = get_local_num_particles();
+			int ptype_count = get_num_types();
+
+			int num_threads = omp_get_max_threads();
+
+//#pragma omp parallel for
+//			for (size_t i = 0; i < no_points; i++) {
+//
+//				if (get_particle_type(i) != ptype)
+//					continue;
+//
+//				float value = 0;
+//				get_particle_value(block_name_id, i, &value);
+//
+//				cache_manager.values_particles.push_back(value);
+//			}
+
+			std::vector<float> values_master;
+			std::vector < std::vector<float> > values_thread(num_threads);
+
+#pragma omp parallel num_threads(num_threads) 
+			{
+				int tid = omp_get_thread_num();
+
+#pragma omp for
+				for (size_t i = 0; i < no_points; i++) {
+
+					if (get_particle_type(i) != ptype)
+						continue;
+
+					double Pos[3];
+					get_particle_position(i, Pos);
+
+					//// Collect particle positions per thread
+					//points_thread[tid].push_back(Pos[0]);
+					//points_thread[tid].push_back(Pos[1]);
+					//points_thread[tid].push_back(Pos[2]);
+
+					//double mass = get_particle_mass(i);
+					//pmass_thread[tid].push_back(mass);
+
+					//double rho = get_particle_rho(i);
+					//rho_thread[tid].push_back(rho);
+
+					//double radius = get_particle_hsml(i);
+					//radius_thread[tid].push_back(radius);
+
+					//particles_id_thread[tid].push_back(i);
+
+					float value = 0;
+					get_particle_value(block_name_id, i, &value);
+					values_thread[tid].push_back(value);
+				}
+			}
+
+			for (int t = 0; t < num_threads; ++t) {
+				values_master.insert(values_master.end(), values_thread[t].begin(), values_thread[t].end());
+			}
+
+			cache_manager.values_particles = std::move(values_master);
+			cache_manager.cached_value_ptype = ptype;
+			cache_manager.cached_value_block_name_id = block_name_id;
+
+			printf("find_particle_value: Find values: %f\n", omp_get_wtime() - t_start);
+
+			return true;
 		}
 
 #ifdef WITH_CUDAKDTREE
@@ -544,8 +619,17 @@ namespace common {
 				return;
 			}
 
+			// Cache value particles if not already cached for this particle type and block
+			bool new_values = find_particle_values(particle_type, block_name_id);
+
 #ifdef WITH_GPU_CUDA
 			if (cache_manager.use_gpu_cuda) {
+
+				if (new_values) {
+					// Upload values_particles to GPU if they were newly computed
+					cache_manager.copy_values_to_gpu();
+				}
+
 				// Use GPU kernel with cached GPU particle positions
 				const float* d_pos_particles = cache_manager.d_pos_particles_per_ptype[particle_type];
 				const size_t* d_particles_id_ordered = cache_manager.d_particles_id_ordered_per_ptype[particle_type];
@@ -726,6 +810,10 @@ namespace common {
 //				openvdb::tools::compSum(*grid_dst.vdb_grid, *grid_src_float);
 //			}
 //#endif
+			else if ((grid_dst.type == VDBParticleType::eNanoVDB || grid_dst.type == VDBParticleType::eOpenVDB) && grid_recv.type == VDBParticleType::eVector) {
+				grid_dst.sparse_particles->merge(grid_recv.vector_grid.data());
+			}
+
 			else if (grid_dst.type == VDBParticleType::eRawParticles && grid_recv.type == VDBParticleType::eVector) {
 				RawParticles temp;
 				temp.deserialize(grid_recv.vector_grid);
@@ -819,24 +907,9 @@ namespace common {
 
 #ifdef WITH_NANOVDB
 
-#if OPENVDB_VERSION == 11
-		/**
-		 * @brief Convert dense grid to sparse NanoVDB grid (OpenVDB v11)
-		 * 
-		 * Converts regular dense grid to memory-efficient sparse NanoVDB format.
-		 * Applies normalization and only stores non-zero voxels.
-		 */
-		std::shared_ptr<nanovdb::build::FloatGrid> ConvertVDBBase::dense_to_nanovdb(DenseParticles& particles, double transform_scale, common::SpaceData::DenseType dense_type, common::SpaceData::DenseNorm dense_norm)
-#else
 		std::shared_ptr<nanovdb::tools::build::FloatGrid> ConvertVDBBase::dense_to_nanovdb(DenseParticles& particles, double transform_scale, common::SpaceData::DenseType dense_type, common::SpaceData::DenseNorm dense_norm)
-#endif
 		{
-
-#if OPENVDB_VERSION == 11
-			std::shared_ptr<nanovdb::build::FloatGrid> nano_grid = std::make_shared<nanovdb::build::FloatGrid>(0.0f, "density", nanovdb::GridClass::FogVolume);
-#else
 			std::shared_ptr<nanovdb::tools::build::FloatGrid> nano_grid = std::make_shared<nanovdb::tools::build::FloatGrid>(0.0f, "density", nanovdb::GridClass::FogVolume);
-#endif
 
 // Create NanoVDB transform with scale factor and translation offset
 
@@ -908,6 +981,62 @@ namespace common {
 
 			return nano_grid;
 		}
+
+		std::shared_ptr<nanovdb::tools::build::FloatGrid> ConvertVDBBase::sparse_to_nanovdb(VoxelManager* voxel_manager)
+		{
+
+			std::shared_ptr<nanovdb::tools::build::FloatGrid> nano_grid = std::make_shared<nanovdb::tools::build::FloatGrid>(0.0f, "density", nanovdb::GridClass::FogVolume);
+
+			// Create NanoVDB transform with scale factor and translation offset
+
+			nano_grid->setTransform(
+				voxel_manager->transform_scale,
+				nanovdb::Vec3d(0, 0, 0)
+			);
+
+			// Attempt to dynamic_cast to VoxelOpenMPManager
+			common::vdb::sparse::VoxelOpenMPManager* voxel_omp_manager = dynamic_cast<common::vdb::sparse::VoxelOpenMPManager*>(voxel_manager);
+			if (voxel_omp_manager) {
+				auto acc_dst = nano_grid->getAccessor();
+
+				for (unsigned int i = 0; voxel_omp_manager->table_size; i++) {
+					if (voxel_omp_manager->hash_table[i].occupied != 1) continue;
+
+					nanovdb::Coord xyz(voxel_omp_manager->hash_table[i].i, voxel_omp_manager->hash_table[i].j, voxel_omp_manager->hash_table[i].k);
+					float value = voxel_omp_manager->hash_table[i].value;
+					// Only store non-zero values to maintain sparse storage efficiency
+					// Background value (0.0f) is implicit in NanoVDB
+					if (value != 0.0f) {
+						acc_dst.setValue(xyz, value);
+					}
+				}
+			}
+
+			// Attempt to dynamic_cast to VoxelGPUManagerSortReduce
+			common::vdb::sparse::VoxelGPUManagerSortReduce* voxel_gpu_manager = dynamic_cast<common::vdb::sparse::VoxelGPUManagerSortReduce*>(voxel_manager);
+			if (voxel_gpu_manager) {
+				uint64_t* h_keys = new uint64_t[voxel_gpu_manager->m_last_count];
+				float* h_vals = new float[voxel_gpu_manager->m_last_count];
+				voxel_gpu_manager->get_keys_values_from_device(h_keys, h_vals);
+
+				auto acc_dst = nano_grid->getAccessor();
+				for (unsigned int i = 0; i < voxel_gpu_manager->m_last_count; i++) {
+					int x, y, z;
+					common::vdb::sparse::unpackCoord3(h_keys[i], x, y, z);
+					nanovdb::Coord xyz(x, y, z);
+					float value = h_vals[i];
+					// Only store non-zero values to maintain sparse storage efficiency
+					// Background value (0.0f) is implicit in NanoVDB
+					if (value != 0.0f) {
+						acc_dst.setValue(xyz, value);
+					}
+				}
+				delete[] h_keys;
+				delete[] h_vals;
+			}
+
+			return nano_grid;
+		}
 #endif
 
 #if defined(WITH_OPENVDB)
@@ -967,6 +1096,63 @@ namespace common {
 			openvdb::math::CoordBBox bbox(openvdb::Coord(0, 0, 0), openvdb::Coord(particles.x() - 1, particles.y() - 1, particles.z() - 1));
 			openvdb::tools::Dense<const float, openvdb::tools::LayoutXYZ> dense(bbox, particles.data_density.data());
 			openvdb::tools::copyFromDense(dense, floatgrid->tree(), 0.0f);
+
+			return floatgrid;
+		}
+
+		openvdb::FloatGrid::Ptr ConvertVDBBase::sparse_to_openvdb(VoxelManager* voxel_manager) {
+			openvdb::FloatGrid::Ptr floatgrid = openvdb::FloatGrid::create(0.0f);
+
+			// Configure grid metadata
+			floatgrid->setGridClass(openvdb::GRID_FOG_VOLUME);
+			std::string grid_name("density");
+			floatgrid->setName(grid_name);
+
+			// Create transform with scale and translation offset
+			openvdb::math::Transform::Ptr transform = openvdb::math::Transform::createLinearTransform(voxel_manager->transform_scale);
+			//transform->postTranslate(openvdb::Vec3d(particles.offset[0] * transform_scale, particles.offset[1] * transform_scale, particles.offset[2] * transform_scale));
+			floatgrid->setTransform(transform);
+
+			// Attempt to dynamic_cast to VoxelOpenMPManager
+			common::vdb::sparse::VoxelOpenMPManager* voxel_omp_manager = dynamic_cast<common::vdb::sparse::VoxelOpenMPManager*>(voxel_manager);
+			if (voxel_omp_manager) {
+				auto acc_dst = floatgrid->getAccessor();
+
+				for (unsigned int i = 0; voxel_omp_manager->table_size; i++) {
+					if (voxel_omp_manager->hash_table[i].occupied != 1) continue;
+
+					openvdb::Coord xyz(voxel_omp_manager->hash_table[i].i, voxel_omp_manager->hash_table[i].j, voxel_omp_manager->hash_table[i].k);
+					float value = voxel_omp_manager->hash_table[i].value;
+					// Only store non-zero values to maintain sparse storage efficiency
+					// Background value (0.0f) is implicit in OpenVDB
+					if (value != 0.0f) {
+						acc_dst.setValue(xyz, value);
+					}
+				}
+			}
+
+			// Attempt to dynamic_cast to VoxelGPUManagerSortReduce
+			common::vdb::sparse::VoxelGPUManagerSortReduce* voxel_gpu_manager = dynamic_cast<common::vdb::sparse::VoxelGPUManagerSortReduce*>(voxel_manager);
+			if (voxel_gpu_manager) {
+				uint64_t* h_keys = new uint64_t[voxel_gpu_manager->m_last_count];
+				float* h_vals = new float[voxel_gpu_manager->m_last_count];
+				voxel_gpu_manager->get_keys_values_from_device(h_keys, h_vals);
+
+				auto acc_dst = floatgrid->getAccessor();
+				for (unsigned int i = 0; i < voxel_gpu_manager->m_last_count; i++) {
+					int x, y, z;
+					common::vdb::sparse::unpackCoord3(h_keys[i], x, y, z);
+					openvdb::Coord xyz(x, y, z);
+					float value = h_vals[i];
+					// Only store non-zero values to maintain sparse storage efficiency
+					// Background value (0.0f) is implicit in OpenVDB
+					if (value != 0.0f) {
+						acc_dst.setValue(xyz, value);
+					}
+				}
+				delete[] h_keys;
+				delete[] h_vals;
+			}
 
 			return floatgrid;
 		}

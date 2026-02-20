@@ -42,13 +42,8 @@
 #    include <nanovdb/util/OpenToNanoVDB.h>
 #  endif
 
-#if OPENVDB_VERSION == 11
-#	include <nanovdb/util/GridBuilder.h>
-#	include <nanovdb/util/IO.h>
-#else
 #	include <nanovdb/tools/GridBuilder.h>
 #	include <nanovdb/io/IO.h>
-#endif
 
 #endif
 
@@ -144,11 +139,7 @@ int main(int argc, char** argv) {
 					if (use_filter) {
 						std::cout << "Filtering values between " << filter_min << " and " << filter_max << std::endl;
 
-#if OPENVDB_VERSION == 11
-						nanovdb::build::FloatGrid nanogrid(0.0f, grid_name, nanovdb::GridClass::FogVolume);
-#else
 						nanovdb::tools::build::FloatGrid nanogrid(0.0f, grid_name, nanovdb::GridClass::FogVolume);
-#endif
 						auto acc_dst = nanogrid.getAccessor();
 
 						openvdb::FloatGrid::Ptr grid = openvdb::gridPtrCast<openvdb::FloatGrid>(base_grid);
@@ -168,11 +159,7 @@ int main(int argc, char** argv) {
 
 						std::cout << "After filtering: " << filter_count << "/" << orig_count << " active voxels (saved: " << int(100.0f - (float)filter_count * 100.0f / (float)orig_count) << "% from " << grid->activeVoxelCount() << ")" << std::endl;
 
-#if OPENVDB_VERSION == 11
-						nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle = nanovdb::createNanoGrid(nanogrid);
-#else
 						nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle = nanovdb::tools::createNanoGrid(nanogrid);
-#endif
 
 						nanovdb::io::writeGrid(out_file_nvdb, grid_handle);
 						printf("finished: %s\n", out_file_nvdb.c_str());
@@ -198,21 +185,8 @@ int main(int argc, char** argv) {
 						//openvdb::tools::Dense<const float, openvdb::tools::LayoutXYZ> denseOut(bbox, data_density.data());
 						//openvdb::tools::copyFromDense(denseOut, grid_new->tree(), 0.0f);
 
-#if OPENVDB_VERSION == 11									
-
-#  if NANOVDB_MAJOR_VERSION_NUMBER > 32 || \
-      (NANOVDB_MAJOR_VERSION_NUMBER == 32 && NANOVDB_MINOR_VERSION_NUMBER >= 7)
-						const openvdb::FloatGrid grid(*openvdb::gridConstPtrCast<openvdb::FloatGrid>(base_grid));
-						nanovdb::GridHandle<nanovdb::HostBuffer> nanogrid = nanovdb::createNanoGrid<openvdb::FloatGrid, float>(grid);
-#  else
-						openvdb::FloatGrid::Ptr grid = openvdb::gridPtrCast<openvdb::FloatGrid>(base_grid);
-						nanovdb::GridHandle<nanovdb::HostBuffer> nanogrid = nanovdb::openToNanoVDB(grid);
-#  endif
-
-#else
 						const openvdb::FloatGrid grid(*openvdb::gridConstPtrCast<openvdb::FloatGrid>(base_grid));
 						nanovdb::GridHandle<nanovdb::HostBuffer> nanogrid = nanovdb::tools::createNanoGrid<openvdb::FloatGrid, float>(grid);
-#endif				
 
 						nanovdb::io::writeGrid(out_file_nvdb, nanogrid);
 						printf("finished: %s\n", out_file_nvdb.c_str());

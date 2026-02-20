@@ -26,7 +26,27 @@
  #include <iostream>
 
 namespace common {
-    namespace cache {     
+    namespace cache {
+
+        void CacheManager::copy_values_to_gpu() {
+            // Free values_particles
+            if (d_values_particles != nullptr) {
+                CUDA_CHECK_ERROR(cudaFree(d_values_particles));
+                d_values_particles = nullptr;
+            }
+
+			// Allocate and copy values_particles
+            if (!values_particles.empty()) {
+                size_t size_bytes = values_particles.size() * sizeof(float);
+                CUDA_CHECK_ERROR(cudaMalloc(&d_values_particles, size_bytes));
+                CUDA_CHECK_ERROR(cudaMemcpy(d_values_particles, values_particles.data(), 
+                         size_bytes, cudaMemcpyHostToDevice));
+            } else {
+                d_values_particles = nullptr;
+            }
+            // Check for CUDA errors
+			CUDA_CHECK_LAST_ERROR();
+        }
         
         void CacheManager::copy_particles_to_gpu() {
             // Free existing GPU memory if any
@@ -156,6 +176,12 @@ namespace common {
                 }
             }
             d_mass_particles_per_ptype.clear();
+
+            // Free values_particles
+            if (d_values_particles != nullptr) {
+                CUDA_CHECK_ERROR(cudaFree(d_values_particles));
+                d_values_particles = nullptr;
+            }
 
             // Check for CUDA errors
             CUDA_CHECK_LAST_ERROR();

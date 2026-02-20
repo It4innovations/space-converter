@@ -231,7 +231,7 @@ namespace common {
 			// OpenMP-based CPU voxel manager
 			// ---------------------------------------------
 			class VoxelOpenMPManager: public common::vdb::VoxelManager {
-			private:
+			public:
 				VoxelHashEntry* hash_table;
 				unsigned int table_size;
 				int insert_count;
@@ -240,11 +240,36 @@ namespace common {
 				inline unsigned int hash3D_cpu(int i, int j, int k) const;
 				
 			public:
-				VoxelOpenMPManager(unsigned int expected_voxels);
+				VoxelOpenMPManager();
 				~VoxelOpenMPManager();
+
+			public:
+				void init(unsigned int expected_voxels) override;
 				
 				// Helper for sequential insertion
 				void insertOrUpdatePackedSequential(uint64_t key, float value) override;
+
+				// Serialization: write current voxel data to binary buffer
+				void serialize(uint8_t *bin_data) override;
+				
+				// Deserialization: read voxel data from binary buffer
+				void deserialize(uint8_t *bin_data) override;
+				
+				// Merge: combine voxels from another manager (accumulate values)
+				void merge(common::vdb::VoxelManager* other) override;
+
+				size_t mem_size() const override {
+					return sizeof(int) + sizeof(unsigned int) + sizeof(VoxelHashEntry) * table_size;
+				}
+
+				void merge(uint8_t* bin_data) override {
+					// Deserialize the incoming data into a temporary manager and then merge
+					VoxelOpenMPManager temp_manager;
+					temp_manager.deserialize(bin_data);
+					this->merge(&temp_manager);
+				}
+
+			public:
 				
 				// Insert or update voxels using OpenMP parallelization with thread-local pre-aggregation
 				void insertOrUpdate(Voxel* h_voxels, int num_voxels);
@@ -253,7 +278,7 @@ namespace common {
 				int extractAll(Voxel** h_output_voxels);
 				
 				// Clear hash table
-				void clear();
+				void clear();				
 			};
 
 			// ---------------------------------------------
@@ -261,30 +286,81 @@ namespace common {
 			// ---------------------------------------------
 			class VoxelGPUManagerSortReduce : public common::vdb::VoxelManager {
 			public:
-				VoxelGPUManagerSortReduce(size_t max_particles);
+				VoxelGPUManagerSortReduce();
 				~VoxelGPUManagerSortReduce();
 
+			public:
+				void init(unsigned int expected_voxels) override;
+				
+				// Helper for sequential insertion
+				//void insertOrUpdatePackedSequential(uint64_t key, float value) override;
+
+				// Serialization: write current voxel data to binary buffer
+				void serialize(uint8_t *bin_data) override;
+				
+				// Deserialization: read voxel data from binary buffer
+				void deserialize(uint8_t *bin_data) override;
+				
+				// Merge: combine voxels from another manager (accumulate values)
+				void merge(common::vdb::VoxelManager* other) override;
+
+				size_t mem_size() const override {
+					// TODO: this is a rough estimate. For accurate memory usage, we would need to track the actual number of voxels after reduction.
+					//return sizeof(size_t) + sizeof(size_t) + sizeof(uint64_t) * m_max + sizeof(float) * m_max;
+
+					// int    m_last_count = 0;
+					// uint64_t* d_keys_out = nullptr;
+					// float* d_vals_out = nullptr;
+					return sizeof(int) + sizeof(uint64_t) * m_last_count + sizeof(float) * m_last_count;
+				}
+
+				void merge(uint8_t* bin_data) override {
+					// Deserialize the incoming data into a temporary manager and then merge
+					VoxelGPUManagerSortReduce temp_manager;
+					temp_manager.deserialize(bin_data);
+					this->merge(&temp_manager);
+				}
+				
+			public:
 				// Accumulate a batch of voxels: output becomes unique (i,j,k) with summed values
 				// Returns number of unique voxels in the batch.
-				int insertOrUpdate(const Voxel* h_voxels, int num_voxels, bool print_timing = true);
+				int insertOrUpdate(const Voxel* h_voxels, int num_voxels);
 
 				// Extract the last accumulated unique voxels back to host
-				int extractAll(Voxel** h_output_voxels, bool print_timing = true);
+				int extractAll(Voxel** h_output_voxels);
+				
+				// CPU-side serialization: write current voxel data to binary buffer
+				void serializeCPU(uint8_t* bin_data);
+				
+				// CPU-side deserialization: read voxel data from binary buffer
+				void deserializeCPU(uint8_t* bin_data);
+				
+				// CPU-side merge: combine voxels from another manager (uses host memory)
+				void mergeCPU(common::vdb::VoxelManager* other);
 
-			private:
+				void mergeCPU(uint8_t* bin_data) {
+					// Deserialize the incoming data into a temporary manager and then merge
+					VoxelGPUManagerSortReduce temp_manager;
+					temp_manager.deserializeCPU(bin_data);
+					this->mergeCPU(&temp_manager);
+				}
+
+				void get_keys_values_from_device(uint64_t* h_keys, float* h_vals);
+
+			public:
 				size_t m_max = 0;
 				int    m_last_count = 0;
 
-				Voxel* d_inVoxels = nullptr;
+				uint64_t* d_keys_out = nullptr;
+				float* d_vals_out = nullptr;
+
+				//Voxel* d_inVoxels = nullptr;
 
 				uint64_t* d_keys = nullptr;
 				float* d_vals = nullptr;
 
 				uint64_t* d_keys_alt = nullptr;
 				float* d_vals_alt = nullptr;
-
-				uint64_t* d_keys_out = nullptr;
-				float* d_vals_out = nullptr;
 
 				int* d_num_out = nullptr;
 

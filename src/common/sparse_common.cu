@@ -21,6 +21,7 @@
 #include <cub/cub.cuh>
 
 #include "data_common.h"
+#include "../utility/gpu_utility.h"
 
 namespace common {
 	namespace vdb {
@@ -87,22 +88,34 @@ namespace common {
 			// ---------------------------------------------
 			// Fast manager: per-batch accumulate via sort+reduce
 			// ---------------------------------------------
-			
-			VoxelGPUManagerSortReduce::VoxelGPUManagerSortReduce(size_t max_particles)
-				: m_max(max_particles)
+			VoxelGPUManagerSortReduce::VoxelGPUManagerSortReduce(): 
+				m_max(0), m_last_count(0),
+				d_keys(nullptr), d_vals(nullptr),
+				d_keys_alt(nullptr), d_vals_alt(nullptr),
+				d_keys_out(nullptr), d_vals_out(nullptr),
+				d_num_out(nullptr),
+				d_sort_temp(nullptr), m_sort_temp_bytes(0),
+				d_reduce_temp(nullptr), m_reduce_temp_bytes(0),
+				common::vdb::VoxelManager()
 			{
-					// cudaMalloc(&d_inVoxels,   m_max * sizeof(Voxel));
 
-					cudaMalloc(&d_keys, m_max * sizeof(uint64_t));
-					cudaMalloc(&d_vals, m_max * sizeof(float));
+			}
 
-					cudaMalloc(&d_keys_alt, m_max * sizeof(uint64_t));
-					cudaMalloc(&d_vals_alt, m_max * sizeof(float));
+			void VoxelGPUManagerSortReduce::init(unsigned int expected_voxels)
+			{
+				    m_max = expected_voxels;
+					//cudaMalloc(&d_inVoxels, m_max * sizeof(Voxel));
+
+					CUDA_CHECK_ERROR(cudaMalloc(&d_keys, m_max * sizeof(uint64_t)));
+					CUDA_CHECK_ERROR(cudaMalloc(&d_vals, m_max * sizeof(float)));
+
+					CUDA_CHECK_ERROR(cudaMalloc(&d_keys_alt, m_max * sizeof(uint64_t)));
+					CUDA_CHECK_ERROR(cudaMalloc(&d_vals_alt, m_max * sizeof(float)));
 
 					// Worst-case: all unique => output size == input size
-					cudaMalloc(&d_keys_out, m_max * sizeof(uint64_t));
-					cudaMalloc(&d_vals_out, m_max * sizeof(float));
-					cudaMalloc(&d_num_out, sizeof(int));
+					CUDA_CHECK_ERROR(cudaMalloc(&d_keys_out, m_max * sizeof(uint64_t)));
+					CUDA_CHECK_ERROR(cudaMalloc(&d_vals_out, m_max * sizeof(float)));
+					CUDA_CHECK_ERROR(cudaMalloc(&d_num_out, sizeof(int)));
 
 					// Precompute temp storage sizes for CUB primitives (max)
 					size_t sort_bytes = 0;
@@ -111,7 +124,7 @@ namespace common {
 						d_vals, d_vals_alt,
 						(int)m_max);
 					m_sort_temp_bytes = sort_bytes;
-					cudaMalloc(&d_sort_temp, m_sort_temp_bytes);
+					CUDA_CHECK_ERROR(cudaMalloc(&d_sort_temp, m_sort_temp_bytes));
 
 					size_t reduce_bytes = 0;
 					CustomSum op_sum;
@@ -122,31 +135,50 @@ namespace common {
 						op_sum,
 						(int)m_max);
 				m_reduce_temp_bytes = reduce_bytes;
-				cudaMalloc(&d_reduce_temp, m_reduce_temp_bytes);
+				CUDA_CHECK_ERROR(cudaMalloc(&d_reduce_temp, m_reduce_temp_bytes));
 			}
 
 			VoxelGPUManagerSortReduce::~VoxelGPUManagerSortReduce()
 			{
 					// cudaFree(d_inVoxels);
 
-					cudaFree(d_keys);
-					cudaFree(d_vals);
+					if (d_keys) {
+						CUDA_CHECK_ERROR(cudaFree(d_keys));
+					}
 
-					cudaFree(d_keys_alt);
-					cudaFree(d_vals_alt);
+					if (d_vals) {
+						CUDA_CHECK_ERROR(cudaFree(d_vals));
+					}					
 
-					cudaFree(d_keys_out);
-					cudaFree(d_vals_out);
+					if (d_keys_alt) {
+						CUDA_CHECK_ERROR(cudaFree(d_keys_alt));
+					}
+					if (d_vals_alt) {
+						CUDA_CHECK_ERROR(cudaFree(d_vals_alt));
+					}
 
-					cudaFree(d_num_out);
+					if (d_keys_out) {
+						CUDA_CHECK_ERROR(cudaFree(d_keys_out));
+					}
+					if (d_vals_out) {
+						CUDA_CHECK_ERROR(cudaFree(d_vals_out));
+					}
 
-				cudaFree(d_sort_temp);
-				cudaFree(d_reduce_temp);
+					if (d_num_out) {
+						CUDA_CHECK_ERROR(cudaFree(d_num_out));
+					}
+
+					if (d_sort_temp) {
+						CUDA_CHECK_ERROR(cudaFree(d_sort_temp));
+					}
+					if (d_reduce_temp) {
+						CUDA_CHECK_ERROR(cudaFree(d_reduce_temp));
+					}
 			}
 
 			// Accumulate a batch of voxels: output becomes unique (i,j,k) with summed values
 			// Returns number of unique voxels in the batch.
-			int VoxelGPUManagerSortReduce::insertOrUpdate(const Voxel* h_voxels, int num_voxels, bool print_timing)
+			int VoxelGPUManagerSortReduce::insertOrUpdate(const Voxel* h_voxels, int num_voxels)
 			{
 					if (num_voxels <= 0) {
 						m_last_count = 0;
@@ -158,15 +190,10 @@ namespace common {
 						return 0;
 					}
 
-					cudaEvent_t e0, e1, e2, e3, e4;
-					cudaEventCreate(&e0); cudaEventCreate(&e1); cudaEventCreate(&e2);
-					cudaEventCreate(&e3); cudaEventCreate(&e4);
-
-					cudaEventRecord(e0);
-
 					// H2D
-					cudaMemcpy(d_inVoxels, h_voxels, num_voxels * sizeof(Voxel), cudaMemcpyHostToDevice);
-					cudaEventRecord(e1);
+					Voxel* d_inVoxels = nullptr;
+					CUDA_CHECK_ERROR(cudaMalloc(&d_inVoxels, m_max * sizeof(Voxel)));
+					CUDA_CHECK_ERROR(cudaMemcpy(d_inVoxels, h_voxels, num_voxels * sizeof(Voxel), cudaMemcpyHostToDevice));
 
 					// map -> key/value
 					{
@@ -174,14 +201,14 @@ namespace common {
 						int grid = (num_voxels + block - 1) / block;
 						voxelsToKeyValue << <grid, block >> > (d_inVoxels, num_voxels, d_keys, d_vals);
 					}
-					cudaEventRecord(e2);
 
-					// sort by key (pairs)
-					cub::DeviceRadixSort::SortPairs(d_sort_temp, m_sort_temp_bytes,
-						d_keys, d_keys_alt,
+					CUDA_CHECK_ERROR(cudaFree(d_inVoxels));
+
+				// sort by key (pairs)
+				cub::DeviceRadixSort::SortPairs(d_sort_temp, m_sort_temp_bytes,
+					d_keys, d_keys_alt,
 						d_vals, d_vals_alt,
 						num_voxels);
-					cudaEventRecord(e3);
 
 					// reduce-by-key (sum values for identical keys)
 					CustomSum op_sum;
@@ -193,28 +220,14 @@ namespace common {
 						num_voxels);
 
 					int h_num_out = 0;
-					cudaMemcpy(&h_num_out, d_num_out, sizeof(int), cudaMemcpyDeviceToHost);
-
-					if (print_timing) {
-						float t01 = 0, t12 = 0, t23 = 0, t34 = 0, t04 = 0;
-						cudaEventElapsedTime(&t01, e0, e1); // H2D
-						cudaEventElapsedTime(&t12, e1, e2); // map
-						cudaEventElapsedTime(&t23, e2, e3); // sort
-						cudaEventElapsedTime(&t34, e3, e4); // reduce
-						cudaEventElapsedTime(&t04, e0, e4); // total
-						printf("[SortReduce] H2D: %.3f ms | map: %.3f ms | sort: %.3f ms | reduce: %.3f ms | total: %.3f ms | unique=%d\n",
-							t01, t12, t23, t34, t04, h_num_out);
-					}
-
-					cudaEventDestroy(e0); cudaEventDestroy(e1); cudaEventDestroy(e2);
-					cudaEventDestroy(e3); cudaEventDestroy(e4);
+					CUDA_CHECK_ERROR(cudaMemcpy(&h_num_out, d_num_out, sizeof(int), cudaMemcpyDeviceToHost));
 
 				m_last_count = h_num_out;
 				return h_num_out;
 			}
 
 			// Extract the last accumulated unique voxels back to host
-			int VoxelGPUManagerSortReduce::extractAll(Voxel** h_output_voxels, bool print_timing)
+			int VoxelGPUManagerSortReduce::extractAll(Voxel** h_output_voxels)
 			{
 					const int n = m_last_count;
 					if (n <= 0) {
@@ -222,13 +235,8 @@ namespace common {
 						return 0;
 					}
 
-					cudaEvent_t e0, e1, e2;
-					cudaEventCreate(&e0); cudaEventCreate(&e1); cudaEventCreate(&e2);
-
-					cudaEventRecord(e0);
-
 					Voxel* d_out_voxels = nullptr;
-					cudaMalloc(&d_out_voxels, n * sizeof(Voxel));
+					CUDA_CHECK_ERROR(cudaMalloc(&d_out_voxels, n * sizeof(Voxel)));
 
 					{
 						int block = 256;
@@ -236,29 +244,216 @@ namespace common {
 						keyValueToVoxels << <grid, block >> > (d_keys_out, d_vals_out, n, d_out_voxels);
 					}
 
-					cudaEventRecord(e1);
-
 					*h_output_voxels = new Voxel[n];
-					cudaMemcpy(*h_output_voxels, d_out_voxels, n * sizeof(Voxel), cudaMemcpyDeviceToHost);
+					CUDA_CHECK_ERROR(cudaMemcpy(*h_output_voxels, d_out_voxels, n * sizeof(Voxel), cudaMemcpyDeviceToHost));
 
-					cudaEventRecord(e2);
-					cudaDeviceSynchronize();
+					CUDA_CHECK_ERROR(cudaDeviceSynchronize());
 
-					if (print_timing) {
-						float t01 = 0, t12 = 0, t02 = 0;
-						cudaEventElapsedTime(&t01, e0, e1); // pack->voxel kernel
-						cudaEventElapsedTime(&t12, e1, e2); // D2H copy
-						cudaEventElapsedTime(&t02, e0, e2); // total
-						printf("[SortReduce extractAll] kernel: %.3f ms | D2H: %.3f ms | total: %.3f ms\n",
-							t01, t12, t02);
-					}
-
-					cudaFree(d_out_voxels);
-
-				cudaEventDestroy(e0); cudaEventDestroy(e1); cudaEventDestroy(e2);
+					CUDA_CHECK_ERROR(cudaFree(d_out_voxels));
 
 				return n;
 			}
+
+			// ================================================================================
+			// CPU-side methods
+			// ================================================================================
+
+			// CPU-side serialization: copy from device to host, then serialize
+			void VoxelGPUManagerSortReduce::serializeCPU(uint8_t* bin_data) {
+				// int    m_last_count = 0;
+				// uint64_t* d_keys_out = nullptr;
+				// float* d_vals_out = nullptr;
+
+				// Allocate host memory for keys and values
+				uint64_t* h_keys = new uint64_t[m_last_count];
+				float* h_vals = new float[m_last_count];
+
+				// Copy directly from device
+				CUDA_CHECK_ERROR(cudaMemcpy(h_keys, d_keys_out, m_last_count * sizeof(uint64_t), cudaMemcpyDeviceToHost));
+				CUDA_CHECK_ERROR(cudaMemcpy(h_vals, d_vals_out, m_last_count * sizeof(float), cudaMemcpyDeviceToHost));
+
+				uint8_t* ptr = bin_data;				
+				memcpy(ptr, &m_last_count, sizeof(int));
+				ptr += sizeof(int);
+				memcpy(ptr, h_keys, m_last_count * sizeof(uint64_t));
+				ptr += m_last_count * sizeof(uint64_t);
+				memcpy(ptr, h_vals, m_last_count * sizeof(float));
+
+				delete[] h_keys;
+				delete[] h_vals;
+			}
+
+			// CPU-side deserialization: deserialize then copy to device
+			void VoxelGPUManagerSortReduce::deserializeCPU(uint8_t* bin_data) {
+				if (bin_data == nullptr) {
+					return; // Invalid data
+				}
+
+				// int    m_last_count = 0;
+				// uint64_t* d_keys_out = nullptr;
+				// float* d_vals_out = nullptr;
+				uint8_t* ptr = bin_data;				
+				memcpy(&m_last_count, ptr, sizeof(int));
+				m_max = m_last_count;
+				ptr += sizeof(int);
+
+				CUDA_CHECK_ERROR(cudaMalloc(&d_keys_out, m_last_count * sizeof(uint64_t)));
+				CUDA_CHECK_ERROR(cudaMalloc(&d_vals_out, m_last_count * sizeof(float)));
+
+				CUDA_CHECK_ERROR(cudaMemcpy(d_keys_out, ptr, m_last_count * sizeof(uint64_t), cudaMemcpyHostToDevice));
+				ptr += m_last_count * sizeof(uint64_t);
+				CUDA_CHECK_ERROR(cudaMemcpy(d_vals_out, ptr, m_last_count * sizeof(float), cudaMemcpyHostToDevice));
+			}
+
+			// CPU-side merge: combine key-value pairs from other manager
+			void VoxelGPUManagerSortReduce::mergeCPU(common::vdb::VoxelManager* _other) {
+				// Attempt to dynamic_cast to VoxelGPUManagerSortReduce
+				VoxelGPUManagerSortReduce* other = dynamic_cast<VoxelGPUManagerSortReduce*>(_other);
+				if (!other) {
+					printf("[VoxelGPUManagerSortReduce::mergeCPU] Error: Incompatible manager type\n");
+					return;
+				}
+
+				if (other->m_last_count <= 0) {
+					return; // Nothing to merge
+				}
+
+				const int n1 = m_last_count;
+				const int n2 = other->m_last_count;
+				const int n_total = n1 + n2;
+
+				if ((size_t)n_total > m_max) {
+					printf("[VoxelGPUManagerSortReduce::mergeCPU] ERROR: merged count=%d exceeds max=%zu\n",
+						n_total, m_max);
+					return;
+				}
+
+				// Concatenate key-value pairs
+				CUDA_CHECK_ERROR(cudaMemcpy(d_keys, d_keys_out, n1 * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
+				CUDA_CHECK_ERROR(cudaMemcpy(d_vals, d_vals_out, n1 * sizeof(float), cudaMemcpyDeviceToDevice));
+				CUDA_CHECK_ERROR(cudaMemcpy(d_keys + n1, other->d_keys_out, n2 * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
+				CUDA_CHECK_ERROR(cudaMemcpy(d_vals + n1, other->d_vals_out, n2 * sizeof(float), cudaMemcpyDeviceToDevice));
+
+				// Sort
+				cub::DeviceRadixSort::SortPairs(d_sort_temp, m_sort_temp_bytes,
+					d_keys, d_keys_alt,
+					d_vals, d_vals_alt,
+					n_total);
+
+				// Reduce-by-key
+				CustomSum op_sum;
+				cub::DeviceReduce::ReduceByKey(d_reduce_temp, m_reduce_temp_bytes,
+					d_keys_alt, d_keys_out,
+					d_vals_alt, d_vals_out,
+					d_num_out,
+					op_sum,
+					n_total);
+
+				int h_num_out = 0;
+				CUDA_CHECK_ERROR(cudaMemcpy(&h_num_out, d_num_out, sizeof(int), cudaMemcpyDeviceToHost));
+				m_last_count = h_num_out;
+			}
+
+			void VoxelGPUManagerSortReduce::get_keys_values_from_device(uint64_t* h_keys, float* h_vals) {
+				if (h_keys && d_keys_out) {
+					CUDA_CHECK_ERROR(cudaMemcpy(h_keys, d_keys_out, m_last_count * sizeof(uint64_t), cudaMemcpyDeviceToHost));
+				}
+				if (h_vals && d_vals_out) {
+					CUDA_CHECK_ERROR(cudaMemcpy(h_vals, d_vals_out, m_last_count * sizeof(float), cudaMemcpyDeviceToHost));
+				}
+			}
+
+			// ================================================================================
+			// GPU-side methods (no host memory transfers except for control)
+			// ================================================================================
+
+			// GPU-side serialization: allocate device memory and write serialized data
+			void VoxelGPUManagerSortReduce::serialize(uint8_t* d_data) {
+
+				uint8_t* ptr = d_data;				
+				CUDA_CHECK_ERROR(cudaMemcpy(ptr, &m_last_count, sizeof(int), cudaMemcpyHostToDevice));
+				ptr += sizeof(int);
+				CUDA_CHECK_ERROR(cudaMemcpy(ptr, d_keys_out, m_last_count * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
+				ptr += m_last_count * sizeof(uint64_t);
+				CUDA_CHECK_ERROR(cudaMemcpy(ptr, d_vals_out, m_last_count * sizeof(float), cudaMemcpyDeviceToDevice));
+
+			}
+
+			// GPU-side deserialization: read from device memory
+			void VoxelGPUManagerSortReduce::deserialize(uint8_t* d_data) {
+
+				if (d_data == nullptr) {
+					return; // Invalid data
+				}
+
+				// int    m_last_count = 0;
+				// uint64_t* d_keys_out = nullptr;
+				// float* d_vals_out = nullptr;
+				uint8_t* ptr = d_data;				
+				CUDA_CHECK_ERROR(cudaMemcpy(&m_last_count, ptr, sizeof(int), cudaMemcpyDeviceToHost));
+				m_max = m_last_count;
+				ptr += sizeof(int);
+
+				CUDA_CHECK_ERROR(cudaMalloc(&d_keys_out, m_last_count * sizeof(uint64_t)));
+				CUDA_CHECK_ERROR(cudaMalloc(&d_vals_out, m_last_count * sizeof(float)));
+
+				CUDA_CHECK_ERROR(cudaMemcpy(d_keys_out, ptr, m_last_count * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
+				ptr += m_last_count * sizeof(uint64_t);
+				CUDA_CHECK_ERROR(cudaMemcpy(d_vals_out, ptr, m_last_count * sizeof(float), cudaMemcpyDeviceToDevice));
+				
+			}
+
+			// GPU-side merge: combine with another manager without using host memory
+			void VoxelGPUManagerSortReduce::merge(common::vdb::VoxelManager* _other) {
+				VoxelGPUManagerSortReduce* other = dynamic_cast<VoxelGPUManagerSortReduce*>(_other);
+				if (!other) {
+					printf("[VoxelGPUManagerSortReduce::merge] Error: Incompatible manager type\n");
+					return;
+				}
+
+				if (other->m_last_count <= 0) {
+					return; // Nothing to merge
+				}
+
+				const int n1 = m_last_count;
+				const int n2 = other->m_last_count;
+				const int n_total = n1 + n2;
+
+				if ((size_t)n_total > m_max) {
+					printf("[VoxelGPUManagerSortReduce::merge] ERROR: merged count=%d exceeds max=%zu\n",
+						n_total, m_max);
+					return;
+				}
+
+				// Concatenate key-value pairs from both managers
+				// Copy this manager's data to beginning
+				CUDA_CHECK_ERROR(cudaMemcpy(d_keys, d_keys_out, n1 * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
+				CUDA_CHECK_ERROR(cudaMemcpy(d_vals, d_vals_out, n1 * sizeof(float), cudaMemcpyDeviceToDevice));
+
+				// Copy other manager's data after this manager's data
+				CUDA_CHECK_ERROR(cudaMemcpy(d_keys + n1, other->d_keys_out, n2 * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
+				CUDA_CHECK_ERROR(cudaMemcpy(d_vals + n1, other->d_vals_out, n2 * sizeof(float), cudaMemcpyDeviceToDevice));
+
+				// Sort combined data
+				cub::DeviceRadixSort::SortPairs(d_sort_temp, m_sort_temp_bytes,
+					d_keys, d_keys_alt,
+					d_vals, d_vals_alt,
+					n_total);
+
+				// Reduce-by-key
+				CustomSum op_sum;
+				cub::DeviceReduce::ReduceByKey(d_reduce_temp, m_reduce_temp_bytes,
+					d_keys_alt, d_keys_out,
+					d_vals_alt, d_vals_out,
+					d_num_out,
+					op_sum,
+					n_total);
+
+				int h_num_out = 0;
+				CUDA_CHECK_ERROR(cudaMemcpy(&h_num_out, d_num_out, sizeof(int), cudaMemcpyDeviceToHost));
+				m_last_count = h_num_out;
+			}
+
 		}
 	}
 }

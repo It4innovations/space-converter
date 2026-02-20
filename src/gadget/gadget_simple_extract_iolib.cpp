@@ -25,15 +25,9 @@
 #   define NANOVDB_USE_INTRINSICS
 #endif
 
-#if OPENVDB_VERSION == 11
-#	include <nanovdb/util/GridBuilder.h>
-#	include <nanovdb/util/CreateNanoGrid.h>
-#	include <nanovdb/util/IO.h>
-#else
-#	include <nanovdb/tools/GridBuilder.h>
-#	include <nanovdb/tools/CreateNanoGrid.h>
-#	include <nanovdb/io/IO.h>
-#endif
+#include <nanovdb/tools/GridBuilder.h>
+#include <nanovdb/tools/CreateNanoGrid.h>
+#include <nanovdb/io/IO.h>
 
 #endif
 

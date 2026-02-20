@@ -18,6 +18,7 @@
 
 #include "sparse_common.h"
 #include <cstdint>
+#include <unordered_map>
 #include "convert_vdb.h"
 
 #include <omp.h>
@@ -35,8 +36,11 @@ namespace common {
 				unsigned int hash = 73856093u * i ^ 19349663u * j ^ 83492791u * k;
 				return hash % table_size;
 			}
+
+			VoxelOpenMPManager::VoxelOpenMPManager(): table_size(0), insert_count(0), hash_table(nullptr), common::vdb::VoxelManager() {
+			}
 			
-			VoxelOpenMPManager::VoxelOpenMPManager(unsigned int expected_voxels) {
+			void VoxelOpenMPManager::init(unsigned int expected_voxels) {
 				// Size hash table with load factor consideration
 				table_size = (unsigned int)(expected_voxels / HASH_TABLE_LOAD_FACTOR);
 				insert_count = 0;
@@ -88,7 +92,6 @@ namespace common {
 			
 			// Insert or update voxels using OpenMP parallelization with thread-local pre-aggregation
 			void VoxelOpenMPManager::insertOrUpdate(Voxel* h_voxels, int num_voxels) {
-					using namespace std::chrono;
 					if (num_voxels <= 0) return;
 
 					auto start_total = omp_get_wtime();
@@ -142,14 +145,13 @@ namespace common {
 					auto hash_insert_duration = (end_hash_insert - start_hash_insert) * 1000.0;
 					auto total_duration = (end_total - start_total) * 1000.0;
 
-				printf("[insertOrUpdate] Pre-agg: %.3f ms, Merge: %.3f ms, Hash insert: %.3f ms, Total: %.3f ms\n",
-					preagg_duration, merge_duration,
-					hash_insert_duration, total_duration);
+					printf("[insertOrUpdate] Pre-agg: %.3f ms, Merge: %.3f ms, Hash insert: %.3f ms, Total: %.3f ms\n",
+						preagg_duration, merge_duration,
+						hash_insert_duration, total_duration);
 			}
 			
 			// Extract all voxels from hash table using OpenMP
 			int VoxelOpenMPManager::extractAll(Voxel** h_output_voxels) {
-					using namespace std::chrono;
 					auto start_total = omp_get_wtime();
 					
 					// Thread-local storage for voxel collection
@@ -187,10 +189,10 @@ namespace common {
 					}
 					
 					auto end_total = omp_get_wtime();
-				auto total_duration = (end_total - start_total) * 1000.0;
-				printf("[extractAll] Total: %.3f ms\n", total_duration);
-				
-				return total_count;
+					auto total_duration = (end_total - start_total) * 1000.0;
+					printf("[extractAll] Total: %.3f ms\n", total_duration);
+					
+					return total_count;
 			}
 			
 			// Clear hash table
@@ -204,6 +206,95 @@ namespace common {
 					hash_table[i].occupied = 0;
 				}
 				insert_count = 0;
+			}
+
+			// Serialization: write current voxel data to binary buffer
+			void VoxelOpenMPManager::serialize(uint8_t* bin_data) {
+				// int insert_count;
+				// unsigned int table_size;
+				// VoxelHashEntry* hash_table;
+
+				//size_t expected_size = sizeof(int) + sizeof(unsigned int) + sizeof(VoxelHashEntry) * table_size;
+				uint8_t* ptr = bin_data;
+				
+				memcpy(ptr, &insert_count, sizeof(int));
+				ptr += sizeof(int);
+				memcpy(ptr, &table_size, sizeof(unsigned int));
+				ptr += sizeof(unsigned int);
+				memcpy(ptr, hash_table, sizeof(VoxelHashEntry) * table_size);
+			}
+			
+			// Deserialization: read voxel data from binary buffer
+			void VoxelOpenMPManager::deserialize(uint8_t* bin_data) {
+				// int insert_count;
+				// unsigned int table_size;
+				// VoxelHashEntry* hash_table;
+
+				// size_t expected_size = sizeof(int) + sizeof(unsigned int) + sizeof(VoxelHashEntry) * table_size;
+				// if (bin_data.size() != expected_size) {
+				// 	printf("[VoxelOpenMPManager::deserialize] Error: Expected size %zu, got %zu\n", expected_size, bin_data.size());
+				// 	return; // Invalid data
+				// }
+				
+				const uint8_t* ptr = bin_data;
+				memcpy(&insert_count, ptr, sizeof(int));
+				ptr += sizeof(int);
+				memcpy(&table_size, ptr, sizeof(unsigned int));
+				ptr += sizeof(unsigned int);
+
+				if (hash_table) {
+					delete[] hash_table;
+				}
+				hash_table = new VoxelHashEntry[table_size];
+				memcpy(hash_table, ptr, sizeof(VoxelHashEntry) * table_size);
+			}
+			
+			// Merge: combine voxels from another manager (accumulate values)
+			void VoxelOpenMPManager::merge(common::vdb::VoxelManager* _other) {
+
+				// Attempt to dynamic_cast to VoxelOpenMPManager
+				VoxelOpenMPManager* other = dynamic_cast<VoxelOpenMPManager*>(_other);
+				if (!other) {
+					printf("[VoxelOpenMPManager::merge] Error: Incompatible manager type\n");
+					return;
+				}
+
+				// Parallel insertion directly from other's hash table using thread-local maps
+				const int thread_count = omp_get_max_threads();
+				std::vector<std::unordered_map<uint64_t, float>> thread_maps(thread_count);
+				
+				#pragma omp parallel
+				{
+					int tid = omp_get_thread_num();
+					auto& local_map = thread_maps[tid];
+					
+					#pragma omp for schedule(static)
+					for (unsigned int i = 0; i < other->table_size; i++) {
+						if (other->hash_table[i].occupied == 1) {
+							uint64_t key = packCoord3(other->hash_table[i].i, other->hash_table[i].j, other->hash_table[i].k);
+							local_map[key] += other->hash_table[i].value;
+						}
+					}
+				}
+				
+				// Merge thread-local maps
+				size_t total_local_unique = 0;
+				for (const auto& m : thread_maps) {
+					total_local_unique += m.size();
+				}
+				std::unordered_map<uint64_t, float> merged;
+				merged.reserve(total_local_unique + total_local_unique / 4 + 1);
+				
+				for (const auto& m : thread_maps) {
+					for (const auto& kv : m) {
+						merged[kv.first] += kv.second;
+					}
+				}
+				
+				// Insert into this manager's hash table
+				for (const auto& kv : merged) {
+					insertOrUpdatePackedSequential(kv.first, kv.second);
+				}
 			}
 		}
 	}

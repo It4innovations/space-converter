@@ -42,11 +42,7 @@
 
 #ifdef WITH_OPENVDB
 
-#if OPENVDB_VERSION == 11
-#	include <nanovdb/util/NanoToOpenVDB.h>
-#else
-#	include <nanovdb/tools/NanoToOpenVDB.h>
-#endif
+#include <nanovdb/tools/NanoToOpenVDB.h>
 
 #include <openvdb/openvdb.h>
 #include <openvdb/points/PointConversion.h>
@@ -428,11 +424,7 @@ namespace space_converter {
 		// NanoVDB (compact sparse format)
 		// else if (from_cl.use_nanovdb) {
 		// 	grid_main.type = common::vdb::VDBParticleType::eNanoVDB;		
-// #if OPENVDB_VERSION == 11
-// 			grid_main.nano_grid = std::make_shared<nanovdb::build::FloatGrid>(0.0f, "density", nanovdb::GridClass::FogVolume);
-// #else
 // 			grid_main.nano_grid = std::make_shared<nanovdb::tools::build::FloatGrid>(0.0f, "density", nanovdb::GridClass::FogVolume);
-// #endif
 		// }
 		// Sparse
 		else {
@@ -449,9 +441,11 @@ namespace space_converter {
 			}
 
 			if (from_cl.use_gpu_cuda) {
-				grid_main.sparse_particles = std::make_shared<common::vdb::sparse::VoxelGPUManagerSortReduce>(0);
+				grid_main.sparse_particles = std::make_shared<common::vdb::sparse::VoxelGPUManagerSortReduce>();
+				grid_main.sparse_particles->init(space_data.bbox_dim * space_data.bbox_dim * space_data.bbox_dim);
 			} else {
-				grid_main.sparse_particles = std::make_shared<common::vdb::sparse::VoxelOpenMPManager>(0);
+				grid_main.sparse_particles = std::make_shared<common::vdb::sparse::VoxelOpenMPManager>();
+				grid_main.sparse_particles->init(space_data.bbox_dim * space_data.bbox_dim * space_data.bbox_dim);
 			}
 		}
 
@@ -686,6 +680,7 @@ namespace space_converter {
 							nanogrid_recv.type = common::vdb::VDBParticleType::eVector;
 							nanogrid_recv.vector_grid.resize(ns);
 
+							// TODO: GPU
 							mpi_recv(nanogrid_recv.vector_grid.data(), ns, MPI_BYTE, from_cl.world_rank + step, 0);
 							convert_vdb_base->merge_grid(grid_main_sum, nanogrid_recv);
 						}
@@ -697,23 +692,29 @@ namespace space_converter {
 							grid_main_sum.raw_particles.serialize(grid_handle_main);
 							size_t ns = grid_handle_main.size();
 							mpi_send(&ns, sizeof(ns), MPI_BYTE, from_cl.world_rank - step, 0);
+
+							// TODO: GPU
 							mpi_send(grid_handle_main.data(), ns, MPI_BYTE, from_cl.world_rank - step, 0);
 						}
-						else if (from_cl.use_nanovdb) {
-//#if OPENVDB_VERSION == 11
-//							nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_main = nanovdb::createNanoGrid(*grid_main_sum.nano_grid);
-//#else
-//							nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_main = nanovdb::tools::createNanoGrid(*grid_main_sum.nano_grid);
+//						else if (from_cl.use_nanovdb) {
+////							nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_main = nanovdb::tools::createNanoGrid(*grid_main_sum.nano_grid);
+////							size_t ns = grid_handle_main.size();
+////							mpi_send(&ns, sizeof(ns), MPI_BYTE, from_cl.world_rank - step, 0);
+////							mpi_send(grid_handle_main.data(), ns, MPI_BYTE, from_cl.world_rank - step, 0);
+//						}
+//						else {
+//							std::vector<uint8_t> grid_handle_main;
+//#ifdef WITH_OPENVDB
+//							convert_vdb_base->openvdb_to_vector(grid_main_sum.vdb_grid, grid_handle_main);
 //#endif
 //							size_t ns = grid_handle_main.size();
 //							mpi_send(&ns, sizeof(ns), MPI_BYTE, from_cl.world_rank - step, 0);
 //							mpi_send(grid_handle_main.data(), ns, MPI_BYTE, from_cl.world_rank - step, 0);
-						}
+//						}
 						else {
-							std::vector<uint8_t> grid_handle_main;
-#ifdef WITH_OPENVDB
-							convert_vdb_base->openvdb_to_vector(grid_main_sum.vdb_grid, grid_handle_main);
-#endif
+							// Sparse particle data
+							std::vector<uint8_t> grid_handle_main(grid_main_sum.sparse_particles->mem_size());
+							grid_main_sum.sparse_particles->serialize(grid_handle_main.data());
 							size_t ns = grid_handle_main.size();
 							mpi_send(&ns, sizeof(ns), MPI_BYTE, from_cl.world_rank - step, 0);
 							mpi_send(grid_handle_main.data(), ns, MPI_BYTE, from_cl.world_rank - step, 0);
@@ -753,11 +754,7 @@ namespace space_converter {
 				if (from_cl.use_nanovdb) {
 					auto nanovdb_handleI = convert_vdb_base->dense_to_nanovdb(grid_main_sum.dense_grid, space_data.transform_scale, space_data.dense_type, space_data.dense_norm);
 
-#if OPENVDB_VERSION == 11
-					nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::createNanoGrid(*nanovdb_handleI);
-#else
 					nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::tools::createNanoGrid(*nanovdb_handleI);
-#endif
 
 					// Serialize NanoVDB to binary vector
 					grid_main_final.vector_grid.resize(grid_handle_final.size());
@@ -767,12 +764,7 @@ namespace space_converter {
 
 					// Extract min/max from NanoVDB tree
 
-#if OPENVDB_VERSION == 11					
-					space_data.min_value_reduced = nanogrid->tree().root().data()->getMin();
-					space_data.max_value_reduced = nanogrid->tree().root().data()->getMax();
-#else
 					nanogrid->tree().extrema(space_data.min_value_reduced, space_data.max_value_reduced);
-#endif
 				}
 				// Convert dense grid to sparse OpenVDB format
 				else {
@@ -805,16 +797,11 @@ namespace space_converter {
 					grid_main_final.vector_grid = std::move(grid_main_sum.vector_grid);
 
 					// Extract min/max from NanoVDB if applicable
-					if (from_cl.use_nanovdb) {
-						nanovdb::NanoGrid<float>* nanogrid = (nanovdb::NanoGrid<float>*) grid_main_final.vector_grid.data();
-
-#if OPENVDB_VERSION == 11					
-						space_data.min_value_reduced = nanogrid->tree().root().data()->getMin();
-						space_data.max_value_reduced = nanogrid->tree().root().data()->getMax();
-#else
-						nanogrid->tree().extrema(space_data.min_value_reduced, space_data.max_value_reduced);
-#endif
-					}
+//					if (from_cl.use_nanovdb) {
+//						nanovdb::NanoGrid<float>* nanogrid = (nanovdb::NanoGrid<float>*) grid_main_final.vector_grid.data();
+//
+//						nanogrid->tree().extrema(space_data.min_value_reduced, space_data.max_value_reduced);
+//					}
 				}
 				// Raw particle data
 				else if (space_data.extracted_type == common::SpaceData::ExtractedType::eParticle) {
@@ -830,11 +817,9 @@ namespace space_converter {
 				}
 				// Convert NanoVDB to binary format
 				else if (from_cl.use_nanovdb) {
-//#if OPENVDB_VERSION == 11
-//					nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::createNanoGrid(*grid_main_sum.nano_grid);
-//#else
+//					convert_vdb_base->sparse_to_nanovdb(grid_main_sum.sparse_particles.get());
+//
 //					nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::tools::createNanoGrid(*grid_main_sum.nano_grid);
-//#endif
 //
 //					// Serialize to binary
 //					grid_main_final.vector_grid.resize(grid_handle_final.size());
@@ -842,20 +827,38 @@ namespace space_converter {
 //
 //					nanovdb::NanoGrid<float>* nanogrid = (nanovdb::NanoGrid<float>*) grid_handle_final.data();
 //
-//#if OPENVDB_VERSION == 11					
-//					space_data.min_value_reduced = nanogrid->tree().root().data()->getMin();
-//					space_data.max_value_reduced = nanogrid->tree().root().data()->getMax();
-//#else
 //					nanogrid->tree().extrema(space_data.min_value_reduced, space_data.max_value_reduced);
-//#endif
+
+					auto nanovdb_handleI = convert_vdb_base->sparse_to_nanovdb(grid_main_sum.sparse_particles.get());
+
+					nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::tools::createNanoGrid(*nanovdb_handleI);
+
+					// Serialize NanoVDB to binary vector
+					grid_main_final.vector_grid.resize(grid_handle_final.size());
+					memcpy(grid_main_final.vector_grid.data(), grid_handle_final.data(), grid_handle_final.size());
+
+					nanovdb::NanoGrid<float>* nanogrid = (nanovdb::NanoGrid<float>*) grid_handle_final.data();
+
+					// Extract min/max from NanoVDB tree
+
+					nanogrid->tree().extrema(space_data.min_value_reduced, space_data.max_value_reduced);
 				}
 				// Convert OpenVDB to binary format
 				else {
 
+//#ifdef WITH_OPENVDB
+//					convert_vdb_base->openvdb_to_vector(grid_main_sum.vdb_grid, grid_main_final.vector_grid);
+//					eval_min_max(grid_main_sum.vdb_grid, space_data.min_value_reduced, space_data.max_value_reduced);
+//					std::cout << "Active voxels in input grid: " << grid_main_sum.vdb_grid->activeVoxelCount() << std::endl;
+//#endif
+
 #ifdef WITH_OPENVDB
-					convert_vdb_base->openvdb_to_vector(grid_main_sum.vdb_grid, grid_main_final.vector_grid);
-					eval_min_max(grid_main_sum.vdb_grid, space_data.min_value_reduced, space_data.max_value_reduced);
-					std::cout << "Active voxels in input grid: " << grid_main_sum.vdb_grid->activeVoxelCount() << std::endl;
+					auto openvdb_handleI = convert_vdb_base->sparse_to_openvdb(grid_main_sum.sparse_particles.get());
+
+					convert_vdb_base->openvdb_to_vector(openvdb_handleI, grid_main_final.vector_grid);
+					std::cout << "Active voxels in input grid: " << openvdb_handleI->activeVoxelCount() << std::endl;
+
+					eval_min_max(openvdb_handleI, space_data.min_value_reduced, space_data.max_value_reduced);
 #endif
 				}
 
@@ -936,7 +939,9 @@ namespace space_converter {
 			// Save based on particle type
 			if (particle_type == common::vdb::VDBParticleType::eOpenVDB) {
 #ifdef WITH_OPENVDB
-				openvdb::io::File(full_filepath).write({ grid_main_final.vdb_grid });
+				//openvdb::io::File(full_filepath).write({ grid_main_final.vdb_grid });
+				auto openvdb_handleI = convert_vdb_base->sparse_to_openvdb(grid_main_final.sparse_particles.get());
+				openvdb::io::File(full_filepath).write({ openvdb_handleI });
 #endif
 
 				printf("finished: %s\n", full_filepath.c_str());
@@ -961,14 +966,14 @@ namespace space_converter {
 
 			}
 			else if (particle_type == common::vdb::VDBParticleType::eNanoVDB) {
-//#if OPENVDB_VERSION == 11
-//				nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::createNanoGrid(*grid_main_final.nano_grid);
-//#else
 //				nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::tools::createNanoGrid(*grid_main_final.nano_grid);
-//#endif
-//
-//				nanovdb::io::writeGrid(space_data.full_filepath, grid_handle_final);
-//				printf("finished: %s\n", full_filepath.c_str());
+
+				auto nanovdb_handleI = convert_vdb_base->sparse_to_nanovdb(grid_main_final.sparse_particles.get());
+
+				nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::tools::createNanoGrid(*nanovdb_handleI);
+
+				nanovdb::io::writeGrid(space_data.full_filepath, grid_handle_final);
+				printf("finished: %s\n", full_filepath.c_str());
 			}
 			// Save raw particle format
 			else if (particle_type == common::vdb::VDBParticleType::eRawParticles) {

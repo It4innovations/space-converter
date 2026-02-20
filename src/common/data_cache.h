@@ -46,6 +46,8 @@ namespace common {
             std::vector< std::vector<float> > mass_particles_per_ptype;     ///< Mass values per type
 
             std::vector<float> values_particles; ///< Particle values for extracted type (e.g., density, temperature)
+			int cached_value_ptype = -1; ///< Cached particle type for values_particles (to track which type's values are currently cached)
+			int cached_value_block_name_id = -1; ///< Cached block name ID for values_particles (to track which block's values are currently cached)
 
             // GPU data pointers
             std::vector<float*> d_pos_particles_per_ptype;              ///< GPU particle positions per type
@@ -67,6 +69,7 @@ namespace common {
 
             // Methods for GPU data transfer
             void copy_particles_to_gpu();                               ///< Copy all particle data from CPU to GPU
+            void copy_values_to_gpu();                                  ///< Copy particle values from CPU to GPU
             void free_gpu_memory();                                     ///< Free all GPU memory allocations
 
             // Sorting methods

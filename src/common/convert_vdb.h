@@ -37,15 +37,9 @@
 #define NANOVDB_USE_INTRINSICS
 #endif
 
-#if OPENVDB_VERSION == 11
-#	include <nanovdb/util/GridBuilder.h>
-#	include <nanovdb/util/CreateNanoGrid.h>
-#	include <nanovdb/util/IO.h>
-#else
-#	include <nanovdb/tools/GridBuilder.h>
-#	include <nanovdb/tools/CreateNanoGrid.h>
-#	include <nanovdb/io/IO.h>
-#endif
+#include <nanovdb/tools/GridBuilder.h>
+#include <nanovdb/tools/CreateNanoGrid.h>
+#include <nanovdb/io/IO.h>
 
 #endif
 
@@ -174,18 +168,11 @@ namespace common {
 
 #ifdef WITH_NANOVDB
 			
-
-#if OPENVDB_VERSION == 11
-			/**
-			 * @brief Convert dense grid to NanoVDB format (OpenVDB v11)
-			 */
-			std::shared_ptr<nanovdb::build::FloatGrid> dense_to_nanovdb(DenseParticles& particles, double transform_scale, common::SpaceData::DenseType dense_type, common::SpaceData::DenseNorm dense_norm);
-#else
 			/**
 			 * @brief Convert dense grid to NanoVDB format
 			 */
 			std::shared_ptr<nanovdb::tools::build::FloatGrid> dense_to_nanovdb(DenseParticles& particles, double transform_scale, common::SpaceData::DenseType dense_type, common::SpaceData::DenseNorm dense_norm);
-#endif
+			std::shared_ptr<nanovdb::tools::build::FloatGrid> sparse_to_nanovdb(VoxelManager* voxel_manager);
 
 #endif
 
@@ -203,6 +190,7 @@ namespace common {
 			 * @return OpenVDB grid pointer
 			 */
 			openvdb::FloatGrid::Ptr dense_to_openvdb(DenseParticles& particles, double transform_scale, common::SpaceData::DenseType dense_type, common::SpaceData::DenseNorm dense_norm);
+			openvdb::FloatGrid::Ptr sparse_to_openvdb(VoxelManager* voxel_manager);
 
 			/**
 			 * @brief Serialize OpenVDB grid to binary buffer
@@ -238,6 +226,14 @@ namespace common {
 			 * @brief Find particle positions
 			 */
 			void find_particle_positions();
+
+			/**
+			 * @brief Find particle values for a given particle type
+			 * @param ptype Particle type
+			 * @param block_name_id Data block ID
+			 * @return True if values were found, false otherwise
+			 */
+			bool find_particle_values(int ptype, int block_name_id);
 
 #ifdef WITH_CUDAKDTREE
 			/**

@@ -30,27 +30,18 @@
 #define NANOVDB_USE_INTRINSICS
 #endif
 
-#if OPENVDB_VERSION == 11
-#	include <nanovdb/util/GridBuilder.h>
-#	include <nanovdb/util/IO.h>
-#else
-#	include <nanovdb/tools/GridBuilder.h>
-#	include <nanovdb/io/IO.h>
-#endif
+#include <nanovdb/tools/GridBuilder.h>
+#include <nanovdb/io/IO.h>
 
 #include <nanovdb/NanoVDB.h>
 #endif
 
 #if defined(WITH_OPENVDB) && defined(WITH_NANOVDB)
 
-#if OPENVDB_VERSION == 11
-#	include <nanovdb/util/NanoToOpenVDB.h>
-#else
 #	include <nanovdb/tools/NanoToOpenVDB.h>
-#endif
-
 #	include <openvdb/openvdb.h>
 #	include <openvdb/io/Stream.h>
+
 #endif
 
 int main(int argc, char** argv) {
