@@ -109,7 +109,7 @@ namespace space_converter {
 	 * @param from_cl Reference to FromCL struct with configuration
 	 * @param space_data Reference to SpaceData with grid dimensions and transform
 	 */
-	void create_grid(common::vdb::VDBParticles& grid_main, space_converter::FromCL& from_cl, common::SpaceData& space_data);
+	void create_grid(common::vdb::ConvertVDBBase* convert_vdb_base, common::vdb::VDBParticles& grid_main, space_converter::FromCL& from_cl, common::SpaceData& space_data);
 
 	/**
 	 * @brief Convert particle data to volumetric grid using density estimation.

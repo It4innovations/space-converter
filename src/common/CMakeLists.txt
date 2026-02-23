@@ -64,6 +64,7 @@ if(WITH_GPU_CUDA)
         data_cache.cu
         convert_vdb_kernel.cu
         sparse_common.cu
+        dense_common.cu
     )
 endif()
 
@@ -127,8 +128,13 @@ if(WITH_GPU_CUDA)
             $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:preprocessor>
         )
         # Suppress CUDA warnings about __host__ function calls from __host__ __device__ functions
+        # and stack-size-cannot-be-statically-determined (1408) caused by deep SPH dispatch chains
         target_compile_options(space_common PRIVATE
-            $<$<COMPILE_LANGUAGE:CUDA>:-diag-suppress=20011>
+            $<$<COMPILE_LANGUAGE:CUDA>:-diag-suppress=20011,1408>
+        )
+        # Add debug symbols for CUDA device code in Debug builds
+        target_compile_options(space_common PRIVATE
+            $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CONFIG:Debug>>:-g;-G>
         )
     endif()
 endif()

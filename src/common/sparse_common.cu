@@ -96,7 +96,11 @@ namespace common {
 				d_num_out(nullptr),
 				d_sort_temp(nullptr), m_sort_temp_bytes(0),
 				d_reduce_temp(nullptr), m_reduce_temp_bytes(0),
-				common::vdb::VoxelManager()
+				d_minmax_temp(nullptr), m_minmax_temp_bytes(0),
+				d_min_out(nullptr), d_max_out(nullptr),
+				d_particle_count(nullptr),
+				d_bbox_min_orig(nullptr), d_offset_position(nullptr), d_bbox_sphere_pos(nullptr),
+				common::vdb::VoxelSparseManager()
 			{
 
 			}
@@ -136,6 +140,30 @@ namespace common {
 						(int)m_max);
 				m_reduce_temp_bytes = reduce_bytes;
 				CUDA_CHECK_ERROR(cudaMalloc(&d_reduce_temp, m_reduce_temp_bytes));
+
+				// Allocate min/max output buffers
+				CUDA_CHECK_ERROR(cudaMalloc(&d_min_out, sizeof(float)));
+				CUDA_CHECK_ERROR(cudaMalloc(&d_max_out, sizeof(float)));
+
+				// Allocate and zero the processed-particle counter
+				CUDA_CHECK_ERROR(cudaMalloc(&d_particle_count, sizeof(uint64_t)));
+				CUDA_CHECK_ERROR(cudaMemset(d_particle_count, 0, sizeof(uint64_t)));
+
+				// Persistent device buffers for per-call host parameters
+				CUDA_CHECK_ERROR(cudaMalloc(&d_bbox_min_orig,   3 * sizeof(int)));
+				CUDA_CHECK_ERROR(cudaMalloc(&d_offset_position, 3 * sizeof(float)));
+				CUDA_CHECK_ERROR(cudaMalloc(&d_bbox_sphere_pos, 3 * sizeof(float)));
+
+				// Precompute temp storage for min/max reductions
+				size_t min_bytes = 0;
+				cub::DeviceReduce::Min(nullptr, min_bytes, d_vals_out, d_min_out, (int)m_max);
+				
+				size_t max_bytes = 0;
+				cub::DeviceReduce::Max(nullptr, max_bytes, d_vals_out, d_max_out, (int)m_max);
+				
+				// Use the larger of the two
+				m_minmax_temp_bytes = (min_bytes > max_bytes) ? min_bytes : max_bytes;
+				CUDA_CHECK_ERROR(cudaMalloc(&d_minmax_temp, m_minmax_temp_bytes));
 			}
 
 			VoxelGPUManagerSortReduce::~VoxelGPUManagerSortReduce()
@@ -173,6 +201,27 @@ namespace common {
 					}
 					if (d_reduce_temp) {
 						CUDA_CHECK_ERROR(cudaFree(d_reduce_temp));
+					}
+					if (d_minmax_temp) {
+						CUDA_CHECK_ERROR(cudaFree(d_minmax_temp));
+					}
+					if (d_min_out) {
+						CUDA_CHECK_ERROR(cudaFree(d_min_out));
+					}
+					if (d_max_out) {
+						CUDA_CHECK_ERROR(cudaFree(d_max_out));
+					}
+					if (d_particle_count) {
+						CUDA_CHECK_ERROR(cudaFree(d_particle_count));
+					}
+					if (d_bbox_min_orig) {
+						CUDA_CHECK_ERROR(cudaFree(d_bbox_min_orig));
+					}
+					if (d_offset_position) {
+						CUDA_CHECK_ERROR(cudaFree(d_offset_position));
+					}
+					if (d_bbox_sphere_pos) {
+						CUDA_CHECK_ERROR(cudaFree(d_bbox_sphere_pos));
 					}
 			}
 
@@ -221,6 +270,30 @@ namespace common {
 
 					int h_num_out = 0;
 					CUDA_CHECK_ERROR(cudaMemcpy(&h_num_out, d_num_out, sizeof(int), cudaMemcpyDeviceToHost));
+
+				m_last_count = h_num_out;
+				return h_num_out;
+			}
+
+			int VoxelGPUManagerSortReduce::update(size_t count)
+			{
+				// sort by key (pairs)
+				cub::DeviceRadixSort::SortPairs(d_sort_temp, m_sort_temp_bytes,
+					d_keys, d_keys_alt,
+					d_vals, d_vals_alt,
+					count);
+
+				// reduce-by-key (sum values for identical keys)
+				CustomSum op_sum;
+				cub::DeviceReduce::ReduceByKey(d_reduce_temp, m_reduce_temp_bytes,
+					d_keys_alt, d_keys_out,
+					d_vals_alt, d_vals_out,
+					d_num_out,
+					op_sum,
+					count);
+
+				int h_num_out = 0;
+				CUDA_CHECK_ERROR(cudaMemcpy(&h_num_out, d_num_out, sizeof(int), cudaMemcpyDeviceToHost));
 
 				m_last_count = h_num_out;
 				return h_num_out;
@@ -306,7 +379,7 @@ namespace common {
 			}
 
 			// CPU-side merge: combine key-value pairs from other manager
-			void VoxelGPUManagerSortReduce::mergeCPU(common::vdb::VoxelManager* _other) {
+			void VoxelGPUManagerSortReduce::mergeCPU(common::vdb::VoxelSparseManager* _other) {
 				// Attempt to dynamic_cast to VoxelGPUManagerSortReduce
 				VoxelGPUManagerSortReduce* other = dynamic_cast<VoxelGPUManagerSortReduce*>(_other);
 				if (!other) {
@@ -352,6 +425,28 @@ namespace common {
 				int h_num_out = 0;
 				CUDA_CHECK_ERROR(cudaMemcpy(&h_num_out, d_num_out, sizeof(int), cudaMemcpyDeviceToHost));
 				m_last_count = h_num_out;
+			}
+
+			// Get min/max values from reduced voxel data using CUB
+			void VoxelGPUManagerSortReduce::find_min_max(float& min_value, float& max_value)
+			{
+				if (m_last_count <= 0) {
+					min_value = 0.0f;
+					max_value = 0.0f;
+					return;
+				}
+
+				// Use CUB's DeviceReduce::Min and Max on the reduced values
+				cub::DeviceReduce::Min(d_minmax_temp, m_minmax_temp_bytes, 
+					d_vals_out, d_min_out, m_last_count);
+				
+				// Reuse the same temp buffer for max (CUB allows this)
+				cub::DeviceReduce::Max(d_minmax_temp, m_minmax_temp_bytes, 
+					d_vals_out, d_max_out, m_last_count);
+
+				// Copy results to host
+				CUDA_CHECK_ERROR(cudaMemcpy(&min_value, d_min_out, sizeof(float), cudaMemcpyDeviceToHost));
+				CUDA_CHECK_ERROR(cudaMemcpy(&max_value, d_max_out, sizeof(float), cudaMemcpyDeviceToHost));
 			}
 
 			void VoxelGPUManagerSortReduce::get_keys_values_from_device(uint64_t* h_keys, float* h_vals) {
@@ -404,7 +499,7 @@ namespace common {
 			}
 
 			// GPU-side merge: combine with another manager without using host memory
-			void VoxelGPUManagerSortReduce::merge(common::vdb::VoxelManager* _other) {
+			void VoxelGPUManagerSortReduce::merge(common::vdb::VoxelSparseManager* _other) {
 				VoxelGPUManagerSortReduce* other = dynamic_cast<VoxelGPUManagerSortReduce*>(_other);
 				if (!other) {
 					printf("[VoxelGPUManagerSortReduce::merge] Error: Incompatible manager type\n");

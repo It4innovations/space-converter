@@ -227,8 +227,7 @@ namespace common {
 
                 uint64_t* voxel_keys,      // Output: packed voxel coordinates
                 float* voxel_values,       // Output: voxel values
-                size_t* particle_valid,    // Output: per-particle validity flag
-                float* particle_values     // Output: per-particle value for reduction
+                uint64_t* particle_count   // Output: number of processed particles
             ) {
                 size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
                 
@@ -267,15 +266,10 @@ namespace common {
                 
                 // Store results
                 if (should_process) {
-                    particle_valid[idx] = 1;
                     voxel_keys[idx] = packCoord3(px, py, pz);
                     voxel_values[idx] = v_orig;
-                    particle_values[idx] = v_orig;
-                } else {
-                    particle_valid[idx] = 0;
-                    voxel_values[idx] = 0.0f;
-                    particle_values[idx] = 0.0f;
-                }
+                    atomicAdd((unsigned long long*)particle_count, 1ULL);
+                } 
             }
             
             /**
@@ -319,8 +313,9 @@ namespace common {
                 float* grid_data_temp,
                 size_t* grid_offset,
                 size_t* grid_dims,
-                size_t* particle_valid,
-                float* particle_values
+                uint64_t* particle_count  // Output: number of processed particles
+                //size_t* particle_valid,
+                //float* particle_values
             ) {
                 size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
                 
@@ -357,34 +352,28 @@ namespace common {
                     px, py, pz, v_orig
                 );
                 
-                if (!should_process) {
-                    particle_valid[idx] = 0;
-                    particle_values[idx] = 0.0f;
-                    return;
+                if (should_process) {
+                    atomicAdd((unsigned long long*)particle_count, 1ULL);
+                    // Splat particle into dense grid using SPH kernel function
+                    fill_voxels(
+                        grid_data_density,
+                        grid_data_temp,
+                        grid_offset,
+                        grid_dims,
+                        idx,
+                        v_orig,
+                        bbox_dim,
+                        bbox_min_orig,
+                        bbox_size_orig,
+                        scale_space_diagonal,
+                        dense_type,
+                        dense_norm,
+                        particle_fix_size,
+                        radius_particles,
+                        block_name_id,
+                        Pos
+                    );
                 }
-                
-                particle_valid[idx] = 1;
-                particle_values[idx] = v_orig;
-                
-                // Splat particle into dense grid using SPH kernel function
-                fill_voxels(
-                    grid_data_density,
-                    grid_data_temp,
-                    grid_offset,
-                    grid_dims,
-                    idx,
-                    v_orig,
-                    bbox_dim,
-                    bbox_min_orig,
-                    bbox_size_orig,
-                    scale_space_diagonal,
-                    dense_type,
-                    dense_norm,
-                    particle_fix_size,
-                    radius_particles,
-                    block_name_id,
-                    Pos
-                );
             }
             
             /**
@@ -419,7 +408,7 @@ namespace common {
                 double bbox_z_max_norm,
                 double scale_space_diagonal,
 
-                VoxelManager* voxel_manager,
+                VoxelSparseManager* voxel_manager,
                 float& min_value,
                 float& max_value,
                 size_t& particles_count
@@ -430,18 +419,33 @@ namespace common {
                     particles_count = 0;
                     return;
                 }
+
+                // Attempt to dynamic_cast to VoxelGPUManagerSortReduce
+                common::vdb::sparse::VoxelGPUManagerSortReduce* voxel_manager_gpu = dynamic_cast<common::vdb::sparse::VoxelGPUManagerSortReduce*>(voxel_manager);
+                if (!voxel_manager_gpu) {
+                    printf("[convert_to_sparse_grid_gpu] Error: Incompatible manager type\n");
+                    return;
+                }
                 
-                // Allocate device memory
-                uint64_t* d_voxel_keys;
-                float* d_voxel_values;
-                size_t* d_particle_valid;
-                float* d_particle_values;
+                //// Allocate device memory
+                //uint64_t* d_voxel_keys;
+                //float* d_voxel_values;
+                //size_t* d_particle_valid;
+                //float* d_particle_values;
+                //
+                //CUDA_CHECK_ERROR(cudaMalloc(&d_voxel_keys, num_particles * sizeof(uint64_t)));
+                //CUDA_CHECK_ERROR(cudaMalloc(&d_voxel_values, num_particles * sizeof(float)));
+                //CUDA_CHECK_ERROR(cudaMalloc(&d_particle_valid, num_particles * sizeof(size_t)));
+                //CUDA_CHECK_ERROR(cudaMalloc(&d_particle_values, num_particles * sizeof(float)));
                 
-                CUDA_CHECK_ERROR(cudaMalloc(&d_voxel_keys, num_particles * sizeof(uint64_t)));
-                CUDA_CHECK_ERROR(cudaMalloc(&d_voxel_values, num_particles * sizeof(float)));
-                CUDA_CHECK_ERROR(cudaMalloc(&d_particle_valid, num_particles * sizeof(size_t)));
-                CUDA_CHECK_ERROR(cudaMalloc(&d_particle_values, num_particles * sizeof(float)));
-                
+                // Reset particle counter before kernel launch
+                CUDA_CHECK_ERROR(cudaMemset(voxel_manager_gpu->d_particle_count, 0, sizeof(uint64_t)));
+
+                // Upload per-call host parameters into persistent device buffers
+                CUDA_CHECK_ERROR(cudaMemcpy(voxel_manager_gpu->d_bbox_min_orig,   bbox_min_orig,    3 * sizeof(int),   cudaMemcpyHostToDevice));
+                CUDA_CHECK_ERROR(cudaMemcpy(voxel_manager_gpu->d_offset_position, offset_position,  3 * sizeof(float), cudaMemcpyHostToDevice));
+                CUDA_CHECK_ERROR(cudaMemcpy(voxel_manager_gpu->d_bbox_sphere_pos, bbox_sphere_pos,  3 * sizeof(float), cudaMemcpyHostToDevice));
+
                 // Launch kernel
                 int blockSize = 256;
                 int numBlocks = (num_particles + blockSize - 1) / blockSize;
@@ -452,13 +456,13 @@ namespace common {
                     value_particles,
                     num_particles,
                     particle_fix_size,
-                    bbox_min_orig,
+                    voxel_manager_gpu->d_bbox_min_orig,
                     bbox_size_orig,
                     bbox_dim,
-                    offset_position,
+                    voxel_manager_gpu->d_offset_position,
                     filter_min,
                     filter_max,
-                    bbox_sphere_pos,
+                    voxel_manager_gpu->d_bbox_sphere_pos,
                     bbox_sphere_r,
                     anim_type,
                     frame_req,
@@ -473,54 +477,22 @@ namespace common {
                     bbox_z_max_norm,
                     scale_space_diagonal,
 
-                    d_voxel_keys,
-                    d_voxel_values,
-                    d_particle_valid,
-                    d_particle_values
+                    voxel_manager_gpu->d_keys, voxel_manager_gpu->d_vals,
+                    voxel_manager_gpu->d_particle_count
+                    //d_particle_valid,
+                    //d_particle_values
                 );
-                CUDA_CHECK_LAST_ERROR();
-                
-                // Copy results back to host
-                std::vector<uint64_t> h_voxel_keys(num_particles);
-                std::vector<float> h_voxel_values(num_particles);
-                std::vector<size_t> h_particle_valid(num_particles);
-                std::vector<float> h_particle_values(num_particles);
-                
-                CUDA_CHECK_ERROR(cudaMemcpy(h_voxel_keys.data(), d_voxel_keys, num_particles * sizeof(uint64_t), cudaMemcpyDeviceToHost));
-                CUDA_CHECK_ERROR(cudaMemcpy(h_voxel_values.data(), d_voxel_values, num_particles * sizeof(float), cudaMemcpyDeviceToHost));
-                CUDA_CHECK_ERROR(cudaMemcpy(h_particle_valid.data(), d_particle_valid, num_particles * sizeof(size_t), cudaMemcpyDeviceToHost));
-                CUDA_CHECK_ERROR(cudaMemcpy(h_particle_values.data(), d_particle_values, num_particles * sizeof(float), cudaMemcpyDeviceToHost));
-                
-                // Free device memory
-                CUDA_CHECK_ERROR(cudaFree(d_voxel_keys));
-                CUDA_CHECK_ERROR(cudaFree(d_voxel_values));
-                CUDA_CHECK_ERROR(cudaFree(d_particle_valid));
-                CUDA_CHECK_ERROR(cudaFree(d_particle_values));
-                
-                // Process results on CPU
-                float min = FLT_MAX;
-                float max = -FLT_MAX;
-                size_t count = 0;
-                
-                // Accumulate voxels into hash map (could be optimized with GPU hash map)
-                std::unordered_map<uint64_t, float> voxel_map;
-                for (size_t i = 0; i < num_particles; ++i) {
-                    if (h_particle_valid[i]) {
-                        count++;
-                        float val = h_particle_values[i];
-                        if (val < min) min = val;
-                        if (val > max) max = val;
-                        
-                        voxel_map[h_voxel_keys[i]] += h_voxel_values[i];
-                    }
-                }
-                
-                particles_count = count;
-                min_value = (count > 0) ? min : 0.0f;
-                max_value = (count > 0) ? max : 0.0f;
-                
-                // TODO: Transfer voxel_map to voxel_manager
-                // This requires implementing VoxelManager GPU support
+                //CUDA_CHECK_LAST_ERROR();
+                CUDA_SYNC_CHECK();
+                               
+                // Read back the number of particles that passed the should_process filter
+                uint64_t raw_count = 0;
+                CUDA_CHECK_ERROR(cudaMemcpy(&raw_count, voxel_manager_gpu->d_particle_count, sizeof(uint64_t), cudaMemcpyDeviceToHost));
+                particles_count = static_cast<size_t>(raw_count);
+                voxel_manager_gpu->update(raw_count);
+
+                // Get min/max using CUB (operates on d_vals_out which contains reduced values)
+                voxel_manager_gpu->find_min_max(min_value, max_value);
             }
             
             /**
@@ -559,7 +531,7 @@ namespace common {
                 double bbox_z_max_norm,
                 double scale_space_diagonal,
 
-                DenseParticles& grid,
+                VoxelDenseManager* grid,
                 float& min_value,
                 float& max_value,
                 size_t& particles_count
@@ -570,34 +542,52 @@ namespace common {
                     particles_count = 0;
                     return;
                 }
+
+                // Attempt to dynamic_cast to VoxelGPUManagerSortReduce
+                common::vdb::dense::VoxelGPUDenseManager* voxel_manager_gpu = dynamic_cast<common::vdb::dense::VoxelGPUDenseManager*>(grid);
+                if (!voxel_manager_gpu) {
+                    printf("[convert_to_dense_grid_gpu] Error: Incompatible manager type\n");
+                    return;
+                }
                 
-                // Allocate device memory for grid and particle data
-                float* d_grid_data_density;
-                float* d_grid_data_temp;
-                size_t* d_grid_offset;
-                size_t* d_grid_dims;
-                size_t* d_particle_valid;
-                float* d_particle_values;
+//                // Allocate device memory for grid and particle data
+//                float* d_grid_data_density;
+//                float* d_grid_data_temp;
+//                size_t* d_grid_offset;
+//                size_t* d_grid_dims;
+//                size_t* d_particle_valid;
+//                float* d_particle_values;
+//                
+//                size_t grid_size = grid.size();
+//                
+//                CUDA_CHECK_ERROR(cudaMalloc(&d_grid_data_density, grid_size * sizeof(float)));
+//                CUDA_CHECK_ERROR(cudaMalloc(&d_grid_data_temp, grid_size * sizeof(float)));
+//                CUDA_CHECK_ERROR(cudaMalloc(&d_grid_offset, 3 * sizeof(size_t)));
+//                CUDA_CHECK_ERROR(cudaMalloc(&d_grid_dims, 3 * sizeof(size_t)));
+//                CUDA_CHECK_ERROR(cudaMalloc(&d_particle_valid, num_particles * sizeof(size_t)));
+//                CUDA_CHECK_ERROR(cudaMalloc(&d_particle_values, num_particles * sizeof(float)));
+//                
+//                // Initialize grid on device
+//                CUDA_CHECK_ERROR(cudaMemcpy(d_grid_data_density, grid.data_density.data(), grid_size * sizeof(float), cudaMemcpyHostToDevice));
+//#ifndef WITH_NO_DATA_TEMP
+//                CUDA_CHECK_ERROR(cudaMemcpy(d_grid_data_temp, grid.data_temp.data(), grid_size * sizeof(float), cudaMemcpyHostToDevice));
+//#else
+//                d_grid_data_temp = nullptr;
+//#endif
+//                CUDA_CHECK_ERROR(cudaMemcpy(d_grid_offset, grid.offset, 3 * sizeof(size_t), cudaMemcpyHostToDevice));
+//                CUDA_CHECK_ERROR(cudaMemcpy(d_grid_dims, grid.dims, 3 * sizeof(size_t), cudaMemcpyHostToDevice));
                 
-                size_t grid_size = grid.size();
-                
-                CUDA_CHECK_ERROR(cudaMalloc(&d_grid_data_density, grid_size * sizeof(float)));
-                CUDA_CHECK_ERROR(cudaMalloc(&d_grid_data_temp, grid_size * sizeof(float)));
-                CUDA_CHECK_ERROR(cudaMalloc(&d_grid_offset, 3 * sizeof(size_t)));
-                CUDA_CHECK_ERROR(cudaMalloc(&d_grid_dims, 3 * sizeof(size_t)));
-                CUDA_CHECK_ERROR(cudaMalloc(&d_particle_valid, num_particles * sizeof(size_t)));
-                CUDA_CHECK_ERROR(cudaMalloc(&d_particle_values, num_particles * sizeof(float)));
-                
-                // Initialize grid on device
-                CUDA_CHECK_ERROR(cudaMemcpy(d_grid_data_density, grid.data_density.data(), grid_size * sizeof(float), cudaMemcpyHostToDevice));
-#ifndef WITH_NO_DATA_TEMP
-                CUDA_CHECK_ERROR(cudaMemcpy(d_grid_data_temp, grid.data_temp.data(), grid_size * sizeof(float), cudaMemcpyHostToDevice));
-#else
-                d_grid_data_temp = nullptr;
-#endif
-                CUDA_CHECK_ERROR(cudaMemcpy(d_grid_offset, grid.offset, 3 * sizeof(size_t), cudaMemcpyHostToDevice));
-                CUDA_CHECK_ERROR(cudaMemcpy(d_grid_dims, grid.dims, 3 * sizeof(size_t), cudaMemcpyHostToDevice));
-                
+                // Copy host pointers to device memory
+                int* d_bbox_min_orig;
+                float* d_offset_position;
+                float* d_bbox_sphere_pos;
+                CUDA_CHECK_ERROR(cudaMalloc(&d_bbox_min_orig, 3 * sizeof(int)));
+                CUDA_CHECK_ERROR(cudaMalloc(&d_offset_position, 3 * sizeof(float)));
+                CUDA_CHECK_ERROR(cudaMalloc(&d_bbox_sphere_pos, 3 * sizeof(float)));
+                CUDA_CHECK_ERROR(cudaMemcpy(d_bbox_min_orig, bbox_min_orig, 3 * sizeof(int), cudaMemcpyHostToDevice));
+                CUDA_CHECK_ERROR(cudaMemcpy(d_offset_position, offset_position, 3 * sizeof(float), cudaMemcpyHostToDevice));
+                CUDA_CHECK_ERROR(cudaMemcpy(d_bbox_sphere_pos, bbox_sphere_pos, 3 * sizeof(float), cudaMemcpyHostToDevice));
+
                 // Launch kernel
                 int blockSize = 256;
                 int numBlocks = (num_particles + blockSize - 1) / blockSize;
@@ -608,17 +598,17 @@ namespace common {
 					value_particles,
                     num_particles,
                     particle_fix_size,
-                    bbox_min_orig,
+                    d_bbox_min_orig,
                     bbox_size_orig,
                     bbox_dim,
 
                     dense_type,
                     dense_norm,
                     block_name_id,
-                    offset_position,
+                    d_offset_position,
                     filter_min,
                     filter_max,
-                    bbox_sphere_pos,
+                    d_bbox_sphere_pos,
                     bbox_sphere_r,
                     anim_type,
                     frame_req,
@@ -633,51 +623,61 @@ namespace common {
                     bbox_z_max_norm,
                     scale_space_diagonal,
 
-                    d_grid_data_density,
-                    d_grid_data_temp,
-                    d_grid_offset,
-                    d_grid_dims,
-                    d_particle_valid,
-                    d_particle_values
+                    voxel_manager_gpu->d_data_density,
+                    voxel_manager_gpu->d_data_temp,
+                    voxel_manager_gpu->d_dims,
+                    voxel_manager_gpu->d_offset,
+                    voxel_manager_gpu->d_particle_count
+                    //d_particle_valid,
+                    //d_particle_values
                 );
                 CUDA_CHECK_LAST_ERROR();
+
+                // Free temporary device memory
+                CUDA_CHECK_ERROR(cudaFree(d_bbox_min_orig));
+                CUDA_CHECK_ERROR(cudaFree(d_offset_position));
+                CUDA_CHECK_ERROR(cudaFree(d_bbox_sphere_pos));
                 
-                // Copy results back to host
-                CUDA_CHECK_ERROR(cudaMemcpy(grid.data_density.data(), d_grid_data_density, grid_size * sizeof(float), cudaMemcpyDeviceToHost));
-#ifndef WITH_NO_DATA_TEMP
-                CUDA_CHECK_ERROR(cudaMemcpy(grid.data_temp.data(), d_grid_data_temp, grid_size * sizeof(float), cudaMemcpyDeviceToHost));
-#endif
+//                // Copy results back to host
+//                CUDA_CHECK_ERROR(cudaMemcpy(grid.data_density.data(), d_grid_data_density, grid_size * sizeof(float), cudaMemcpyDeviceToHost));
+//#ifndef WITH_NO_DATA_TEMP
+//                CUDA_CHECK_ERROR(cudaMemcpy(grid.data_temp.data(), d_grid_data_temp, grid_size * sizeof(float), cudaMemcpyDeviceToHost));
+//#endif
+//                
+//                std::vector<size_t> h_particle_valid(num_particles);
+//                std::vector<float> h_particle_values(num_particles);
+//                CUDA_CHECK_ERROR(cudaMemcpy(h_particle_valid.data(), d_particle_valid, num_particles * sizeof(size_t), cudaMemcpyDeviceToHost));
+//                CUDA_CHECK_ERROR(cudaMemcpy(h_particle_values.data(), d_particle_values, num_particles * sizeof(float), cudaMemcpyDeviceToHost));
+//                
+//                // Free device memory
+//                CUDA_CHECK_ERROR(cudaFree(d_grid_data_density));
+//                if (d_grid_data_temp) CUDA_CHECK_ERROR(cudaFree(d_grid_data_temp));
+//                CUDA_CHECK_ERROR(cudaFree(d_grid_offset));
+//                CUDA_CHECK_ERROR(cudaFree(d_grid_dims));
+//                CUDA_CHECK_ERROR(cudaFree(d_particle_valid));
+//                CUDA_CHECK_ERROR(cudaFree(d_particle_values));
+//                
+//                // Compute statistics on CPU
+//                float min = FLT_MAX;
+//                float max = -FLT_MAX;
+//                size_t count = 0;
+//                
+//                for (size_t i = 0; i < num_particles; ++i) {
+//                    if (h_particle_valid[i]) {
+//                        count++;
+//                        float val = h_particle_values[i];
+//                        if (val < min) min = val;
+//                        if (val > max) max = val;
+//                    }
+//                }
                 
-                std::vector<size_t> h_particle_valid(num_particles);
-                std::vector<float> h_particle_values(num_particles);
-                CUDA_CHECK_ERROR(cudaMemcpy(h_particle_valid.data(), d_particle_valid, num_particles * sizeof(size_t), cudaMemcpyDeviceToHost));
-                CUDA_CHECK_ERROR(cudaMemcpy(h_particle_values.data(), d_particle_values, num_particles * sizeof(float), cudaMemcpyDeviceToHost));
-                
-                // Free device memory
-                CUDA_CHECK_ERROR(cudaFree(d_grid_data_density));
-                if (d_grid_data_temp) CUDA_CHECK_ERROR(cudaFree(d_grid_data_temp));
-                CUDA_CHECK_ERROR(cudaFree(d_grid_offset));
-                CUDA_CHECK_ERROR(cudaFree(d_grid_dims));
-                CUDA_CHECK_ERROR(cudaFree(d_particle_valid));
-                CUDA_CHECK_ERROR(cudaFree(d_particle_values));
-                
-                // Compute statistics on CPU
-                float min = FLT_MAX;
-                float max = -FLT_MAX;
-                size_t count = 0;
-                
-                for (size_t i = 0; i < num_particles; ++i) {
-                    if (h_particle_valid[i]) {
-                        count++;
-                        float val = h_particle_values[i];
-                        if (val < min) min = val;
-                        if (val > max) max = val;
-                    }
-                }
-                
-                particles_count = count;
-                min_value = (count > 0) ? min : 0.0f;
-                max_value = (count > 0) ? max : 0.0f;
+                // Read back the number of particles that passed the should_process filter
+                uint64_t raw_count = 0;
+                CUDA_CHECK_ERROR(cudaMemcpy(&raw_count, voxel_manager_gpu->d_particle_count, sizeof(uint64_t), cudaMemcpyDeviceToHost));
+                particles_count = static_cast<size_t>(raw_count);
+                //min_value = (count > 0) ? min : 0.0f;
+                //max_value = (count > 0) ? max : 0.0f;
+                voxel_manager_gpu->find_min_max(min_value, max_value);
             }
             
             /**
@@ -760,7 +760,7 @@ namespace common {
                         bbox_z_min_norm,
                         bbox_z_max_norm,
                         scale_space_diagonal,
-                        grid.sparse_particles.get(),
+                        grid.sparse_grid.get(),
                         min_value,
                         max_value,
                         particles_count
@@ -799,7 +799,7 @@ namespace common {
                         bbox_z_max_norm,
                         scale_space_diagonal,
 
-                        grid.dense_grid,
+                        grid.dense_grid.get(),
                         min_value,
                         max_value,
                         particles_count

@@ -172,6 +172,7 @@ namespace common {
 			cache_manager.radius_particles_per_ptype.resize(ptype_count);
 			cache_manager.rho_particles_per_ptype.resize(ptype_count);
 			cache_manager.mass_particles_per_ptype.resize(ptype_count);
+			cache_manager.particles_id_ordered_per_ptype.resize(ptype_count);
 			cache_manager.particles_ptype_offset.resize(ptype_count + 1, 0);
 
 			int num_threads = omp_get_max_threads();
@@ -259,18 +260,6 @@ namespace common {
 
 			int num_threads = omp_get_max_threads();
 
-//#pragma omp parallel for
-//			for (size_t i = 0; i < no_points; i++) {
-//
-//				if (get_particle_type(i) != ptype)
-//					continue;
-//
-//				float value = 0;
-//				get_particle_value(block_name_id, i, &value);
-//
-//				cache_manager.values_particles.push_back(value);
-//			}
-
 			std::vector<float> values_master;
 			std::vector < std::vector<float> > values_thread(num_threads);
 
@@ -284,27 +273,7 @@ namespace common {
 					if (get_particle_type(i) != ptype)
 						continue;
 
-					double Pos[3];
-					get_particle_position(i, Pos);
-
-					//// Collect particle positions per thread
-					//points_thread[tid].push_back(Pos[0]);
-					//points_thread[tid].push_back(Pos[1]);
-					//points_thread[tid].push_back(Pos[2]);
-
-					//double mass = get_particle_mass(i);
-					//pmass_thread[tid].push_back(mass);
-
-					//double rho = get_particle_rho(i);
-					//rho_thread[tid].push_back(rho);
-
-					//double radius = get_particle_hsml(i);
-					//radius_thread[tid].push_back(radius);
-
-					//particles_id_thread[tid].push_back(i);
-
-					float value = 0;
-					get_particle_value(block_name_id, i, &value);
+					float value = get_particle_norm_value(block_name_id, i);
 					values_thread[tid].push_back(value);
 				}
 			}
@@ -562,7 +531,7 @@ namespace common {
 			// Set grid transform (voxel size in world space units)
 			if (grid.type == VDBParticleType::eNanoVDB || grid.type == VDBParticleType::eOpenVDB) {
 				//grid.nano_grid->setTransform(transform_scale);
-				grid.sparse_particles->set_transform(transform_scale);
+				grid.sparse_grid->set_transform(transform_scale);
 			}
 // #ifdef WITH_OPENVDB
 // 			else if (grid.type == VDBParticleType::eOpenVDB) {
@@ -601,9 +570,9 @@ namespace common {
 			if (grid.type == VDBParticleType::eDense) {
 				// Set grid offset for dense grids (position in global coordinate system)
 				// This allows tiled dense grids to know their position in the full domain
-				grid.dense_grid.offset[0] = (size_t)(bbox_x_min_norm * (double)bbox_dim / scale_space_diagonal);
-				grid.dense_grid.offset[1] = (size_t)(bbox_y_min_norm * (double)bbox_dim / scale_space_diagonal);
-				grid.dense_grid.offset[2] = (size_t)(bbox_z_min_norm * (double)bbox_dim / scale_space_diagonal);
+				grid.dense_grid->offset[0] = (size_t)(bbox_x_min_norm * (double)bbox_dim / scale_space_diagonal);
+				grid.dense_grid->offset[1] = (size_t)(bbox_y_min_norm * (double)bbox_dim / scale_space_diagonal);
+				grid.dense_grid->offset[2] = (size_t)(bbox_z_min_norm * (double)bbox_dim / scale_space_diagonal);
 			}
 
 			// Get cached particle data for this particle type
@@ -641,7 +610,7 @@ namespace common {
 					d_particles_id_ordered,
 					d_radius_particles,
 					d_value_particles,
-					particle_type,
+					num_particles,
 					particle_fix_size,
 					grid_name,
 					grid_transform,
@@ -695,7 +664,7 @@ namespace common {
 					particle_ids,
 					radius_particles,
 					value_particles,
-					particle_type,
+					num_particles,
 					particle_fix_size,
 					grid_name,
 					grid_transform,
@@ -760,20 +729,20 @@ namespace common {
 			if (grid_dst.type == VDBParticleType::eDense && grid_recv.type == VDBParticleType::eDense) {
 				// Merge dense grids by summing voxel values (element-wise addition)
 #pragma omp parallel for
-				for (int z = 0; z < grid_dst.dense_grid.dims[2]; z++) {
-					for (int y = 0; y < grid_dst.dense_grid.dims[1]; y++) {
-						for (int x = 0; x < grid_dst.dense_grid.dims[0]; x++) {
-							size_t index = grid_dst.dense_grid.get_index(x, y, z);
-							grid_dst.dense_grid.data_density[index] += grid_recv.dense_grid.data_density[index];
+				for (int z = 0; z < grid_dst.dense_grid->dims[2]; z++) {
+					for (int y = 0; y < grid_dst.dense_grid->dims[1]; y++) {
+						for (int x = 0; x < grid_dst.dense_grid->dims[0]; x++) {
+							size_t index = grid_dst.dense_grid->get_index(x, y, z);
+							grid_dst.dense_grid->data_density[index] += grid_recv.dense_grid->data_density[index];
 #ifndef WITH_NO_DATA_TEMP							
-							grid_dst.dense_grid.data_temp[index] += grid_recv.dense_grid.data_temp[index];
+							grid_dst.dense_grid->data_temp[index] += grid_recv.dense_grid->data_temp[index];
 #endif							
 						}
 					}
 				}
 			}
 
-			// TODO: VoxelManager			
+			// TODO: VoxelSparseManager			
 //			else if (grid_dst.type == VDBParticleType::eNanoVDB && grid_recv.type == VDBParticleType::eVector) {
 //				// Deserialize and merge sparse NanoVDB grid
 //				auto acc_dst = grid_dst.nano_grid->getAccessor();
@@ -811,7 +780,7 @@ namespace common {
 //			}
 //#endif
 			else if ((grid_dst.type == VDBParticleType::eNanoVDB || grid_dst.type == VDBParticleType::eOpenVDB) && grid_recv.type == VDBParticleType::eVector) {
-				grid_dst.sparse_particles->merge(grid_recv.vector_grid.data());
+				grid_dst.sparse_grid->merge(grid_recv.vector_grid.data());
 			}
 
 			else if (grid_dst.type == VDBParticleType::eRawParticles && grid_recv.type == VDBParticleType::eVector) {
@@ -840,35 +809,40 @@ namespace common {
 			bbox_max[0] = bbox_max[1] = bbox_max[2] = -FLT_MAX;
 
 			// Validate particle type
-			if (particle_type < 0 || particle_type >= (int)cache_manager.pos_particles_per_ptype.size()) {
+			if (particle_type >= (int)cache_manager.pos_particles_per_ptype.size()) {
 				printf("Warning: Invalid particle type %d in iolib_find_bbox\n", particle_type);
 				bbox_min[0] = bbox_min[1] = bbox_min[2] = 0.0f;
 				bbox_max[0] = bbox_max[1] = bbox_max[2] = 0.0f;
 				return;
 			}
 
-			// Get particle positions for this type
-			size_t num_particles = cache_manager.pos_particles_per_ptype[particle_type].size() / 3;
+			for (int ptype = 0; ptype < (int)cache_manager.pos_particles_per_ptype.size(); ++ptype) {
+				if (particle_type != -1 && ptype != particle_type)
+					continue;
 
-			if (num_particles == 0) {
-				// No particles of this type
-				bbox_min[0] = bbox_min[1] = bbox_min[2] = 0.0f;
-				bbox_max[0] = bbox_max[1] = bbox_max[2] = 0.0f;
-				return;
-			}
+				// Get particle positions for this type
+				size_t num_particles = cache_manager.pos_particles_per_ptype[ptype].size() / 3;
+
+				if (num_particles == 0) {
+					//// No particles of this type
+					//bbox_min[0] = bbox_min[1] = bbox_min[2] = 0.0f;
+					//bbox_max[0] = bbox_max[1] = bbox_max[2] = 0.0f;
+					continue;
+				}
 
 #ifdef WITH_GPU_CUDA
-			if (cache_manager.use_gpu_cuda) {
-				// Use GPU kernel with cached GPU particle positions
-				const float* d_pos_particles = cache_manager.d_pos_particles_per_ptype[particle_type];
-				kernel::find_bbox_gpu(d_pos_particles, num_particles, offset_position, bbox_min, bbox_max);
-			}
-			else
+				if (cache_manager.use_gpu_cuda) {
+					// Use GPU kernel with cached GPU particle positions
+					const float* d_pos_particles = cache_manager.d_pos_particles_per_ptype[ptype];
+					kernel::find_bbox_gpu(d_pos_particles, num_particles, offset_position, bbox_min, bbox_max);
+				}
+				else
 #endif
-			{
-				// Use CPU kernel with cached CPU particle positions
-				const float* pos_particles = cache_manager.pos_particles_per_ptype[particle_type].data();
-				kernel::find_bbox_cpu(pos_particles, num_particles, offset_position, bbox_min, bbox_max);
+				{
+					// Use CPU kernel with cached CPU particle positions
+					const float* pos_particles = cache_manager.pos_particles_per_ptype[ptype].data();
+					kernel::find_bbox_cpu(pos_particles, num_particles, offset_position, bbox_min, bbox_max);
+				}
 			}
 		}
 
@@ -907,7 +881,7 @@ namespace common {
 
 #ifdef WITH_NANOVDB
 
-		std::shared_ptr<nanovdb::tools::build::FloatGrid> ConvertVDBBase::dense_to_nanovdb(DenseParticles& particles, double transform_scale, common::SpaceData::DenseType dense_type, common::SpaceData::DenseNorm dense_norm)
+		std::shared_ptr<nanovdb::tools::build::FloatGrid> ConvertVDBBase::dense_to_nanovdb(VoxelDenseManager* dense_manager, double transform_scale, common::SpaceData::DenseType dense_type, common::SpaceData::DenseNorm dense_norm)
 		{
 			std::shared_ptr<nanovdb::tools::build::FloatGrid> nano_grid = std::make_shared<nanovdb::tools::build::FloatGrid>(0.0f, "density", nanovdb::GridClass::FogVolume);
 
@@ -916,25 +890,25 @@ namespace common {
 			nano_grid->setTransform(
 				transform_scale,
 				nanovdb::Vec3d(
-					particles.offset[0] * transform_scale,
-					particles.offset[1] * transform_scale,
-					particles.offset[2] * transform_scale
+					dense_manager->offset[0] * transform_scale,
+					dense_manager->offset[1] * transform_scale,
+					dense_manager->offset[2] * transform_scale
 				)
 			);
 
 			// Normalize density values using temp buffer if available
 #ifndef WITH_NO_DATA_TEMP
 #pragma omp parallel for
-			for (int z = 0; z < particles.z(); z++) {
-				for (int y = 0; y < particles.y(); y++) {
-					for (int x = 0; x < particles.x(); x++) {
+			for (int z = 0; z < dense_manager->z(); z++) {
+				for (int y = 0; y < dense_manager->y(); y++) {
+					for (int x = 0; x < dense_manager->x(); x++) {
 
 						// Get raw density and temp values from dense grid
-						size_t index = particles.get_index(x, y, z);
-						float density = particles.data_density[index];
+						size_t index = dense_manager->get_index(x, y, z);
+						float density = dense_manager->data_density[index];
 						
 						float temp = 0.0f;
-						temp = particles.data_temp[index];
+						temp = dense_manager->data_temp[index];
 
 						// Apply normalization: divide accumulated density by accumulated weights (temp buffer)
 						// This computes the weighted average for SPH-like density estimation
@@ -944,14 +918,14 @@ namespace common {
 
 						// If the value is non-zero, set it in the grid
 						if (!std::isnan(density)) {
-							//accessor.setValue(openvdb::Coord(x + particles.offset[0], y + particles.offset[1], z + particles.offset[2]), density);							
+							//accessor.setValue(openvdb::Coord(x + dense_manager->offset[0], y + dense_manager->offset[1], z + dense_manager->offset[2]), density);							
 							//if (dense_type == common::SpaceData::DenseType::eType2)
-							//	particles.data_density[index] = std::log10(density);
+							//	dense_manager->data_density[index] = std::log10(density);
 							//else
-							particles.data_density[index] = density;
+							dense_manager->data_density[index] = density;
 						}
 						else {
-							particles.data_density[index] = 0.0f;
+							dense_manager->data_density[index] = 0.0f;
 						}
 					}
 				}
@@ -965,11 +939,11 @@ namespace common {
 		 * This maintains memory efficiency by only storing occupied voxels.
 		 */
 			auto acc_dst = nano_grid->getAccessor();
-			for (int z = 0; z < particles.z(); z++) {
-				for (int y = 0; y < particles.y(); y++) {
-					for (int x = 0; x < particles.x(); x++) {
+			for (int z = 0; z < dense_manager->z(); z++) {
+				for (int y = 0; y < dense_manager->y(); y++) {
+					for (int x = 0; x < dense_manager->x(); x++) {
 						nanovdb::Coord xyz(x, y, z);
-						float value = particles.data_density[(size_t)x + (size_t)y * (size_t)particles.x() + (size_t)z * (size_t)particles.x() * (size_t)particles.y()];
+						float value = dense_manager->data_density[(size_t)x + (size_t)y * (size_t)dense_manager->x() + (size_t)z * (size_t)dense_manager->x() * (size_t)dense_manager->y()];
 						// Only store non-zero values to maintain sparse storage efficiency
 						// Background value (0.0f) is implicit in NanoVDB
 						if (value != 0.0f) {
@@ -982,7 +956,7 @@ namespace common {
 			return nano_grid;
 		}
 
-		std::shared_ptr<nanovdb::tools::build::FloatGrid> ConvertVDBBase::sparse_to_nanovdb(VoxelManager* voxel_manager)
+		std::shared_ptr<nanovdb::tools::build::FloatGrid> ConvertVDBBase::sparse_to_nanovdb(VoxelSparseManager* voxel_manager)
 		{
 
 			std::shared_ptr<nanovdb::tools::build::FloatGrid> nano_grid = std::make_shared<nanovdb::tools::build::FloatGrid>(0.0f, "density", nanovdb::GridClass::FogVolume);
@@ -1046,7 +1020,7 @@ namespace common {
 		 * Converts regular dense grid to memory-efficient sparse OpenVDB format.
 		 * Applies normalization and uses OpenVDB's optimized dense-to-sparse conversion.
 		 */
-		openvdb::FloatGrid::Ptr ConvertVDBBase::dense_to_openvdb(DenseParticles& particles, double transform_scale, common::SpaceData::DenseType dense_type, common::SpaceData::DenseNorm dense_norm)
+		openvdb::FloatGrid::Ptr ConvertVDBBase::dense_to_openvdb(VoxelDenseManager* dense_manager, double transform_scale, common::SpaceData::DenseType dense_type, common::SpaceData::DenseNorm dense_norm)
 		{
 			openvdb::FloatGrid::Ptr floatgrid = openvdb::FloatGrid::create(0.0f);
 
@@ -1057,22 +1031,22 @@ namespace common {
 
 			// Create transform with scale and translation offset
 			openvdb::math::Transform::Ptr transform = openvdb::math::Transform::createLinearTransform(transform_scale);
-			transform->postTranslate(openvdb::Vec3d(particles.offset[0] * transform_scale, particles.offset[1] * transform_scale, particles.offset[2] * transform_scale));
+			transform->postTranslate(openvdb::Vec3d(dense_manager->offset[0] * transform_scale, dense_manager->offset[1] * transform_scale, dense_manager->offset[2] * transform_scale));
 			floatgrid->setTransform(transform);
 
 			// Normalize density values using temp buffer if available
 #ifndef WITH_NO_DATA_TEMP
 #pragma omp parallel for
-			for (int z = 0; z < particles.z(); z++) {
-				for (int y = 0; y < particles.y(); y++) {
-					for (int x = 0; x < particles.x(); x++) {
+			for (int z = 0; z < dense_manager->z(); z++) {
+				for (int y = 0; y < dense_manager->y(); y++) {
+					for (int x = 0; x < dense_manager->x(); x++) {
 
 						// Get the value from the array						
-						size_t index = particles.get_index(x, y, z);
-						float density = particles.data_density[index];
+						size_t index = dense_manager->get_index(x, y, z);
+						float density = dense_manager->data_density[index];
 
 						float temp = 0.0f;
-						temp = particles.data_temp[index];						
+						temp = dense_manager->data_temp[index];						
 
 						// Apply normalization if enabled
 						if (dense_norm != common::SpaceData::DenseNorm::eNone) {
@@ -1081,10 +1055,10 @@ namespace common {
 
 						// Store normalized value or zero for invalid data
 						if (!std::isnan(density)) {
-							particles.data_density[index] = density;
+							dense_manager->data_density[index] = density;
 						}
 						else {
-							particles.data_density[index] = 0.0f;
+							dense_manager->data_density[index] = 0.0f;
 						}
 					}
 				}
@@ -1093,14 +1067,14 @@ namespace common {
 
 			// Use OpenVDB's optimized dense-to-sparse conversion
 			// This efficiently identifies non-zero regions and builds the sparse tree
-			openvdb::math::CoordBBox bbox(openvdb::Coord(0, 0, 0), openvdb::Coord(particles.x() - 1, particles.y() - 1, particles.z() - 1));
-			openvdb::tools::Dense<const float, openvdb::tools::LayoutXYZ> dense(bbox, particles.data_density.data());
+			openvdb::math::CoordBBox bbox(openvdb::Coord(0, 0, 0), openvdb::Coord(dense_manager->x() - 1, dense_manager->y() - 1, dense_manager->z() - 1));
+			openvdb::tools::Dense<const float, openvdb::tools::LayoutXYZ> dense(bbox, dense_manager->data_density.data());
 			openvdb::tools::copyFromDense(dense, floatgrid->tree(), 0.0f);
 
 			return floatgrid;
 		}
 
-		openvdb::FloatGrid::Ptr ConvertVDBBase::sparse_to_openvdb(VoxelManager* voxel_manager) {
+		openvdb::FloatGrid::Ptr ConvertVDBBase::sparse_to_openvdb(VoxelSparseManager* voxel_manager) {
 			openvdb::FloatGrid::Ptr floatgrid = openvdb::FloatGrid::create(0.0f);
 
 			// Configure grid metadata
@@ -1110,7 +1084,7 @@ namespace common {
 
 			// Create transform with scale and translation offset
 			openvdb::math::Transform::Ptr transform = openvdb::math::Transform::createLinearTransform(voxel_manager->transform_scale);
-			//transform->postTranslate(openvdb::Vec3d(particles.offset[0] * transform_scale, particles.offset[1] * transform_scale, particles.offset[2] * transform_scale));
+			//transform->postTranslate(openvdb::Vec3d(dense_manager->offset[0] * transform_scale, dense_manager->offset[1] * transform_scale, dense_manager->offset[2] * transform_scale));
 			floatgrid->setTransform(transform);
 
 			// Attempt to dynamic_cast to VoxelOpenMPManager
@@ -1118,8 +1092,10 @@ namespace common {
 			if (voxel_omp_manager) {
 				auto acc_dst = floatgrid->getAccessor();
 
-				for (unsigned int i = 0; voxel_omp_manager->table_size; i++) {
-					if (voxel_omp_manager->hash_table[i].occupied != 1) continue;
+				for (unsigned int i = 0; i < voxel_omp_manager->table_size; i++) {
+					if (voxel_omp_manager->hash_table[i].occupied != 1) {
+						continue;
+					}
 
 					openvdb::Coord xyz(voxel_omp_manager->hash_table[i].i, voxel_omp_manager->hash_table[i].j, voxel_omp_manager->hash_table[i].k);
 					float value = voxel_omp_manager->hash_table[i].value;
@@ -1129,6 +1105,8 @@ namespace common {
 						acc_dst.setValue(xyz, value);
 					}
 				}
+
+				return floatgrid;
 			}
 
 			// Attempt to dynamic_cast to VoxelGPUManagerSortReduce
@@ -1152,6 +1130,8 @@ namespace common {
 				}
 				delete[] h_keys;
 				delete[] h_vals;
+
+				return floatgrid;
 			}
 
 			return floatgrid;

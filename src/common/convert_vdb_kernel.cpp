@@ -37,7 +37,6 @@ namespace common {
 
 			// Using declarations for cleaner code
 			using common::vdb::sparse::packCoord3;
-			//using common::vdb::sparse::VoxelManager;
 
 			/**
 			 * @brief CPU implementation of bounding box calculation using OpenMP
@@ -143,7 +142,7 @@ namespace common {
 				double bbox_z_max_norm,
 				double scale_space_diagonal,
 
-				VoxelManager* voxel_manager,
+				VoxelSparseManager* voxel_manager,
 				float& min_value,
 				float& max_value,
 				size_t& particles_count
@@ -316,7 +315,7 @@ namespace common {
 			double bbox_z_max_norm,
 			double scale_space_diagonal,
 
-			DenseParticles& grid,
+			VoxelDenseManager* grid,
 			float& min_value,
 			float& max_value,
 			size_t& particles_count
@@ -375,10 +374,10 @@ namespace common {
 				// Splat particle into dense grid using SPH kernel function
 				// This will affect multiple neighboring voxels based on particle radius
 				fill_voxels(
-					grid.data_density.data(),
-					grid.data_temp.size() > 0 ? grid.data_temp.data() : nullptr,
-					grid.offset,
-					grid.dims,
+					grid->data_density.data(),
+					grid->data_temp.size() > 0 ? grid->data_temp.data() : nullptr,
+					grid->offset,
+					grid->dims,
 					cached_idx,
 					v_orig,
 					bbox_dim,
@@ -662,7 +661,7 @@ namespace common {
 					bbox_z_max_norm,
 					scale_space_diagonal,
 
-					grid.sparse_particles.get(),
+					grid.sparse_grid.get(),
 					min_value,
 					max_value,
 					particles_count
@@ -701,7 +700,7 @@ namespace common {
 					bbox_z_max_norm,
 					scale_space_diagonal,
 
-					grid.dense_grid,
+					grid.dense_grid.get(),
 					min_value,
 					max_value,
 					particles_count

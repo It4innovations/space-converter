@@ -3,11 +3,13 @@
 #include <string>
 #include <float.h>
 #include <cstring>
+#include <cstdint>
 #include <vector>
 #include <memory>
 
-#include "dense_common.h"
 #include "raw_common.h"
+// Note: dense_common.h includes data_common.h (not the other way around to avoid circular deps).
+// Include dense_common.h explicitly where VoxelCPUDenseManager / VoxelGPUDenseManager are needed.
 
 #define FDATA_EPSILON 1e-8f  // Small epsilon value for floating-point comparisons
 
@@ -30,34 +32,96 @@ namespace common {
 			eRawParticles  ///< Raw point cloud
 		};
 
-		class VoxelManager {
+		/**
+		 * @brief Base class for dense regular grid representation of particle data.
+		 *
+		 * Holds the host-side data buffers and grid metadata. Concrete subclasses
+		 * (VoxelCPUDenseManager, VoxelGPUDenseManager) override clear() and create()
+		 * for CPU-only and CPU+GPU paths respectively.
+		 *
+		 * Also provides backward-compatible virtual stubs for the sparse-grid interface
+		 * (set_transform, init, update, serialize, …) so that existing sparse-grid
+		 * implementations that inherit from this class continue to compile unchanged.
+		 */
+		class VoxelDenseManager {
 		public:
-			virtual void set_transform(double transform_scale) {
-				this->transform_scale = transform_scale;
+			virtual ~VoxelDenseManager() = default;
+
+			// ── Host data ──────────────────────────────────────────────────────────
+			std::vector<float> data_density;   ///< Primary density/value data
+#ifndef WITH_NO_DATA_TEMP
+			std::vector<float> data_temp;      ///< Temporary accumulation buffer for normalisation
+#endif
+			size_t dims[3]   = { 0, 0, 0 };   ///< Grid dimensions [x, y, z]
+			size_t offset[3] = { 0, 0, 0 };   ///< Grid offset in global coordinate space
+
+			// ── Lifecycle ──────────────────────────────────────────────────────────
+
+			/** @brief Clear all grid data and reset dimensions. */
+			virtual void clear() {
+				data_density.clear();
+#ifndef WITH_NO_DATA_TEMP
+				data_temp.clear();
+#endif
+				memset(dims,   0, 3 * sizeof(size_t));
+				memset(offset, 0, 3 * sizeof(size_t));
 			}
 
-			virtual void init(unsigned int expected_voxels) {};
-			
-			// Helper for sequential insertion
-			virtual void insertOrUpdatePackedSequential(uint64_t key, float value) {};
-
-			// Serialization: write current voxel data to binary buffer
-			virtual void serialize(uint8_t *bin_data) {};
-			
-			// Deserialization: read voxel data from binary buffer
-			virtual void deserialize(uint8_t *bin_data) {};
-			
-			// Merge: combine voxels from another manager (accumulate values)
-			virtual void merge(common::vdb::VoxelManager* other) {};
-
-			virtual void merge(uint8_t* bin_data) {};
-
-			virtual size_t mem_size() const {
-				return 0;
+			/**
+			 * @brief Allocate and zero-initialise grid buffers.
+			 * @param x  Width  of the grid.
+			 * @param y  Height of the grid.
+			 * @param z  Depth  of the grid.
+			 */
+			virtual void create(size_t x, size_t y, size_t z) {
+				dims[0] = x;  dims[1] = y;  dims[2] = z;
+				data_density.resize(size());
+				memset(data_density.data(), 0, memsize());
+#ifndef WITH_NO_DATA_TEMP
+				data_temp.resize(size());
+				memset(data_temp.data(), 0, memsize());
+#endif
 			}
-		public:
-			double transform_scale;
+
+			// ── Dimension accessors ────────────────────────────────────────────────
+
+			/** @brief Grid width. */
+			size_t x() const { return dims[0]; }
+			/** @brief Grid height. */
+			size_t y() const { return dims[1]; }
+			/** @brief Grid depth. */
+			size_t z() const { return dims[2]; }
+			/** @brief Total number of voxels. */
+			size_t size()    const { return dims[0] * dims[1] * dims[2]; }
+			/** @brief Total memory size in bytes. */
+			size_t memsize() const { return dims[0] * dims[1] * dims[2] * sizeof(float); }
+			/**
+			 * @brief Convert 3-D coordinates to a linear index.
+			 * @param x X coordinate  @param y Y coordinate  @param z Z coordinate
+			 * @return Linear array index.
+			 */
+			size_t get_index(size_t x, size_t y, size_t z) const {
+				return x + y * dims[0] + z * dims[0] * dims[1];
+			}
 		};
+
+		class VoxelSparseManager {
+		public:
+			// ── Sparse-grid interface (backward-compat stubs) ──────────────────────
+
+			virtual void set_transform(double ts) { transform_scale = ts; }
+			virtual void init(unsigned int /*expected_voxels*/) {}
+			// virtual int  update() { return 0; }
+			virtual void insertOrUpdatePackedSequential(uint64_t /*key*/, float /*value*/) {}
+			virtual void serialize(uint8_t* /*bin_data*/) {}
+			virtual void deserialize(uint8_t* /*bin_data*/) {}
+			virtual void merge(VoxelSparseManager* /*other*/) {}
+			virtual void merge(uint8_t* /*bin_data*/) {}
+			virtual size_t mem_size() const { return 0; }
+
+		public:
+			double transform_scale = 0.0;
+		};		
 
 		/**
 		 * @brief Container for different VDB grid representations
@@ -68,9 +132,9 @@ namespace common {
 		class VDBParticles
 		{
 		public:
-			DenseParticles dense_grid;  ///< Dense regular grid representation
+			std::shared_ptr<VoxelDenseManager> dense_grid;  ///< Dense regular grid representation
 			std::vector<uint8_t> vector_grid;  ///< Serialized binary grid data (for MPI transfer)
-			std::shared_ptr<VoxelManager> sparse_particles;  ///< Simple sparse grid representation (i, j, k, value)
+			std::shared_ptr<VoxelSparseManager> sparse_grid;  ///< Simple sparse grid representation (i, j, k, value)
 			RawParticles raw_particles;  ///< Raw particle point cloud data
 
 			VDBParticleType type;  ///< Current representation type

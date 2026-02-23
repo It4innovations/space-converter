@@ -17,3 +17,37 @@
  */
 
 #include "dense_common.h"
+#include <cstring>
+
+namespace common {
+	namespace vdb {
+		namespace dense {
+
+			// ─────────────────────────────────────────────────────────────────────
+			// VoxelCPUDenseManager  (CPU-only concrete implementation)
+			// ─────────────────────────────────────────────────────────────────────
+
+			void VoxelCPUDenseManager::clear() {
+				data_density.clear();
+#ifndef WITH_NO_DATA_TEMP
+				data_temp.clear();
+#endif
+				memset(dims, 0, 3 * sizeof(size_t));
+				memset(offset, 0, 3 * sizeof(size_t));
+			}
+
+			void VoxelCPUDenseManager::create(size_t x, size_t y, size_t z) {
+				dims[0] = x;  dims[1] = y;  dims[2] = z;
+
+				data_density.resize(size());
+				memset(data_density.data(), 0, memsize());
+#ifndef WITH_NO_DATA_TEMP
+				data_temp.resize(size());
+				memset(data_temp.data(), 0, memsize());
+#endif
+			}
+
+		} // dense
+
+	} // vdb
+} // common

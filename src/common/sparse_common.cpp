@@ -37,7 +37,7 @@ namespace common {
 				return hash % table_size;
 			}
 
-			VoxelOpenMPManager::VoxelOpenMPManager(): table_size(0), insert_count(0), hash_table(nullptr), common::vdb::VoxelManager() {
+			VoxelOpenMPManager::VoxelOpenMPManager(): table_size(0), insert_count(0), hash_table(nullptr), common::vdb::VoxelSparseManager() {
 			}
 			
 			void VoxelOpenMPManager::init(unsigned int expected_voxels) {
@@ -250,7 +250,7 @@ namespace common {
 			}
 			
 			// Merge: combine voxels from another manager (accumulate values)
-			void VoxelOpenMPManager::merge(common::vdb::VoxelManager* _other) {
+			void VoxelOpenMPManager::merge(common::vdb::VoxelSparseManager* _other) {
 
 				// Attempt to dynamic_cast to VoxelOpenMPManager
 				VoxelOpenMPManager* other = dynamic_cast<VoxelOpenMPManager*>(_other);

@@ -27,9 +27,9 @@
 namespace common {
 	namespace vdb {
 
-		class VoxelManager;
+		class VoxelSparseManager;
 		class VDBParticles;
-		class DenseParticles;
+		class VoxelDenseManager;
 
 		namespace kernel {
 
@@ -81,7 +81,7 @@ namespace common {
 			__host__ __device__
 #endif            
 				inline void fill_voxels(
-					//common::vdb::DenseParticles& grid,
+					//common::vdb::VoxelDenseManager& grid,
 					float* data_density,
 					float* data_temp,
 					size_t* offset,
@@ -397,7 +397,7 @@ namespace common {
 			//	int frame_req,
 			//	int frame,
 			//	bool use_simple_density,
-			//	VoxelManager* voxel_manager,
+			//	VoxelSparseManager* voxel_manager,
 			//	float& min_value,
 			//	float& max_value,
 			//	size_t& particles_count
@@ -430,7 +430,7 @@ namespace common {
 			//	int frame_req,
 			//	int frame,
 			//	bool use_simple_density,
-			//	DenseParticles& grid,
+			//	VoxelDenseManager& grid,
 			//	float& min_value,
 			//	float& max_value,
 			//	size_t& particles_count

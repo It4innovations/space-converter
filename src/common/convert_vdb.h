@@ -151,7 +151,7 @@ namespace common {
 			 * @param pos Particle position
 			 */
 			void fill_voxels(
-				common::vdb::DenseParticles& grid,
+				common::vdb::VoxelDenseManager* grid,
 				size_t pid,
 				float value,
 				int bbox_dim,
@@ -171,8 +171,8 @@ namespace common {
 			/**
 			 * @brief Convert dense grid to NanoVDB format
 			 */
-			std::shared_ptr<nanovdb::tools::build::FloatGrid> dense_to_nanovdb(DenseParticles& particles, double transform_scale, common::SpaceData::DenseType dense_type, common::SpaceData::DenseNorm dense_norm);
-			std::shared_ptr<nanovdb::tools::build::FloatGrid> sparse_to_nanovdb(VoxelManager* voxel_manager);
+			std::shared_ptr<nanovdb::tools::build::FloatGrid> dense_to_nanovdb(VoxelDenseManager* dense_manager, double transform_scale, common::SpaceData::DenseType dense_type, common::SpaceData::DenseNorm dense_norm);
+			std::shared_ptr<nanovdb::tools::build::FloatGrid> sparse_to_nanovdb(VoxelSparseManager* voxel_manager);
 
 #endif
 
@@ -189,8 +189,8 @@ namespace common {
 			 * @param dense_norm Normalization type
 			 * @return OpenVDB grid pointer
 			 */
-			openvdb::FloatGrid::Ptr dense_to_openvdb(DenseParticles& particles, double transform_scale, common::SpaceData::DenseType dense_type, common::SpaceData::DenseNorm dense_norm);
-			openvdb::FloatGrid::Ptr sparse_to_openvdb(VoxelManager* voxel_manager);
+			openvdb::FloatGrid::Ptr dense_to_openvdb(VoxelDenseManager* dense_manager, double transform_scale, common::SpaceData::DenseType dense_type, common::SpaceData::DenseNorm dense_norm);
+			openvdb::FloatGrid::Ptr sparse_to_openvdb(VoxelSparseManager* voxel_manager);
 
 			/**
 			 * @brief Serialize OpenVDB grid to binary buffer

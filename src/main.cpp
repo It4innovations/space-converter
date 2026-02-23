@@ -131,7 +131,7 @@ int main(int argc, char** argv)
 
 				// Create empty VDB grid with specified dimensions and transform
 				common::vdb::VDBParticles grid_main;
-				space_converter::create_grid(grid_main, from_cl, space_data);
+				space_converter::create_grid(convert_vdb_base, grid_main, from_cl, space_data);
 				
 				// Convert raw particle data to volumetric grid using density estimation
 				space_converter::convert_to_grid(convert_vdb_base, from_cl, space_data, grid_main);

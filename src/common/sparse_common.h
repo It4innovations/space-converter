@@ -230,7 +230,7 @@ namespace common {
 			// ---------------------------------------------
 			// OpenMP-based CPU voxel manager
 			// ---------------------------------------------
-			class VoxelOpenMPManager: public common::vdb::VoxelManager {
+			class VoxelOpenMPManager: public common::vdb::VoxelSparseManager {
 			public:
 				VoxelHashEntry* hash_table;
 				unsigned int table_size;
@@ -256,7 +256,7 @@ namespace common {
 				void deserialize(uint8_t *bin_data) override;
 				
 				// Merge: combine voxels from another manager (accumulate values)
-				void merge(common::vdb::VoxelManager* other) override;
+				void merge(common::vdb::VoxelSparseManager* other) override;
 
 				size_t mem_size() const override {
 					return sizeof(int) + sizeof(unsigned int) + sizeof(VoxelHashEntry) * table_size;
@@ -284,7 +284,7 @@ namespace common {
 			// ---------------------------------------------
 			// GPU-based voxel manager using sort+reduce
 			// ---------------------------------------------
-			class VoxelGPUManagerSortReduce : public common::vdb::VoxelManager {
+			class VoxelGPUManagerSortReduce : public common::vdb::VoxelSparseManager {
 			public:
 				VoxelGPUManagerSortReduce();
 				~VoxelGPUManagerSortReduce();
@@ -302,7 +302,7 @@ namespace common {
 				void deserialize(uint8_t *bin_data) override;
 				
 				// Merge: combine voxels from another manager (accumulate values)
-				void merge(common::vdb::VoxelManager* other) override;
+				void merge(common::vdb::VoxelSparseManager* other) override;
 
 				size_t mem_size() const override {
 					// TODO: this is a rough estimate. For accurate memory usage, we would need to track the actual number of voxels after reduction.
@@ -321,6 +321,7 @@ namespace common {
 					this->merge(&temp_manager);
 				}
 				
+				
 			public:
 				// Accumulate a batch of voxels: output becomes unique (i,j,k) with summed values
 				// Returns number of unique voxels in the batch.
@@ -336,7 +337,7 @@ namespace common {
 				void deserializeCPU(uint8_t* bin_data);
 				
 				// CPU-side merge: combine voxels from another manager (uses host memory)
-				void mergeCPU(common::vdb::VoxelManager* other);
+				void mergeCPU(common::vdb::VoxelSparseManager* other);
 
 				void mergeCPU(uint8_t* bin_data) {
 					// Deserialize the incoming data into a temporary manager and then merge
@@ -346,6 +347,11 @@ namespace common {
 				}
 
 				void get_keys_values_from_device(uint64_t* h_keys, float* h_vals);
+
+				// Get min/max values from reduced voxel data using CUB
+				void find_min_max(float& min_value, float& max_value);
+
+				int update(size_t count);
 
 			public:
 				size_t m_max = 0;
@@ -369,6 +375,20 @@ namespace common {
 
 				void* d_reduce_temp = nullptr;
 				size_t    m_reduce_temp_bytes = 0;
+
+				// Min/max reduction support
+				void* d_minmax_temp = nullptr;
+				size_t m_minmax_temp_bytes = 0;
+				float* d_min_out = nullptr;
+				float* d_max_out = nullptr;
+
+				// Atomic counter: number of particles that passed should_process
+				uint64_t* d_particle_count = nullptr;
+
+				// Persistent device copies of per-call host parameters
+				int*   d_bbox_min_orig   = nullptr;
+				float* d_offset_position = nullptr;
+				float* d_bbox_sphere_pos = nullptr;
 			};
 		}
 	}// vdb
