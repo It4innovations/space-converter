@@ -253,8 +253,8 @@ namespace common {
 
 					CUDA_CHECK_ERROR(cudaFree(d_inVoxels));
 
-				// sort by key (pairs)
-				cub::DeviceRadixSort::SortPairs(d_sort_temp, m_sort_temp_bytes,
+					// sort by key (pairs)
+					cub::DeviceRadixSort::SortPairs(d_sort_temp, m_sort_temp_bytes,
 					d_keys, d_keys_alt,
 						d_vals, d_vals_alt,
 						num_voxels);

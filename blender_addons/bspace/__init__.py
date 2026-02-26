@@ -21,8 +21,8 @@ bl_info = {
     "name": "BSpace",
     "author": "Milan Jaros, Petr Strakos, Lubomir Riha",
     "description": "",
-    "blender": (4, 2, 0),
-    "version": (0, 3, 0),
+    "blender": (4, 5, 0),
+    "version": (0, 4, 0),
     "location": "View3D > Sidebar > BSpace Tab",
     "warning": "",
     "category": "3D View"
