@@ -116,6 +116,7 @@ namespace common {
 
 		int anim_start = -1;               // Start frame (-1 indicates not set).
 		int anim_end = -1;                 // End frame (-1 indicates not set).
+		int anim_step = -1;                // Step frame (-1 indicates not set).
 
 #if defined(WITH_CUDAKDTREE) || defined(WITH_NANOFLANN)
 		int calc_radius_neigh = -1;

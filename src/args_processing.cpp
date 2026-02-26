@@ -34,7 +34,7 @@ namespace space_converter {
 		std::cout << "\t--nanovdb" << std::endl;
 		//std::cout << "\t--dense" << std::endl;
 		std::cout << "\t--dense2file" << std::endl;
-		std::cout << "\t--anim START END" << std::endl;
+		std::cout << "\t--anim START END STEP" << std::endl;
 		std::cout << "\t--anim-merge" << std::endl;		
 		std::cout << "\t--raw-particles" << std::endl;
 		std::cout << "\t--rawpart2vdb" << std::endl;
@@ -142,6 +142,7 @@ namespace space_converter {
 
 				space_data.anim_start = std::stoi(argv[++i]);
 				space_data.anim_end = std::stoi(argv[++i]);
+				space_data.anim_step = std::stoi(argv[++i]);
 			}
 			else if (arg == "--anim-merge") {
 				space_data.anim_type = common::SpaceData::AnimType::eAllMerge;
