@@ -252,6 +252,7 @@ namespace common {
 		int anim_task_counter = 0;          // Animation task counter
 		int anim_start = -1;                // Start frame (-1 = not set)
 		int anim_end = -1;                  // End frame (-1 = not set)
+		int anim_step = -1;                 // Step frame (-1 = not set)
 
 		// ========== SPH Radius Calculation ==========
 #if defined(WITH_CUDAKDTREE) || defined(WITH_NANOFLANN)

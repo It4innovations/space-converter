@@ -33,22 +33,23 @@ namespace space_converter {
 
 		// === General Options ===
 		std::cout << "options:" << std::endl;
-		std::cout << "\t--grid-dim X               : Set grid dimension (resolution)" << std::endl;
-		std::cout << "\t--output-path X             : Output directory for generated files" << std::endl;
-		std::cout << "\t--server X                  : Server address for remote operations (default: localhost)" << std::endl;
-		std::cout << "\t--port X                    : Port for server communication (default: 7000)" << std::endl;
-		std::cout << "\t--info                      : Display dataset information and exit" << std::endl;
-		std::cout << "\t--nanovdb                   : Use NanoVDB format for output" << std::endl;
-		std::cout << "\t--dense2file                : Export dense matrix to file" << std::endl;
-		std::cout << "\t--anim START END            : Process animation sequence from START to END frame" << std::endl;
-		std::cout << "\t--anim-merge                : Merge all animation frames into single output" << std::endl;		
-		std::cout << "\t--raw-particles             : Export raw particle data (no VDB conversion)" << std::endl;
-		std::cout << "\t--rawpart2vdb               : Convert raw particle data to VDB format" << std::endl;
-		std::cout << "\t--export-data TYPE DATASET  : Export specific data type and dataset" << std::endl;
-		std::cout << "\t--dense-type X              : Specify dense computation type" << std::endl;
-		std::cout << "\t--bbox-sphere x y z r       : Define spherical bounding box (center x,y,z and radius r)" << std::endl;
-		std::cout << "\t--simple-density            : Use simple density calculation" << std::endl;
-		std::cout << "\t--offset-position X Y Z     : Apply position offset to all particles" << std::endl;
+		std::cout << "\t--grid-dim X" << std::endl;
+		std::cout << "\t--output-path X" << std::endl;
+		std::cout << "\t--server X" << std::endl;
+		std::cout << "\t--port X" << std::endl;
+		std::cout << "\t--info" << std::endl;
+		std::cout << "\t--nanovdb" << std::endl;
+		//std::cout << "\t--dense" << std::endl;
+		std::cout << "\t--dense2file" << std::endl;
+		std::cout << "\t--anim START END STEP" << std::endl;
+		std::cout << "\t--anim-merge" << std::endl;		
+		std::cout << "\t--raw-particles" << std::endl;
+		std::cout << "\t--rawpart2vdb" << std::endl;
+		std::cout << "\t--export-data TYPE DATASET" << std::endl;
+		std::cout << "\t--dense-type X" << std::endl;
+		std::cout << "\t--bbox-sphere x y z r" << std::endl;
+		std::cout << "\t--simple-density" << std::endl;
+		std::cout << "\t--offset-position X Y Z" << std::endl;
 
 		// === Neighbor Search Options ===
 #if defined(WITH_CUDAKDTREE) || defined(WITH_NANOFLANN)		
@@ -172,6 +173,7 @@ namespace space_converter {
 
 				space_data.anim_start = std::stoi(argv[++i]);
 				space_data.anim_end = std::stoi(argv[++i]);
+				space_data.anim_step = std::stoi(argv[++i]);
 			}
 			else if (arg == "--anim-merge") {
 				// Merge all animation frames into a single output
