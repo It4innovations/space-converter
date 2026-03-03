@@ -23,6 +23,7 @@
 #include <string>
 #include <stdexcept>
 #include <sstream>
+#include <algorithm>
 
 namespace common {
 	namespace vdb {

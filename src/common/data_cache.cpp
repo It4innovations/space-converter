@@ -155,5 +155,30 @@ namespace common {
 #endif
         }
 
+#ifndef WITH_GPU_CUDA
+        // Stub implementation for CPU-only builds
+        void CacheManager::free_gpu_memory() {
+            // No GPU memory to free in CPU-only mode
+        }
+
+        void CacheManager::copy_particles_to_gpu() {
+            // Empty stub for CPU-only builds
+        }
+
+        void CacheManager::copy_values_to_gpu() {
+            // Empty stub for CPU-only builds
+        }
+
+        void CacheManager::sort_particles_by_radius_gpu() {
+            // Fallback to CPU sorting
+            sort_particles_by_radius_cpu();
+        }
+
+        void CacheManager::sort_particles_by_radius_gpu_inplace() {
+            // Fallback to CPU sorting
+            sort_particles_by_radius_cpu();
+        }
+#endif
+
     } // namespace cache
 } // namespace common

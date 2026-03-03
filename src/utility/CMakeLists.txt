@@ -51,6 +51,10 @@ if(WITH_TBB)
     add_definitions(-DWITH_TBB)
 endif()
 
+if(WITH_VTK)
+    add_definitions(-DWITH_VTK)
+endif()
+
 include_directories(${INC})
 ########################################################
 if(WITH_NANOVDB AND WITH_OPENVDB)

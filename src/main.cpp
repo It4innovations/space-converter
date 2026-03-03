@@ -140,7 +140,7 @@ int main(int argc, char** argv)
 				space_converter::find_minmax_value(from_cl, space_data);
 
 				// Save per-rank intermediate results if requested
-				if (from_cl.use_save_mpirank) {
+				if (from_cl.use_save_mpirank) {					
 					space_converter::save_vdb(convert_vdb_base, from_cl, space_data, grid_main, grid_main.type, false);
 				}
 

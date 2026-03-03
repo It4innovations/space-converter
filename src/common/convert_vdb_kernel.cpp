@@ -599,6 +599,7 @@ namespace common {
 			int* bbox_min_orig,
 			double bbox_size_orig,
 			common::SpaceData::ExtractedType extracted_type,
+			common::SpaceData::ExtractedParticleType extracted_particle_type,
 			common::SpaceData::DenseType dense_type,
 			common::SpaceData::DenseNorm dense_norm,
 			int block_name_id,

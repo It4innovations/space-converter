@@ -57,7 +57,10 @@ std::string get_prefix(const std::string& input) {
 static void calc_histo(openvdb::FloatGrid::Ptr grid, std::string &histogram_filename)
 {
 	float min = 0.0f, max = 0.0f;
-	grid->tree().evalMinMax(min, max);
+	//grid->tree().evalMinMax(min, max);
+	openvdb::math::MinMax<float> extrema = openvdb::tools::minMax(grid->tree());
+	min = extrema.min();
+	max = extrema.max();	
 	std::cout << "Computed value range: " << min << "," << max << '\n';
 
 	openvdb::CoordBBox bbox;

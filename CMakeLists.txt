@@ -32,6 +32,7 @@ option(WITH_OPENVDB  "Enable OPENVDB" ON)
 
 option(WITH_HDF5  "Enable HDF5" OFF)
 option(WITH_HACC  "Enable HACC" OFF)
+option(WITH_VTK   "Enable VTK" OFF)
 
 option(GADGET_MAX_HSML  "Enable loading of limited values from gadget files" OFF)
 option(GADGET_READ_ID  "Enable reading of ID" OFF)
@@ -83,6 +84,16 @@ else()
     set(WITH_TBB OFF)
 endif()
 
+if(WITH_VTK)
+    # If you know exactly which modules you need, list them here (recommended).
+    find_package(VTK REQUIRED COMPONENTS
+        CommonCore
+        CommonDataModel
+        IOXML
+        IOParallelXML
+    )
+endif()
+
 if(WITH_MPI)
     find_package(MPI)
     if(NOT MPI_FOUND)
@@ -102,7 +113,7 @@ if(WITH_NANOVDB)
     set(NANOVDB_INCLUDE_DIRS "" CACHE PATH "")
 endif()
 
-if(WITH_CUDAKDTREE)
+if(WITH_GPU_CUDA OR WITH_CUDAKDTREE)
     # ==================================================================
     # configure and enable cuda
     # ==================================================================

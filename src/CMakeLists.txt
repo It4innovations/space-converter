@@ -30,6 +30,7 @@ set(INC
     .  
     ${OPENVDB_INCLUDE_DIRS}
     ${NANOVDB_INCLUDE_DIRS}
+    ${VTK_INCLUDE_DIRS}
     ${TBB_INCLUDE_DIRS}
     ${MPI_INCLUDE_DIRS}
     ${MPI_CXX_HEADER_DIR}
@@ -73,6 +74,10 @@ endif()
 
 if(WITH_MPI)
     add_definitions(-DWITH_MPI)
+endif()
+
+if(WITH_VTK)
+    add_definitions(-DWITH_VTK)
 endif()
 
 if(WITH_TBB)
@@ -140,6 +145,10 @@ target_link_libraries(space_converter
     changa_tipsy_converter
     changa_nchilada_converter        
 )
+
+if(WITH_VTK)
+    target_link_libraries(space_converter ${VTK_LIBRARIES})
+endif()
 
 if(NOT WIN32 AND NOT APPLE)
     target_link_libraries(space_converter stdc++fs)

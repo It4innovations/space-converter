@@ -40,11 +40,11 @@ namespace space_converter {
 		std::cout << "\t--info" << std::endl;
 		std::cout << "\t--nanovdb" << std::endl;
 		//std::cout << "\t--dense" << std::endl;
-		std::cout << "\t--dense2file" << std::endl;
+		std::cout << "\t--dense-file X" << std::endl;
 		std::cout << "\t--anim START END STEP" << std::endl;
 		std::cout << "\t--anim-merge" << std::endl;		
-		std::cout << "\t--raw-particles" << std::endl;
-		std::cout << "\t--rawpart2vdb" << std::endl;
+		std::cout << "\t--raw-particles X" << std::endl;
+		// std::cout << "\t--rawpart2vdb" << std::endl;
 		std::cout << "\t--export-data TYPE DATASET" << std::endl;
 		std::cout << "\t--dense-type X" << std::endl;
 		std::cout << "\t--bbox-sphere x y z r" << std::endl;
@@ -160,9 +160,10 @@ namespace space_converter {
 				from_cl.use_nanovdb = true;
 			}
 #endif
-			else if (arg == "--dense2file") {
+			else if (arg == "--dense-file") {
 				// Export dense matrix representation to file
-				from_cl.use_dense2file = true;
+				//from_cl.use_dense2file = true;
+				space_data.extracted_dense_type = (common::SpaceData::ExtractedDenseType)std::stoi(argv[++i]);
 			}
 			
 			// === Animation Processing ===
@@ -184,13 +185,14 @@ namespace space_converter {
 			else if (arg == "--raw-particles") {
 				// Export raw particle data without VDB conversion
 				space_data.extracted_type = common::SpaceData::ExtractedType::eParticle; // eRawParticles
+				space_data.extracted_particle_type = (common::SpaceData::ExtractedParticleType)std::stoi(argv[++i]);
 			}
 			else if (arg == "--save-mpi-rank") {
 				from_cl.use_save_mpirank = true;
 			}			
-			else if (arg == "--rawpart2vdb") {
-				from_cl.use_rawpart2vdb = true;
-			}			
+			// else if (arg == "--rawpart2vdb") {
+			// 	from_cl.use_rawpart2vdb = true;
+			// }			
 			else if (arg == "--export-data") {
 				space_data.particle_type = std::stoi(argv[++i]);
 				space_data.block_name_id = std::stoi(argv[++i]);

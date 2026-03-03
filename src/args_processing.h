@@ -75,10 +75,10 @@ namespace space_converter {
 		bool use_save_mpirank = false;
 		
 		/// Flag to convert raw particle data to VDB file format
-		bool use_rawpart2vdb = false;
+		// bool use_rawpart2vdb = false;
 
 		/// Flag to export dense matrix representation directly to file
-		bool use_dense2file = false;
+		// bool use_dense2file = false;
 
 		// === Neighbor Search Options ===
 		

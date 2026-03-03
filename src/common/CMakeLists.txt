@@ -89,6 +89,10 @@ if(WITH_MPI)
     add_definitions(-DWITH_MPI)
 endif()
 
+if(WITH_VTK)
+    add_definitions(-DWITH_VTK)
+endif()
+
 if(WITH_TBB)
     add_definitions(-DWITH_TBB)
 endif()

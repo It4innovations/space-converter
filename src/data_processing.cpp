@@ -54,6 +54,19 @@
 
 #endif
 
+#ifdef WITH_VTK
+#	include <vtkCellArray.h>
+#	include <vtkFloatArray.h>
+#	include <vtkImageData.h>
+#	include <vtkPointData.h>
+#	include <vtkPoints.h>
+#	include <vtkPolyData.h>
+#	include <vtkSmartPointer.h>
+#	include <vtkXMLImageDataWriter.h>
+#	include <vtkXMLPPolyDataWriter.h>
+#	include <vtkXMLPolyDataWriter.h>
+#endif
+
 #ifdef WITH_MERIC
 #	include <meric.h>
 #endif
@@ -427,10 +440,14 @@ namespace space_converter {
 		if (space_data.extracted_type == common::SpaceData::ExtractedType::eDense) {
 			grid_main.type = common::vdb::VDBParticleType::eDense;
 
-			if (from_cl.use_gpu_cuda) {
+#ifdef WITH_GPU_CUDA
+			if (from_cl.use_gpu_cuda) 
+			{
 				grid_main.dense_grid = std::make_shared<common::vdb::dense::VoxelGPUDenseManager>();
 			}
-			else {
+			else 
+#endif			
+			{
 				grid_main.dense_grid = std::make_shared<common::vdb::dense::VoxelCPUDenseManager>();
 			}
 
@@ -459,10 +476,14 @@ namespace space_converter {
 				grid_main.type = common::vdb::VDBParticleType::eOpenVDB;
 			}
 
+#ifdef WITH_GPU_CUDA			
 			if (from_cl.use_gpu_cuda) {
 				grid_main.sparse_grid = std::make_shared<common::vdb::sparse::VoxelGPUManagerSortReduce>();
 				grid_main.sparse_grid->init(convert_vdb_base->get_local_num_particles()); // TODO: convert_vdb_base->get_local_num_particles()
-			} else {
+			} 
+			else 
+#endif			
+			{
 				grid_main.sparse_grid = std::make_shared<common::vdb::sparse::VoxelOpenMPManager>();
 				grid_main.sparse_grid->init(convert_vdb_base->get_local_num_particles()); // TODO: convert_vdb_base->get_local_num_particles()
 			}
@@ -506,6 +527,7 @@ namespace space_converter {
 			space_data.bbox_min_orig,
 			space_data.bbox_size_orig,
 			space_data.extracted_type,
+			space_data.extracted_particle_type,
 			space_data.dense_type,
 			space_data.dense_norm,
 			space_data.block_name_id,
@@ -802,8 +824,10 @@ namespace space_converter {
 				printf("rank: %d: final grid time (Dense): %f\n", from_cl.world_rank, omp_get_wtime() - t);
 
 				// Optionally save raw volume data
-				save_raw_volume(convert_vdb_base, from_cl, space_data, grid_main_sum);
-
+				if (space_data.extracted_dense_type == common::SpaceData::ExtractedDenseType::eRAW)
+					save_raw_volume(convert_vdb_base, from_cl, space_data, grid_main_sum);
+				else if (space_data.extracted_dense_type == common::SpaceData::ExtractedDenseType::eVTI)
+					save_vti_volume(convert_vdb_base, from_cl, space_data, grid_main_sum);
 			}
 			// Sparse grid finalization
 			else {
@@ -830,7 +854,10 @@ namespace space_converter {
 					space_data.max_value_reduced = space_data.max_value;
 
 					// Optionally save as VDB point cloud
-					save_raw_particles_to_vdb(convert_vdb_base, from_cl, space_data, grid_main_sum);
+					if (space_data.extracted_particle_type == common::SpaceData::ExtractedParticleType::eVDB)
+						save_raw_particles_to_vdb(convert_vdb_base, from_cl, space_data, grid_main_sum);
+					else if (space_data.extracted_particle_type == common::SpaceData::ExtractedParticleType::eVTP)
+						save_raw_particles_to_vtp(convert_vdb_base, from_cl, space_data, grid_main_sum);
 
 					printf("rank: %d: Particles count: %lld\n", from_cl.world_rank, (size_t)(grid_main_sum.raw_particles.data[0].values.size() / 3));
 				}
@@ -1016,7 +1043,10 @@ namespace space_converter {
 			}
 			// Save dense volume format
 			else if (particle_type == common::vdb::VDBParticleType::eDense) {
-				save_raw_volume(convert_vdb_base, from_cl, space_data, grid_main_final, only_rank0);
+				if (space_data.extracted_dense_type == common::SpaceData::ExtractedDenseType::eRAW)
+					save_raw_volume(convert_vdb_base, from_cl, space_data, grid_main_final, only_rank0);
+				else if (space_data.extracted_dense_type == common::SpaceData::ExtractedDenseType::eVTI)
+					save_vti_volume(convert_vdb_base, from_cl, space_data, grid_main_final, only_rank0);				
 			}
 			else {
 				printf("Unknown Type for Saving\n");
@@ -1037,7 +1067,7 @@ namespace space_converter {
 	 */
 	void save_raw_volume(common::vdb::ConvertVDBBase* convert_vdb_base, FromCL& from_cl, common::SpaceData& space_data, common::vdb::VDBParticles& grid_main, bool only_rank0)
 	{
-		if (from_cl.use_dense2file && grid_main.dense_grid->data_density.size() > 0) {
+		if (grid_main.dense_grid->data_density.size() > 0) {
 			if (!only_rank0 || from_cl.world_rank == 0) {
 				// Build output filename with dimensions
 				std::string full_filepath = from_cl.output_path + "/" + convert_vdb_base->get_type_name(space_data.particle_type) + "_" + convert_vdb_base->get_dataset_name(space_data.block_name_id);
@@ -1065,6 +1095,77 @@ namespace space_converter {
 	}
 
 	/**
+	 * @brief Save dense volume data to VTK ImageData (.vti) file
+	 * @param convert_vdb_base Converter instance
+	 * @param from_cl Command line parameters
+	 * @param space_data Spatial data configuration
+	 * @param grid_main Grid containing dense volume data
+	 * @param only_rank0 If true, only rank 0 saves
+	 */
+	void save_vti_volume(common::vdb::ConvertVDBBase* convert_vdb_base, FromCL& from_cl, common::SpaceData& space_data, common::vdb::VDBParticles& grid_main, bool only_rank0)
+	{
+		if (grid_main.dense_grid->data_density.size() > 0) {
+			if (!only_rank0 || from_cl.world_rank == 0) {
+				std::string full_filepath = from_cl.output_path + "/" + convert_vdb_base->get_type_name(space_data.particle_type) + "_" + convert_vdb_base->get_dataset_name(space_data.block_name_id);
+				if (!only_rank0 || space_data.anim_type != common::SpaceData::AnimType::eNone && space_data.anim_type != common::SpaceData::AnimType::eAllMerge) {
+					char temp[1024];
+					sprintf(temp, "%d_%05d", space_data.anim_task_counter, from_cl.world_rank);
+					full_filepath = full_filepath + "_" + std::string(temp);
+				}
+
+				full_filepath = full_filepath
+					+ std::string("_") + std::to_string(grid_main.dense_grid->x())
+					+ std::string("_") + std::to_string(grid_main.dense_grid->y())
+					+ std::string("_") + std::to_string(grid_main.dense_grid->z())
+					+ std::string("_float.vti");
+
+				space_data.full_filepath = full_filepath;
+
+#ifdef WITH_VTK
+				const size_t dim_x = grid_main.dense_grid->x();
+				const size_t dim_y = grid_main.dense_grid->y();
+				const size_t dim_z = grid_main.dense_grid->z();
+				const vtkIdType num_points = static_cast<vtkIdType>(grid_main.dense_grid->data_density.size());
+
+				auto image_data = vtkSmartPointer<vtkImageData>::New();
+				image_data->SetDimensions(static_cast<int>(dim_x), static_cast<int>(dim_y), static_cast<int>(dim_z));
+				const double spacing = static_cast<double>(space_data.transform_scale);
+				image_data->SetOrigin(
+					static_cast<double>(grid_main.dense_grid->offset[0]) * spacing,
+					static_cast<double>(grid_main.dense_grid->offset[1]) * spacing,
+					static_cast<double>(grid_main.dense_grid->offset[2]) * spacing);
+				image_data->SetSpacing(spacing, spacing, spacing);
+
+				auto density_array = vtkSmartPointer<vtkFloatArray>::New();
+				density_array->SetName("density");
+				density_array->SetNumberOfComponents(1);
+				density_array->SetNumberOfTuples(num_points);
+
+				for (vtkIdType i = 0; i < num_points; i++) {
+					density_array->SetValue(i, grid_main.dense_grid->data_density[static_cast<size_t>(i)]);
+				}
+
+				image_data->GetPointData()->SetScalars(density_array);
+
+				auto writer = vtkSmartPointer<vtkXMLImageDataWriter>::New();
+				writer->SetFileName(full_filepath.c_str());
+				writer->SetInputData(image_data);
+				writer->SetDataModeToBinary();
+
+				if (!writer->Write()) {
+					printf("Unable to write file: %s\n", full_filepath.c_str());
+					return;
+				}
+
+				printf("finished: %s\n", full_filepath.c_str());
+#else
+				printf("VTK support is not enabled, cannot write file: %s\n", full_filepath.c_str());
+#endif
+			}
+		}
+	}
+
+	/**
 	 * @brief Save raw particle data as OpenVDB point cloud
 	 * @param convert_vdb_base Converter instance
 	 * @param from_cl Command line parameters
@@ -1078,7 +1179,7 @@ namespace space_converter {
 	void save_raw_particles_to_vdb(common::vdb::ConvertVDBBase* convert_vdb_base, FromCL& from_cl, common::SpaceData& space_data, common::vdb::VDBParticles& grid_main)
 	{
 #ifdef WITH_OPENVDB
-		if (from_cl.use_rawpart2vdb && grid_main.raw_particles.data.size() > 0) {
+		if (/*from_cl.use_rawpart2vdb &&*/ grid_main.raw_particles.data.size() > 0) {
 			if (from_cl.world_rank == 0) {
 				std::string full_filepath = from_cl.output_path + "/" + convert_vdb_base->get_type_name(space_data.particle_type) + "_" + convert_vdb_base->get_dataset_name(space_data.block_name_id);
 
@@ -1159,6 +1260,150 @@ namespace space_converter {
 				file.close();
 
 				printf("finished: %s\n", full_filepath.c_str());
+			}
+		}
+#endif
+	}
+
+	/**
+	 * @brief Save raw particle data as VTK PolyData (.vtp)
+	 * @param convert_vdb_base Converter instance
+	 * @param from_cl Command line parameters
+	 * @param space_data Spatial data configuration
+	 * @param grid_main Grid containing raw particle data
+	 *
+	 * @details Converts raw particle attributes to VTK point data arrays.
+	 *          Supports scalar (1 component) and vector (3 component) attributes.
+	 *          Only rank 0 performs the conversion and save.
+	 */
+	void save_raw_particles_to_vtp(common::vdb::ConvertVDBBase* convert_vdb_base, FromCL& from_cl, common::SpaceData& space_data, common::vdb::VDBParticles& grid_main, bool only_rank0)
+	{
+#ifdef WITH_VTK
+		if (/*from_cl.use_rawpart2vdb &&*/ grid_main.raw_particles.data.size() > 0) {
+			if (!only_rank0 || from_cl.world_rank == 0) {
+				std::string full_filepath = from_cl.output_path + "/" + convert_vdb_base->get_type_name(space_data.particle_type) + "_" + convert_vdb_base->get_dataset_name(space_data.block_name_id);
+
+				if (!only_rank0 || (space_data.anim_type != common::SpaceData::AnimType::eNone && space_data.anim_type != common::SpaceData::AnimType::eAllMerge)) {
+					char temp[1024];
+					sprintf(temp, "%d_%05d", space_data.anim_task_counter, from_cl.world_rank);
+					full_filepath = full_filepath + "_" + std::string(temp);
+				}
+
+				full_filepath = full_filepath + std::string(".part.vtp");
+				space_data.full_filepath = full_filepath;
+
+				const common::vdb::RawParticles::ParticleData* position_data = nullptr;
+				for (size_t type = 0; type < grid_main.raw_particles.data.size(); type++) {
+					if (grid_main.raw_particles.data[type].name == "position") {
+						position_data = &grid_main.raw_particles.data[type];
+						break;
+					}
+				}
+
+				if (!position_data || position_data->values.size() < 3 || position_data->num_comp != 3) {
+					printf("Unable to export VTP: missing valid 'position' attribute\n");
+					return;
+				}
+
+				const size_t num_points = position_data->values.size() / 3;
+
+				auto points = vtkSmartPointer<vtkPoints>::New();
+				points->SetDataTypeToFloat();
+				points->SetNumberOfPoints(num_points);
+
+#pragma omp parallel for
+				for (size_t i = 0; i < num_points; i++) {
+					points->SetPoint(
+						static_cast<vtkIdType>(i),
+						position_data->values[i * 3 + 0],
+						position_data->values[i * 3 + 1],
+						position_data->values[i * 3 + 2]);
+				}
+
+				auto vertices = vtkSmartPointer<vtkCellArray>::New();
+				for (size_t i = 0; i < num_points; i++) {
+					vertices->InsertNextCell(1);
+					vertices->InsertCellPoint(static_cast<vtkIdType>(i));
+				}
+
+				auto poly_data = vtkSmartPointer<vtkPolyData>::New();
+				poly_data->SetPoints(points);
+				poly_data->SetVerts(vertices);
+
+				for (size_t type = 0; type < grid_main.raw_particles.data.size(); type++) {
+					const std::string attrib_name = grid_main.raw_particles.data[type].name;
+					if (attrib_name == "position") {
+						continue;
+					}
+
+					if (grid_main.raw_particles.data[type].num_comp == 1) {
+						auto values = vtkSmartPointer<vtkFloatArray>::New();
+						values->SetName(attrib_name.c_str());
+						values->SetNumberOfComponents(1);
+						values->SetNumberOfTuples(num_points);
+
+						const size_t max_points = std::min(num_points, grid_main.raw_particles.data[type].values.size());
+						for (size_t i = 0; i < max_points; i++) {
+							values->SetValue(static_cast<vtkIdType>(i), grid_main.raw_particles.data[type].values[i]);
+						}
+
+						poly_data->GetPointData()->AddArray(values);
+					}
+					else if (grid_main.raw_particles.data[type].num_comp == 3) {
+						auto vectors = vtkSmartPointer<vtkFloatArray>::New();
+						vectors->SetName(attrib_name.c_str());
+						vectors->SetNumberOfComponents(3);
+						vectors->SetNumberOfTuples(num_points);
+
+						const size_t point_count = std::min(num_points, grid_main.raw_particles.data[type].values.size() / 3);
+						for (size_t i = 0; i < point_count; i++) {
+							vectors->SetTuple3(
+								static_cast<vtkIdType>(i),
+								grid_main.raw_particles.data[type].values[i * 3 + 0],
+								grid_main.raw_particles.data[type].values[i * 3 + 1],
+								grid_main.raw_particles.data[type].values[i * 3 + 2]);
+						}
+
+						poly_data->GetPointData()->AddArray(vectors);
+					}
+				}
+
+				auto writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
+				writer->SetFileName(full_filepath.c_str());
+				writer->SetInputData(poly_data);
+				writer->SetDataModeToBinary();
+
+				if (!writer->Write()) {
+					printf("Unable to write file: %s\n", full_filepath.c_str());
+					return;
+				}
+
+				printf("finished: %s\n", full_filepath.c_str());
+
+				if (!only_rank0 || (from_cl.world_rank == 0 && (space_data.anim_type != common::SpaceData::AnimType::eNone && space_data.anim_type != common::SpaceData::AnimType::eAllMerge))) {
+					std::string pfull_filepath = full_filepath;
+					const std::string part_ext = ".part.vtp";
+					if (pfull_filepath.size() >= part_ext.size() && pfull_filepath.compare(pfull_filepath.size() - part_ext.size(), part_ext.size(), part_ext) == 0) {
+						pfull_filepath.replace(pfull_filepath.size() - part_ext.size(), part_ext.size(), ".part.pvtp");
+					}
+					else {
+						pfull_filepath += ".pvtp";
+					}
+
+					auto pwriter = vtkSmartPointer<vtkXMLPPolyDataWriter>::New();
+					pwriter->SetFileName(pfull_filepath.c_str());
+					pwriter->SetNumberOfPieces(from_cl.world_size);
+					pwriter->SetStartPiece(0);
+					pwriter->SetEndPiece(from_cl.world_size - 1);
+					pwriter->SetInputData(poly_data);
+
+					if (!pwriter->Write()) {
+						printf("Unable to write file: %s\n", pfull_filepath.c_str());
+						return;
+					}
+
+					printf("finished: %s\n", pfull_filepath.c_str());
+				}
 			}
 		}
 #endif

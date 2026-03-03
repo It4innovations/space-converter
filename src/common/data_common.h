@@ -186,8 +186,19 @@ namespace common {
 		enum class ExtractedType {
 			eSparse = 0,    // Sparse grid (default)
 			eDense = 1,     // Dense volumetric grid
-			eParticle = 2,  // Raw particle data
+			eParticle = 2  // Raw particle data
 		};
+
+		enum class ExtractedParticleType {
+			eRAW = 0,    // Raw particle data (default)
+			eVDB = 1,    // OpenVDB point cloud format
+			eVTP = 2,    // VTK PolyData format
+		};
+		
+		enum class ExtractedDenseType {
+			eRAW = 0,    // Raw particle data (default)
+			eVTI = 1,    // VTK Image Data format
+		};		
 
 		/**
 		 * Animation sequence processing modes
@@ -208,8 +219,10 @@ namespace common {
 		// ========== Grid Configuration ==========
 		float grid_transform = 1.0f;  // Grid transformation scale
 		ExtractedType extracted_type = ExtractedType::eSparse;  // Output format type
+		ExtractedParticleType extracted_particle_type = ExtractedParticleType::eRAW;  // Particle output format type
 		DenseType dense_type = DenseType::eNone;                // Density kernel type
 		DenseNorm dense_norm = DenseNorm::eNone;                // Density normalization method
+		ExtractedDenseType extracted_dense_type = ExtractedDenseType::eRAW;  // Dense output format type
 		float object_size = 1000.0f;                            // Object size in world units
 
 		// ========== Value Ranges ==========

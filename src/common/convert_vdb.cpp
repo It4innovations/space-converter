@@ -479,6 +479,7 @@ namespace common {
 			int* bbox_min_orig,
 			double bbox_size_orig,
 			common::SpaceData::ExtractedType extracted_type,
+			common::SpaceData::ExtractedParticleType extracted_particle_type,
 			common::SpaceData::DenseType dense_type,
 			common::SpaceData::DenseNorm dense_norm,
 			int block_name_id,
@@ -620,6 +621,7 @@ namespace common {
 					bbox_min_orig,
 					bbox_size_orig,
 					extracted_type,
+					extracted_particle_type,
 					dense_type,
 					dense_norm,
 					block_name_id,
@@ -674,6 +676,7 @@ namespace common {
 					bbox_min_orig,
 					bbox_size_orig,
 					extracted_type,
+					extracted_particle_type,
 					dense_type,
 					dense_norm,
 					block_name_id,
@@ -986,45 +989,48 @@ namespace common {
 				}
 			}
 
-			// Attempt to dynamic_cast to VoxelGPUManagerSortReduce
-			common::vdb::sparse::VoxelGPUManagerSortReduce* voxel_gpu_manager = dynamic_cast<common::vdb::sparse::VoxelGPUManagerSortReduce*>(voxel_manager);
-			if (voxel_gpu_manager) {
-				uint64_t* h_keys = new uint64_t[voxel_gpu_manager->m_last_count];
-				float* h_vals = new float[voxel_gpu_manager->m_last_count];
-				voxel_gpu_manager->get_keys_values_from_device(h_keys, h_vals);
+#ifdef WITH_GPU_CUDA
+		// Attempt to dynamic_cast to VoxelGPUManagerSortReduce
+		common::vdb::sparse::VoxelGPUManagerSortReduce* voxel_gpu_manager = dynamic_cast<common::vdb::sparse::VoxelGPUManagerSortReduce*>(voxel_manager);
+		if (voxel_gpu_manager) {
+			uint64_t* h_keys = new uint64_t[voxel_gpu_manager->m_last_count];
+			float* h_vals = new float[voxel_gpu_manager->m_last_count];
+			voxel_gpu_manager->get_keys_values_from_device(h_keys, h_vals);
 
-				auto acc_dst = nano_grid->getAccessor();
-				for (unsigned int i = 0; i < voxel_gpu_manager->m_last_count; i++) {
-					int x, y, z;
-					common::vdb::sparse::unpackCoord3(h_keys[i], x, y, z);
-					nanovdb::Coord xyz(x, y, z);
-					float value = h_vals[i];
-					// Only store non-zero values to maintain sparse storage efficiency
-					// Background value (0.0f) is implicit in NanoVDB
-					if (value != 0.0f) {
-						acc_dst.setValue(xyz, value);
-					}
+			auto acc_dst = nano_grid->getAccessor();
+			for (unsigned int i = 0; i < voxel_gpu_manager->m_last_count; i++) {
+				int x, y, z;
+				common::vdb::sparse::unpackCoord3(h_keys[i], x, y, z);
+				nanovdb::Coord xyz(x, y, z);
+				float value = h_vals[i];
+				// Only store non-zero values to maintain sparse storage efficiency
+				// Background value (0.0f) is implicit in NanoVDB
+				if (value != 0.0f) {
+					acc_dst.setValue(xyz, value);
 				}
-				delete[] h_keys;
-				delete[] h_vals;
 			}
-
-			return nano_grid;
+			delete[] h_keys;
+			delete[] h_vals;
 		}
 #endif
 
-#if defined(WITH_OPENVDB)
-		/**
-		 * @brief Convert dense grid to sparse OpenVDB grid
-		 * 
-		 * Converts regular dense grid to memory-efficient sparse OpenVDB format.
-		 * Applies normalization and uses OpenVDB's optimized dense-to-sparse conversion.
-		 */
-		openvdb::FloatGrid::Ptr ConvertVDBBase::dense_to_openvdb(VoxelDenseManager* dense_manager, double transform_scale, common::SpaceData::DenseType dense_type, common::SpaceData::DenseNorm dense_norm)
-		{
-			openvdb::FloatGrid::Ptr floatgrid = openvdb::FloatGrid::create(0.0f);
+		return nano_grid;
+	}
 
-			// Configure grid metadata
+#endif // WITH_NANOVDB
+
+#if defined(WITH_OPENVDB)
+	/**
+	 * @brief Convert dense grid to sparse OpenVDB grid
+	 * 
+	 * Converts regular dense grid to memory-efficient sparse OpenVDB format.
+	 * Applies normalization and uses OpenVDB's optimized dense-to-sparse conversion.
+	 */
+	openvdb::FloatGrid::Ptr ConvertVDBBase::dense_to_openvdb(VoxelDenseManager* dense_manager, double transform_scale, common::SpaceData::DenseType dense_type, common::SpaceData::DenseNorm dense_norm)
+	{
+		openvdb::FloatGrid::Ptr floatgrid = openvdb::FloatGrid::create(0.0f);
+
+		// Configure grid metadata
 			floatgrid->setGridClass(openvdb::GRID_FOG_VOLUME);
 			std::string grid_name("density");
 			floatgrid->setName(grid_name);
@@ -1109,6 +1115,7 @@ namespace common {
 				return floatgrid;
 			}
 
+#ifdef WITH_GPU_CUDA
 			// Attempt to dynamic_cast to VoxelGPUManagerSortReduce
 			common::vdb::sparse::VoxelGPUManagerSortReduce* voxel_gpu_manager = dynamic_cast<common::vdb::sparse::VoxelGPUManagerSortReduce*>(voxel_manager);
 			if (voxel_gpu_manager) {
@@ -1133,6 +1140,7 @@ namespace common {
 
 				return floatgrid;
 			}
+#endif
 
 			return floatgrid;
 		}
@@ -1351,7 +1359,7 @@ namespace common {
 			}
 
 			return result;
-		}
+		}		
 
 	}//vdb
 

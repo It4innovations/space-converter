@@ -224,6 +224,20 @@ namespace space_converter {
 	void save_raw_volume(common::vdb::ConvertVDBBase* convert_vdb_base, FromCL& from_cl, common::SpaceData& space_data, common::vdb::VDBParticles& grid_main, bool only_rank0 = true);
 
 	/**
+	 * @brief Save dense volume to VTK ImageData format (.vti).
+	 * 
+	 * Exports dense grid as .vti file for compatibility with VTK-based tools.
+	 * Writes density values as image point scalar data.
+	 * 
+	 * @param convert_vdb_base Pointer to ConvertVDBBase object
+	 * @param from_cl Reference to FromCL struct with configuration
+	 * @param space_data Reference to SpaceData with output path
+	 * @param grid_main Reference to VDBParticles containing dense data
+	 * @param only_rank0 If true, only rank 0 writes output (default: true)
+	 */
+	void save_vti_volume(common::vdb::ConvertVDBBase* convert_vdb_base, FromCL& from_cl, common::SpaceData& space_data, common::vdb::VDBParticles& grid_main, bool only_rank0 = true);
+
+	/**
 	 * @brief Save raw particle positions to OpenVDB PointDataGrid.
 	 * 
 	 * Converts raw particles to VDB's native point representation for efficient
@@ -235,6 +249,19 @@ namespace space_converter {
 	 * @param grid_main Reference to VDBParticles containing particle data
 	 */
 	void save_raw_particles_to_vdb(common::vdb::ConvertVDBBase* convert_vdb_base, FromCL& from_cl, common::SpaceData& space_data, common::vdb::VDBParticles& grid_main);
+
+	/**
+	 * @brief Save raw particle positions to VTK PolyData format.
+	 * 
+	 * Exports raw particle data as .vtp file for compatibility with VTK-based tools.
+	 * Writes particle positions and optionally other attributes as point data.
+	 * 
+	 * @param convert_vdb_base Pointer to ConvertVDBBase object
+	 * @param from_cl Reference to FromCL struct with configuration
+	 * @param space_data Reference to SpaceData with metadata
+	 * @param grid_main Reference to VDBParticles containing particle data
+	 */	
+	void save_raw_particles_to_vtp(common::vdb::ConvertVDBBase* convert_vdb_base, FromCL& from_cl, common::SpaceData& space_data, common::vdb::VDBParticles& grid_main, bool only_rank0 = true);
 
 	// ========================================================================
 	// Testing and Debugging

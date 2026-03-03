@@ -281,7 +281,7 @@ namespace common {
 				void clear();				
 			};
 
-			// ---------------------------------------------
+#ifdef WITH_GPU_CUDA
 			// GPU-based voxel manager using sort+reduce
 			// ---------------------------------------------
 			class VoxelGPUManagerSortReduce : public common::vdb::VoxelSparseManager {
@@ -390,6 +390,7 @@ namespace common {
 				float* d_offset_position = nullptr;
 				float* d_bbox_sphere_pos = nullptr;
 			};
+#endif // WITH_GPU_CUDA		
 		}
 	}// vdb
 } //common
