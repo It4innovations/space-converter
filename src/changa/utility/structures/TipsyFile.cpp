@@ -692,12 +692,13 @@ bool PartialTipsyFile::loadPartialAUX(const std::string& full_path, const unsign
 
 				if (suffix.empty()) continue; // Handle empty string
 
+#if 0
 				if (suffix == "BFieldy" || suffix == "BFieldz" ||
 					suffix == "CurlBy" || suffix == "CurlBz") {
 					//skip
 					continue;
 				}
-
+#endif
 				if (!filter_aux.empty() && suffix.find(filter_aux) == std::string::npos) {
 					continue;
 				}
