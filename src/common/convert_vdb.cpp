@@ -923,6 +923,7 @@ namespace common {
 			float *bbox_sphere_pos,
 			float bbox_sphere_r,
 			bool use_simple_density,
+			bool use_norm_value,
 			float *offset_position
 		)
 		{
@@ -947,8 +948,12 @@ namespace common {
 			RawParticles::ParticleData raw_frame;
 
 			if (grid.type == VDBParticles::VDBParticleType::eNanoVDB) {
-				grid.nano_grid->setTransform(transform_scale);
-				//auto acc = grid.nano_grid.getAccessor();
+
+				if (grid.nano_grid)
+					grid.nano_grid->setTransform(transform_scale);
+
+				if (grid.nano_grid3)
+					grid.nano_grid3->setTransform(transform_scale);
 			}
 #ifdef WITH_OPENVDB
 			else if (grid.type == VDBParticles::VDBParticleType::eOpenVDB) {
@@ -1092,7 +1097,7 @@ namespace common {
 				if (v_orig < min) min = v_orig;
 				if (v_orig > max) max = v_orig;
 
-				/////////////////////////
+				////////////////////////
 
 				float v = v_orig;
 
@@ -1106,12 +1111,33 @@ namespace common {
 				}
 				else if (grid.type == VDBParticles::VDBParticleType::eNanoVDB) {
 					nanovdb::Coord xyz(px, py, pz);
-					auto acc = grid.nano_grid->getAccessor();
-					if (acc.isValueOn(xyz)) {
-						v += acc.getValue(xyz); //ADD
-					}
+					
+					if (use_norm_value) {
+						auto acc = grid.nano_grid->getAccessor();
+						if (acc.isValueOn(xyz)) {
+							v += acc.getValue(xyz); //ADD
+						}
 
-					acc.setValue(xyz, v);
+						acc.setValue(xyz, v);
+
+					} else {
+					    //std::vector<float> value_vector;
+						nanovdb::Vec3f v3(0.0f, 0.0f, 0.0f);
+						int d = get_particle_value_comp(block_name_id, i);
+
+						if (d == 3) {
+							get_particle_value(block_name_id, i, &v3[0]);
+						}
+
+						auto acc = grid.nano_grid3->getAccessor();
+						if (acc.isValueOn(xyz)) {
+							v3 += acc.getValue(xyz); //ADD
+						}
+
+						acc.setValue(xyz, v3);
+
+					}
+					//////////////////////////
 				}
 #ifdef WITH_OPENVDB
 				else if (grid.type == VDBParticles::VDBParticleType::eOpenVDB) {
@@ -1256,25 +1282,50 @@ namespace common {
 			}
 
 			else if (grid_dst.type == VDBParticles::VDBParticleType::eNanoVDB && grid_recv.type == VDBParticles::VDBParticleType::eVector) {
-				auto acc_dst = grid_dst.nano_grid->getAccessor();
-				auto* grid_src_float = (nanovdb::NanoGrid<float>*)grid_recv.vector_grid.data();
+				if (grid_dst.nano_grid) {
+					auto acc_dst = grid_dst.nano_grid->getAccessor();
+					auto* grid_src_float = (nanovdb::NanoGrid<float>*)grid_recv.vector_grid.data();
 
-				// loop over child nodes of the root node
-				for (auto it2 = grid_src_float->tree().root().cbeginChild(); it2; ++it2) {
-					// loop over child nodes of the upper internal node
-					for (auto it1 = it2->cbeginChild(); it1; ++it1) {
-						// loop over child nodes of the lower internal node
-						for (auto it0 = it1->cbeginChild(); it0; ++it0) {
-							// loop over values
-							for (auto it = it0->cbeginValueOn(); it; ++it) {
-								float v = *it;
+					// loop over child nodes of the root node
+					for (auto it2 = grid_src_float->tree().root().cbeginChild(); it2; ++it2) {
+						// loop over child nodes of the upper internal node
+						for (auto it1 = it2->cbeginChild(); it1; ++it1) {
+							// loop over child nodes of the lower internal node
+							for (auto it0 = it1->cbeginChild(); it0; ++it0) {
+								// loop over values
+								for (auto it = it0->cbeginValueOn(); it; ++it) {
+									float v = *it;
 
-								nanovdb::Coord xyz = it.getCoord();
+									nanovdb::Coord xyz = it.getCoord();
 
-								if (acc_dst.isValueOn(xyz)) {
-									v += acc_dst.getValue(xyz); //ADD
+									if (acc_dst.isValueOn(xyz)) {
+										v += acc_dst.getValue(xyz); //ADD
+									}
+									acc_dst.setValue(xyz, v);
 								}
-								acc_dst.setValue(xyz, v);
+							}
+						}
+					}
+				}
+				
+				if (grid_dst.nano_grid3) {
+					auto acc_dst = grid_dst.nano_grid3->getAccessor();
+					auto* grid_src_float3 = (nanovdb::NanoGrid<nanovdb::Vec3f>*)grid_recv.vector_grid.data();
+					// loop over child nodes of the root node
+					for (auto it2 = grid_src_float3->tree().root().cbeginChild(); it2; ++it2) {
+						// loop over child nodes of the upper internal node
+						for (auto it1 = it2->cbeginChild(); it1; ++it1) {
+							// loop over child nodes of the lower internal node
+							for (auto it0 = it1->cbeginChild(); it0; ++it0) {
+								// loop over values
+								for (auto it = it0->cbeginValueOn(); it; ++it) {
+									nanovdb::Vec3f v = *it;
+									nanovdb::Coord xyz = it.getCoord();
+									if (acc_dst.isValueOn(xyz)) {
+										v += acc_dst.getValue(xyz); //ADD
+									}
+									acc_dst.setValue(xyz, v);
+								}
 							}
 						}
 					}

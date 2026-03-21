@@ -197,6 +197,9 @@ namespace space_converter {
 
 				space_data.extracted_type = common::SpaceData::ExtractedType::eDense; // eDense
 			}
+			else if (arg == "--no-norm-value") {
+				space_data.use_norm_value = false;
+			}
 			else if (arg == "--offset-position") {
 				space_data.offset_position[0] = std::stof(argv[++i]);
 				space_data.offset_position[1] = std::stof(argv[++i]);

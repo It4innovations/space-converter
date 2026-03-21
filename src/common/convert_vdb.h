@@ -310,8 +310,10 @@ namespace common {
 			DenseParticles dense_grid;
 #if OPENVDB_VERSION == 11
 			std::shared_ptr<nanovdb::build::FloatGrid> nano_grid;
+			std::shared_ptr<nanovdb::build::Vec3fGrid> nano_grid3;
 #else
 			std::shared_ptr<nanovdb::tools::build::FloatGrid> nano_grid;
+			std::shared_ptr<nanovdb::tools::build::Vec3fGrid> nano_grid3;
 #endif
 
 #ifdef WITH_OPENVDB
@@ -368,6 +370,7 @@ namespace common {
 				float *bbox_sphere_pos,
 				float bbox_sphere_r,
 				bool use_simple_density,
+				bool use_norm_value,
 				float *offset_position
 			);
 

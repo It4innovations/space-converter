@@ -744,11 +744,21 @@ namespace space_converter {
 		}
 		else if (from_cl.use_nanovdb) {
 			grid_main.type = common::vdb::VDBParticles::VDBParticleType::eNanoVDB;
+			if (space_data.use_norm_value) {
 #if OPENVDB_VERSION == 11
-			grid_main.nano_grid = std::make_shared<nanovdb::build::FloatGrid>(0.0f, "density", nanovdb::GridClass::FogVolume);
+				grid_main.nano_grid = std::make_shared<nanovdb::build::FloatGrid>(0.0f, "density", nanovdb::GridClass::FogVolume);
 #else
-			grid_main.nano_grid = std::make_shared<nanovdb::tools::build::FloatGrid>(0.0f, "density", nanovdb::GridClass::FogVolume);
+				grid_main.nano_grid = std::make_shared<nanovdb::tools::build::FloatGrid>(0.0f, "density", nanovdb::GridClass::FogVolume);
 #endif
+			}
+			else {
+#if OPENVDB_VERSION == 11
+				grid_main.nano_grid3 = std::make_shared<nanovdb::build::Vec3fGrid>(nanovdb::Vec3f(0.0f), "density", nanovdb::GridClass::FogVolume);
+#else
+				grid_main.nano_grid3 = std::make_shared<nanovdb::tools::build::Vec3fGrid>(nanovdb::Vec3f(0.0f), "density", nanovdb::GridClass::FogVolume);
+#endif
+
+			}
 		}
 		else {
 #ifdef WITH_OPENVDB
@@ -807,6 +817,7 @@ namespace space_converter {
 			space_data.bbox_sphere_pos,
 			space_data.bbox_sphere_r,
 			space_data.use_simple_density,
+			space_data.use_norm_value,
 			space_data.offset_position
 		);
 
@@ -1011,10 +1022,13 @@ namespace space_converter {
 				grid_main_sum.vdb_grid = grid_main.vdb_grid;
 #endif
 			}
-			else if (grid_main_sum.type == common::vdb::VDBParticles::VDBParticleType::eNanoVDB)
+			else if (grid_main_sum.type == common::vdb::VDBParticles::VDBParticleType::eNanoVDB) {
 				grid_main_sum.nano_grid = grid_main.nano_grid;
-			else if (grid_main_sum.type == common::vdb::VDBParticles::VDBParticleType::eRawParticles)
+				grid_main_sum.nano_grid3 = grid_main.nano_grid3;
+			}
+			else if (grid_main_sum.type == common::vdb::VDBParticles::VDBParticleType::eRawParticles) {
 				grid_main_sum.raw_particles = grid_main.raw_particles;
+			}
 
 			if (space_data.anim_type == common::SpaceData::AnimType::eNone || space_data.anim_type == common::SpaceData::AnimType::eAllMerge || space_data.anim_type == common::SpaceData::AnimType::eFrameExtract) {
 				// Logarithmic reduction steps
@@ -1042,11 +1056,28 @@ namespace space_converter {
 							mpi_send(grid_handle_main.data(), ns, MPI_BYTE, from_cl.world_rank - step, 0);
 						}
 						else if (from_cl.use_nanovdb) {
+							
 #if OPENVDB_VERSION == 11
-							nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_main = nanovdb::createNanoGrid(*grid_main_sum.nano_grid);
+							nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_main;
 #else
-							nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_main = nanovdb::tools::createNanoGrid(*grid_main_sum.nano_grid);
+							nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_main;
 #endif
+
+							if (grid_main_sum.nano_grid) {
+#if OPENVDB_VERSION == 11
+								grid_handle_main = nanovdb::createNanoGrid(*grid_main_sum.nano_grid);
+#else
+								grid_handle_main = nanovdb::tools::createNanoGrid(*grid_main_sum.nano_grid);
+#endif
+							}
+							else if (grid_main_sum.nano_grid3) {
+#if OPENVDB_VERSION == 11
+								grid_handle_main = nanovdb::createNanoGrid(*grid_main_sum.nano_grid3);
+#else
+								grid_handle_main = nanovdb::tools::createNanoGrid(*grid_main_sum.nano_grid3);
+#endif
+							}
+
 							size_t ns = grid_handle_main.size();
 							mpi_send(&ns, sizeof(ns), MPI_BYTE, from_cl.world_rank - step, 0);
 							mpi_send(grid_handle_main.data(), ns, MPI_BYTE, from_cl.world_rank - step, 0);
@@ -2606,32 +2637,53 @@ namespace space_converter {
 				}
 				else if (from_cl.use_nanovdb) {
 #if OPENVDB_VERSION == 11
-					nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::createNanoGrid(*grid_main_sum.nano_grid);
+					nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final;
 #else
-					nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::tools::createNanoGrid(*grid_main_sum.nano_grid);
+					nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final;
 #endif
+					if (grid_main_sum.nano_grid) {
 
-#if 0				//TODO
-					openvdb::GridBase::Ptr openvdb_base_handle = nanovdb::nanoToOpenVDB(grid_handle_final);
-					openvdb::FloatGrid::Ptr openvdb_handle = openvdb::gridPtrCast<openvdb::FloatGrid>(openvdb_base_handle);
-
-					convert_vdb_base->openvdb_to_vector(openvdb_handle, grid_main_final.vector_grid);
-					openvdb_handle->evalMinMax(space_data.min_value_reduced, space_data.max_value_reduced);
-					eval_min_max(openvdb_handle, space_data.min_value_reduced, space_data.max_value_reduced);
+#if OPENVDB_VERSION == 11
+						grid_handle_final = nanovdb::createNanoGrid(*grid_main_sum.nano_grid);
 #else
+						grid_handle_final = nanovdb::tools::createNanoGrid(*grid_main_sum.nano_grid);
+#endif
+					}
+					else if (grid_main_sum.nano_grid3) {
+#if OPENVDB_VERSION == 11
+						grid_handle_final = nanovdb::createNanoGrid(*grid_main_sum.nano_grid3);
+#else
+						grid_handle_final = nanovdb::tools::createNanoGrid(*grid_main_sum.nano_grid3);
+#endif
+					}
+
 					grid_main_final.vector_grid.resize(grid_handle_final.size());
 					memcpy(grid_main_final.vector_grid.data(), grid_handle_final.data(), grid_handle_final.size());
 
-					nanovdb::NanoGrid<float>* nanogrid = (nanovdb::NanoGrid<float>*) grid_handle_final.data();
+					if (grid_main_sum.nano_grid) {
+						nanovdb::NanoGrid<float>* nanogrid = (nanovdb::NanoGrid<float>*) grid_handle_final.data();
 
 #if OPENVDB_VERSION == 11					
-					space_data.min_value_reduced = nanogrid->tree().root().data()->getMin();
-					space_data.max_value_reduced = nanogrid->tree().root().data()->getMax();
+						space_data.min_value_reduced = nanogrid->tree().root().data()->getMin();
+						space_data.max_value_reduced = nanogrid->tree().root().data()->getMax();
 #else
-					nanogrid->tree().extrema(space_data.min_value_reduced, space_data.max_value_reduced);
+						nanogrid->tree().extrema(space_data.min_value_reduced, space_data.max_value_reduced);
 #endif
+					}
+					else if (grid_main_sum.nano_grid3) {
+						nanovdb::NanoGrid<nanovdb::Vec3f>* nanogrid = (nanovdb::NanoGrid<nanovdb::Vec3f>*) grid_handle_final.data();
 
+						nanovdb::Vec3f min_value_reduced;
+						nanovdb::Vec3f max_value_reduced;
+#if OPENVDB_VERSION == 11					
+						min_value_reduced = nanogrid->tree().root().data()->getMin();
+						max_value_reduced = nanogrid->tree().root().data()->getMax();
+#else
+						nanogrid->tree().extrema(min_value_reduced, max_value_reduced);
 #endif
+						space_data.min_value_reduced = min_value_reduced.length();
+						space_data.max_value_reduced = max_value_reduced.length();
+					}
 				}
 				else {
 
@@ -2806,13 +2858,27 @@ namespace space_converter {
 
 			}
 			else if (particle_type == common::vdb::VDBParticles::VDBParticleType::eNanoVDB) {
-				//nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::createNanoGrid(*grid_main_final.nano_grid);
 
 #if OPENVDB_VERSION == 11
-				nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::createNanoGrid(*grid_main_final.nano_grid);
+				nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final;
 #else
-				nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::tools::createNanoGrid(*grid_main_final.nano_grid);
+				nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final;
 #endif				
+
+				if (grid_main_final.nano_grid) {
+#if OPENVDB_VERSION == 11
+					grid_handle_final = nanovdb::createNanoGrid(*grid_main_final.nano_grid);
+#else
+					grid_handle_final = nanovdb::tools::createNanoGrid(*grid_main_final.nano_grid);
+#endif				
+				}
+				else if (grid_main_final.nano_grid3) {
+#if OPENVDB_VERSION == 11
+					grid_handle_final = nanovdb::createNanoGrid(*grid_main_final.nano_grid3);
+#else
+					grid_handle_final = nanovdb::tools::createNanoGrid(*grid_main_final.nano_grid3);
+#endif
+				}
 
 				nanovdb::io::writeGrid(space_data.full_filepath, grid_handle_final);
 				printf("finished: %s\n", full_filepath.c_str());

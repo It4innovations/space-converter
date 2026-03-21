@@ -128,6 +128,7 @@ namespace common {
 		float bbox_sphere_pos[3] = { 0.0f,0.0f,0.0f };
 		float bbox_sphere_r = 0.0f;
 		bool use_simple_density = false;
+		bool use_norm_value = true;
 		float offset_position[3] = { 0.0f,0.0f,0.0f };
 
 	//public:

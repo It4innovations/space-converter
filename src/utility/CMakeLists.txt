@@ -76,6 +76,15 @@ if(WITH_NANOVDB AND WITH_OPENVDB)
     install (TARGETS nano2vdb DESTINATION bin)
 endif()
 ########################################################
+if(WITH_NANOVDB)
+    set(SRC_NANOVDB
+        nano2float3.cpp
+    )
+
+    add_executable(nano2float3 ${SRC_NANOVDB})        
+    install (TARGETS nano2float3 DESTINATION bin)
+endif()
+########################################################
 if(WITH_NANOVDB AND WITH_OPENVDB)
     set(SRC_NANOVDB
         vdb2nano.cpp
