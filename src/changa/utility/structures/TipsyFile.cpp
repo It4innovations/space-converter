@@ -739,6 +739,7 @@ bool PartialTipsyFile::loadPartialAUX(const std::string& full_path, const unsign
 
 		aux_values[i].num_components = num_components;
 
+#if 0
 		if (aux_values[i].name == "BFieldx") {
 			aux_values[i].num_components = 3;
 		}
@@ -746,6 +747,7 @@ bool PartialTipsyFile::loadPartialAUX(const std::string& full_path, const unsign
 		if (aux_values[i].name == "CurlBx") {
 			aux_values[i].num_components = 3;
 		}
+#endif
 
 		if (h.nsph > 0)
 			aux_values[i].gas.resize(h.nsph * aux_values[i].num_components);
