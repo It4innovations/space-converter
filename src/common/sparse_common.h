@@ -21,11 +21,37 @@
 //#include "convert_vdb.h"
 
 #include <cstdint>
+#include <unordered_map>
+#include <vector>
+#include <algorithm>
+#include <memory>
 #include "data_common.h"
+
+// CUDA includes
+#ifdef WITH_GPU_CUDA
+#include <cuda_runtime.h>
+#endif
+
+// NanoVDB includes
+#include <nanovdb/NanoVDB.h>
+#include <nanovdb/GridHandle.h>
+#include <nanovdb/tools/GridBuilder.h>
+#include <nanovdb/tools/CreateNanoGrid.h>
+
+// OpenVDB includes
+#ifdef WITH_OPENVDB
+#	include <openvdb/openvdb.h>
+#	include <openvdb/Grid.h>
+#	include <openvdb/tree/Tree.h>
+#endif
 
 #define COORD_BITS 21
 #define COORD_BIAS (1 << (COORD_BITS - 1)) // 2^20
 #define COORD_MASK ((1ull << COORD_BITS) - 1ull)
+
+// Constants for hash table management
+#define EMPTY_KEY -999999
+#define HASH_TABLE_LOAD_FACTOR 0.5f
 
 namespace common {
 	namespace vdb {
@@ -281,7 +307,186 @@ namespace common {
 				void clear();				
 			};
 
+			// ---------------------------------------------
+			// CPU-based voxel manager using OpenMP for parallelization
+			// ---------------------------------------------
+			class VoxelCPUManager : public common::vdb::VoxelSparseManager {
+			private:
+				VoxelHashEntry* hash_table;
+				unsigned int table_size;
+				int insert_count;
+
+				// Hash function for 3D coordinates (CPU version)
+				inline unsigned int hash3D_cpu(int i, int j, int k) const {
+					unsigned int hash = 73856093u * i ^ 19349663u * j ^ 83492791u * k;
+					return hash % table_size;
+				}
+
+				inline void insertOrUpdatePackedSequential(uint64_t key, float value) {
+					int x, y, z;
+					unpackCoord3(key, x, y, z);
+					unsigned int slot = hash3D_cpu(x, y, z);
+
+					for (unsigned int probe = 0; probe < table_size; probe++) {
+						if (hash_table[slot].occupied == 0) {
+							hash_table[slot].i = x;
+							hash_table[slot].j = y;
+							hash_table[slot].k = z;
+							hash_table[slot].value = value;
+							hash_table[slot].occupied = 1;
+							insert_count++;
+							return;
+						}
+
+						if (hash_table[slot].i == x &&
+							hash_table[slot].j == y &&
+							hash_table[slot].k == z) {
+							hash_table[slot].value += value;
+							return;
+						}
+
+						slot++;
+						if (slot == table_size) slot = 0;
+					}
+				}
+
+			public:
+				VoxelCPUManager() : table_size(0), insert_count(0), hash_table(nullptr), common::vdb::VoxelSparseManager() {}
+
+				VoxelCPUManager(unsigned int expected_voxels) : common::vdb::VoxelSparseManager() {
+					init(expected_voxels);
+				}
+
+				~VoxelCPUManager() {
+					if (hash_table) delete[] hash_table;
+				}
+
+			public:
+				void init(unsigned int expected_voxels) override {
+					// Size hash table with load factor consideration
+					table_size = (unsigned int)(expected_voxels / HASH_TABLE_LOAD_FACTOR);
+					insert_count = 0;
+
+					// Allocate hash table on CPU
+					hash_table = new VoxelHashEntry[table_size];
+
+					// Initialize hash table
+#pragma omp parallel for
+					for (unsigned int i = 0; i < table_size; i++) {
+						hash_table[i].i = EMPTY_KEY;
+						hash_table[i].j = EMPTY_KEY;
+						hash_table[i].k = EMPTY_KEY;
+						hash_table[i].value = 0.0f;
+						hash_table[i].occupied = 0;
+					}
+				}
+
+				// Serialization: write current voxel data to binary buffer
+				void serialize(uint8_t* bin_data) override;
+
+				// Deserialization: read voxel data from binary buffer
+				void deserialize(uint8_t* bin_data) override;
+
+				// Merge: combine voxels from another manager (accumulate values)
+				void merge(common::vdb::VoxelSparseManager* other) override;
+
+				size_t mem_size() const override {
+					return sizeof(int) + sizeof(unsigned int) + sizeof(VoxelHashEntry) * table_size;
+				}
+
+				void merge(uint8_t* bin_data) override {
+					// Deserialize the incoming data into a temporary manager and then merge
+					VoxelCPUManager temp_manager;
+					temp_manager.deserialize(bin_data);
+					this->merge(&temp_manager);
+				}
+
+				// Insert or update voxels using OpenMP parallelization with thread-local pre-aggregation
+				void insertOrUpdate(Voxel* h_voxels, int num_voxels);
+
+				// Extract all voxels from hash table using OpenMP
+				int extractAll(Voxel** h_output_voxels);
+			};
+
+
 #ifdef WITH_GPU_CUDA
+			// ---------------------------------------------
+			// GPU-based voxel manager with hash table
+			// ---------------------------------------------
+			class VoxelGPUManager : public common::vdb::VoxelSparseManager {
+			private:
+				VoxelHashEntry* d_hash_table;
+				unsigned int table_size;
+				int* d_insert_count;
+				
+				// Device buffers for sorting/aggregation
+				Voxel* d_voxels;
+				size_t d_voxels_capacity;
+				uint64_t* d_keys;
+				float* d_vals;
+				uint64_t* d_keys_out;
+				float* d_vals_out;
+				size_t d_work_capacity;
+				
+				// Pinned host memory for faster transfers
+				Voxel* h_pinned_voxels;
+				size_t h_pinned_capacity;
+				
+				// CUB temporary storage
+				void* d_temp_storage;
+				size_t temp_storage_bytes;
+
+				cudaEvent_t insert_start_event;
+				cudaEvent_t insert_stop_event;
+
+				void ensureVoxelBuffer(size_t required_voxels);
+				void ensureWorkBuffers(size_t required_size);
+				void ensurePinnedBuffer(size_t required_size);
+				
+			public:
+				VoxelGPUManager() : table_size(0), d_hash_table(nullptr), d_insert_count(nullptr),
+					d_voxels(nullptr), d_voxels_capacity(0),
+					d_keys(nullptr), d_vals(nullptr), d_keys_out(nullptr), d_vals_out(nullptr), d_work_capacity(0),
+					h_pinned_voxels(nullptr), h_pinned_capacity(0),
+					d_temp_storage(nullptr), temp_storage_bytes(0),
+					common::vdb::VoxelSparseManager() {}
+				
+				VoxelGPUManager(unsigned int expected_voxels);
+				~VoxelGPUManager();
+
+			public:
+				void init(unsigned int expected_voxels) override;
+				void insertOrUpdatePackedSequential(uint64_t key, float value) override;
+				void serialize(uint8_t* bin_data) override;
+				void deserialize(uint8_t* bin_data) override;
+				void merge(common::vdb::VoxelSparseManager* other) override;
+				
+				void merge(uint8_t* bin_data) override {
+					VoxelGPUManager temp_manager;
+					temp_manager.deserialize(bin_data);
+					this->merge(&temp_manager);
+				}
+				
+				size_t mem_size() const override {
+					return sizeof(unsigned int) + sizeof(int) + 
+						   table_size * sizeof(VoxelHashEntry) +
+						   d_voxels_capacity * sizeof(Voxel) +
+						   d_work_capacity * (2 * sizeof(uint64_t) + 2 * sizeof(float)) +
+						   h_pinned_capacity * sizeof(Voxel) +
+						   temp_storage_bytes;
+				}
+				
+			public:
+				// Optimized insert with pre-aggregation using sorting + reduce-by-key
+				void insertOrUpdate(Voxel* h_voxels, int num_voxels);
+				
+				// Extract all voxels from hash table (optimized with pinned memory)
+				int extractAll(Voxel** h_output_voxels);
+				
+				// Clear hash table
+				void clear();
+			};
+
 			// GPU-based voxel manager using sort+reduce
 			// ---------------------------------------------
 			class VoxelGPUManagerSortReduce : public common::vdb::VoxelSparseManager {
@@ -390,7 +595,149 @@ namespace common {
 				float* d_offset_position = nullptr;
 				float* d_bbox_sphere_pos = nullptr;
 			};
-#endif // WITH_GPU_CUDA		
-		}
+#endif // WITH_GPU_CUDA
+
+			// ---------------------------------------------
+			// NanoVDB-based voxel manager (CPU construction)
+			// ---------------------------------------------
+			class VoxelNanoVDBManager : public common::vdb::VoxelSparseManager {
+			private:
+				nanovdb::GridHandle<> gridHandle;
+#if OPENVDB_VERSION == 11
+				std::shared_ptr<nanovdb::build::FloatGrid> persistentGrid;
+#else
+				std::shared_ptr<nanovdb::tools::build::FloatGrid> persistentGrid;
+#endif
+				
+			public:
+				VoxelNanoVDBManager() : common::vdb::VoxelSparseManager() {
+					// Initialize persistent destination grid
+#if OPENVDB_VERSION == 11
+					persistentGrid = std::make_shared<nanovdb::build::FloatGrid>(0.0f, "density", nanovdb::GridClass::FogVolume);
+#else
+					persistentGrid = std::make_shared<nanovdb::tools::build::FloatGrid>(0.0f, "density", nanovdb::GridClass::FogVolume);
+#endif
+				}
+				
+				~VoxelNanoVDBManager() {}
+
+			public:
+				void init(unsigned int expected_voxels) override {
+					// NanoVDB doesn't need pre-allocation
+				}
+				
+				void insertOrUpdatePackedSequential(uint64_t key, float value) override {
+					// Not implemented for NanoVDB (uses batch insertion)
+				}
+				
+				void serialize(uint8_t* bin_data) override;
+				void deserialize(uint8_t* bin_data) override;
+				void merge(common::vdb::VoxelSparseManager* other) override;
+				
+				void merge(uint8_t* bin_data) override {
+					VoxelNanoVDBManager temp_manager;
+					temp_manager.deserialize(bin_data);
+					this->merge(&temp_manager);
+				}
+				
+				size_t mem_size() const override {
+					return gridHandle.size();
+				}
+				
+			public:
+				// Insert or update voxels (like VoxelGPUManager::insertOrUpdate)
+				void buildFromVoxels(Voxel* h_voxels, int num_voxels);
+				
+				// Extract voxels back from NanoVDB grid
+				int extractAll(Voxel** h_output_voxels);
+				
+				// Clear persistent grid
+				void clear() {
+#if OPENVDB_VERSION == 11
+					persistentGrid = std::make_shared<nanovdb::build::FloatGrid>(0.0f, "density", nanovdb::GridClass::FogVolume);
+#else
+					persistentGrid = std::make_shared<nanovdb::tools::build::FloatGrid>(0.0f, "density", nanovdb::GridClass::FogVolume);
+#endif
+					gridHandle = nanovdb::GridHandle<>();
+				}
+				
+				// Alias for consistency with VoxelGPUManager
+				void insertOrUpdate(Voxel* h_voxels, int num_voxels) {
+					buildFromVoxels(h_voxels, num_voxels);
+				}
+				
+				// Get grid handle for GPU operations
+				const nanovdb::GridHandle<>& getGridHandle() const {
+					return gridHandle;
+				}
+			};
+
+#ifdef WITH_OPENVDB
+			// ---------------------------------------------
+			// OpenVDB-based voxel manager (CPU construction)
+			// ---------------------------------------------
+			class VoxelOpenVDBManager : public common::vdb::VoxelSparseManager {
+			private:
+				openvdb::FloatGrid::Ptr persistentGrid;
+				
+			public:
+				VoxelOpenVDBManager() : common::vdb::VoxelSparseManager() {
+					// Initialize persistent destination grid
+					persistentGrid = openvdb::FloatGrid::create(0.0f);
+					persistentGrid->setName("density");
+					persistentGrid->setGridClass(openvdb::GRID_FOG_VOLUME);
+				}
+				
+				~VoxelOpenVDBManager() {}
+
+			public:
+				void init(unsigned int expected_voxels) override {
+					// OpenVDB doesn't need pre-allocation
+				}
+				
+				void insertOrUpdatePackedSequential(uint64_t key, float value) override {
+					// Not implemented for OpenVDB (uses batch insertion)
+				}
+				
+				void serialize(uint8_t* bin_data) override;
+				void deserialize(uint8_t* bin_data) override;
+				void merge(common::vdb::VoxelSparseManager* other) override;
+				
+				void merge(uint8_t* bin_data) override {
+					VoxelOpenVDBManager temp_manager;
+					temp_manager.deserialize(bin_data);
+					this->merge(&temp_manager);
+				}
+				
+				size_t mem_size() const override {
+					return persistentGrid->memUsage();
+				}
+				
+			public:
+				// Insert or update voxels (like VoxelNanoVDBManager::buildFromVoxels)
+				void buildFromVoxels(Voxel* h_voxels, int num_voxels);
+				
+				// Extract voxels back from OpenVDB grid
+				int extractAll(Voxel** h_output_voxels);
+				
+				// Clear persistent grid
+				void clear() {
+					persistentGrid = openvdb::FloatGrid::create(0.0f);
+					persistentGrid->setName("density");
+					persistentGrid->setGridClass(openvdb::GRID_FOG_VOLUME);
+				}
+				
+				// Alias for consistency with other managers
+				void insertOrUpdate(Voxel* h_voxels, int num_voxels) {
+					buildFromVoxels(h_voxels, num_voxels);
+				}
+				
+				// Get grid pointer for external operations
+				openvdb::FloatGrid::Ptr getGrid() const {
+					return persistentGrid;
+				}
+			};
+#endif // WITH_OPENVDB
+		} //sparse
 	}// vdb
 } //common

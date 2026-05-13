@@ -59,7 +59,6 @@ namespace common {
 				vals[tid] = v.value;
 			}
 
-			// ---------------------------------------------
 			// Kernel: (keys, values) -> Voxels (unique output)
 			// ---------------------------------------------
 			__global__ void keyValueToVoxels(const uint64_t* __restrict__ keys,
@@ -75,7 +74,107 @@ namespace common {
 				out[tid] = Voxel(x, y, z, vals[tid]);
 			}
 
-			// CustomSum functor
+			// ---------------------------------------------
+			// GPU Hash Table Kernels
+			// ---------------------------------------------
+			
+			// Hash function for 3D coordinates (GPU version)
+			__device__ __host__ inline unsigned int hash3D(int i, int j, int k, unsigned int table_size) {
+				// Use prime numbers for better distribution
+				unsigned int hash = 73856093u * i ^ 19349663u * j ^ 83492791u * k;
+				return hash % table_size;
+			}
+
+			// Kernel to insert or update voxels using atomic operations
+			__global__ void insertOrUpdateVoxels(
+				const Voxel* input_voxels,
+				int num_voxels,
+				VoxelHashEntry* hash_table,
+				unsigned int table_size,
+				int* insert_count
+			) {
+				int idx = blockIdx.x * blockDim.x + threadIdx.x;
+				
+				if (idx >= num_voxels) return;
+				
+				Voxel v = input_voxels[idx];
+				unsigned int hash = hash3D(v.i, v.j, v.k, table_size);
+				
+				// Linear probing with atomic operations
+				unsigned int slot = hash;
+				for (unsigned int probe = 0; probe < table_size; probe++) {
+					
+					// Try to claim this slot by setting it to "being written" (-1)
+					int old_occupied = atomicCAS(&hash_table[slot].occupied, 0, -1);
+					
+					if (old_occupied == 0) {
+						// Slot was empty, we claimed it - insert new voxel
+						hash_table[slot].i = v.i;
+						hash_table[slot].j = v.j;
+						hash_table[slot].k = v.k;
+						hash_table[slot].value = v.value;
+						__threadfence();  // Ensure all writes are visible to other threads
+						hash_table[slot].occupied = 1;  // Mark as fully written
+						atomicAdd(insert_count, 1);
+						return;
+					}
+					else if (old_occupied == -1) {
+						// Slot is being written by another thread - wait for completion
+						while (atomicAdd(&hash_table[slot].occupied, 0) == -1) {
+							// Busy wait until write completes
+						}
+						// Now check if it's our voxel
+						if (hash_table[slot].i == v.i && 
+							hash_table[slot].j == v.j && 
+							hash_table[slot].k == v.k) {
+							// Found matching voxel - add to existing value
+							atomicAdd(&hash_table[slot].value, v.value);
+							return;
+						}
+						// Not our voxel, continue probing
+					}
+					else if (old_occupied == 1) {
+						// Slot is fully written - check if it's our voxel
+						if (hash_table[slot].i == v.i && 
+							hash_table[slot].j == v.j && 
+							hash_table[slot].k == v.k) {
+							// Found matching voxel - add to existing value
+							atomicAdd(&hash_table[slot].value, v.value);
+							return;
+						}
+						// Otherwise, continue probing
+					}
+					slot++;
+					if (slot == table_size) slot = 0;
+				}
+				
+				// Hash table is full (should not happen with proper sizing)
+				printf("Warning: Hash table full for voxel (%d, %d, %d)\n", v.i, v.j, v.k);
+			}
+
+			// Kernel to extract voxels from hash table
+			__global__ void extractVoxels(
+				VoxelHashEntry* hash_table,
+				unsigned int table_size,
+				Voxel* output_voxels,
+				int* output_count
+			) {
+				int idx = blockIdx.x * blockDim.x + threadIdx.x;
+				
+				if (idx >= table_size) return;
+				
+				if (hash_table[idx].occupied == 1) {
+					int pos = atomicAdd(output_count, 1);
+					output_voxels[pos] = Voxel(
+						hash_table[idx].i,
+						hash_table[idx].j,
+						hash_table[idx].k,
+						hash_table[idx].value
+					);
+				}
+			}
+
+			// ---------------------------------------------
 			struct CustomSum
 			{
 				template <typename T>
@@ -84,6 +183,261 @@ namespace common {
 					return a + b;
 				}
 			};
+
+			// ---------------------------------------------
+			// VoxelGPUManager (Hash Table) implementations
+			// ---------------------------------------------
+			
+			void VoxelGPUManager::ensureVoxelBuffer(size_t required_voxels) {
+				if (required_voxels <= d_voxels_capacity) return;
+				cudaFree(d_voxels);
+				cudaMalloc(&d_voxels, required_voxels * sizeof(Voxel));
+				d_voxels_capacity = required_voxels;
+			}
+			
+			void VoxelGPUManager::ensureWorkBuffers(size_t required_size) {
+				if (required_size <= d_work_capacity) return;
+				
+				cudaFree(d_keys);
+				cudaFree(d_vals);
+				cudaFree(d_keys_out);
+				cudaFree(d_vals_out);
+				
+				cudaMalloc(&d_keys, required_size * sizeof(uint64_t));
+				cudaMalloc(&d_vals, required_size * sizeof(float));
+				cudaMalloc(&d_keys_out, required_size * sizeof(uint64_t));
+				cudaMalloc(&d_vals_out, required_size * sizeof(float));
+				
+				d_work_capacity = required_size;
+			}
+			
+			void VoxelGPUManager::ensurePinnedBuffer(size_t required_size) {
+				if (required_size <= h_pinned_capacity) return;
+				
+				if (h_pinned_voxels) cudaFreeHost(h_pinned_voxels);
+				cudaMallocHost(&h_pinned_voxels, required_size * sizeof(Voxel));
+				h_pinned_capacity = required_size;
+			}
+			
+			VoxelGPUManager::VoxelGPUManager(unsigned int expected_voxels) : common::vdb::VoxelSparseManager() {
+				init(expected_voxels);
+				cudaEventCreate(&insert_start_event);
+				cudaEventCreate(&insert_stop_event);
+			}
+			
+			void VoxelGPUManager::init(unsigned int expected_voxels) {
+				// Size hash table with load factor consideration
+				table_size = (unsigned int)(expected_voxels / HASH_TABLE_LOAD_FACTOR);
+				
+				// Allocate hash table on GPU
+				cudaMalloc(&d_hash_table, table_size * sizeof(VoxelHashEntry));
+				cudaMalloc(&d_insert_count, sizeof(int));
+				
+				d_voxels_capacity = (size_t)expected_voxels;
+				if (d_voxels_capacity == 0) d_voxels_capacity = 1;
+				cudaMalloc(&d_voxels, d_voxels_capacity * sizeof(Voxel));
+				
+				// Initialize work buffers
+				d_work_capacity = expected_voxels > 0 ? expected_voxels : 1024;
+				cudaMalloc(&d_keys, d_work_capacity * sizeof(uint64_t));
+				cudaMalloc(&d_vals, d_work_capacity * sizeof(float));
+				cudaMalloc(&d_keys_out, d_work_capacity * sizeof(uint64_t));
+				cudaMalloc(&d_vals_out, d_work_capacity * sizeof(float));
+				
+				// Allocate pinned host memory
+				h_pinned_capacity = d_voxels_capacity;
+				cudaMallocHost(&h_pinned_voxels, h_pinned_capacity * sizeof(Voxel));
+				
+				// Initialize CUB temp storage
+				d_temp_storage = nullptr;
+				temp_storage_bytes = 0;
+				
+				// Initialize hash table
+				cudaMemset(d_hash_table, 0, table_size * sizeof(VoxelHashEntry));
+				cudaMemset(d_insert_count, 0, sizeof(int));
+			}
+			
+			void VoxelGPUManager::insertOrUpdatePackedSequential(uint64_t key, float value) {
+				// Not efficient for GPU - use batch insertOrUpdate instead
+				printf("[VoxelGPUManager::insertOrUpdatePackedSequential] Warning: Sequential insertion not recommended for GPU\n");
+			}
+			
+			void VoxelGPUManager::serialize(uint8_t* bin_data) {
+				uint8_t* ptr = bin_data;
+				
+				// Copy hash table from device to host, then to bin_data
+				int h_insert_count;
+				cudaMemcpy(&h_insert_count, d_insert_count, sizeof(int), cudaMemcpyDeviceToHost);
+				memcpy(ptr, &h_insert_count, sizeof(int));
+				ptr += sizeof(int);
+				
+				memcpy(ptr, &table_size, sizeof(unsigned int));
+				ptr += sizeof(unsigned int);
+				
+				VoxelHashEntry* h_hash_table = new VoxelHashEntry[table_size];
+				cudaMemcpy(h_hash_table, d_hash_table, table_size * sizeof(VoxelHashEntry), cudaMemcpyDeviceToHost);
+				memcpy(ptr, h_hash_table, sizeof(VoxelHashEntry) * table_size);
+				delete[] h_hash_table;
+			}
+			
+			void VoxelGPUManager::deserialize(uint8_t* bin_data) {
+				const uint8_t* ptr = bin_data;
+				
+				int h_insert_count;
+				memcpy(&h_insert_count, ptr, sizeof(int));
+				ptr += sizeof(int);
+				cudaMemcpy(d_insert_count, &h_insert_count, sizeof(int), cudaMemcpyHostToDevice);
+				
+				unsigned int new_table_size;
+				memcpy(&new_table_size, ptr, sizeof(unsigned int));
+				ptr += sizeof(unsigned int);
+				
+				if (new_table_size != table_size) {
+					cudaFree(d_hash_table);
+					table_size = new_table_size;
+					cudaMalloc(&d_hash_table, table_size * sizeof(VoxelHashEntry));
+				}
+				
+				cudaMemcpy(d_hash_table, ptr, sizeof(VoxelHashEntry) * table_size, cudaMemcpyHostToDevice);
+			}
+			
+			void VoxelGPUManager::merge(common::vdb::VoxelSparseManager* _other) {
+				VoxelGPUManager* other = dynamic_cast<VoxelGPUManager*>(_other);
+				if (!other) {
+					printf("[VoxelGPUManager::merge] Error: Incompatible manager type\n");
+					return;
+				}
+				
+				// Extract voxels from other and insert into this
+				Voxel* other_voxels = nullptr;
+				int other_count = other->extractAll(&other_voxels);
+				
+				if (other_count > 0) {
+					insertOrUpdate(other_voxels, other_count);
+					delete[] other_voxels;
+				}
+			}
+			
+			VoxelGPUManager::~VoxelGPUManager() {
+				cudaFree(d_hash_table);
+				cudaFree(d_insert_count);
+				cudaFree(d_voxels);
+				cudaFree(d_keys);
+				cudaFree(d_vals);
+				cudaFree(d_keys_out);
+				cudaFree(d_vals_out);
+				if (d_temp_storage) cudaFree(d_temp_storage);
+				if (h_pinned_voxels) cudaFreeHost(h_pinned_voxels);
+				cudaEventDestroy(insert_start_event);
+				cudaEventDestroy(insert_stop_event);
+			}
+			
+			// Optimized insert with pre-aggregation using sorting + reduce-by-key
+			void VoxelGPUManager::insertOrUpdate(Voxel* h_voxels, int num_voxels) {
+				if (num_voxels <= 0) return;
+
+				ensureVoxelBuffer((size_t)num_voxels);
+				ensureWorkBuffers((size_t)num_voxels);
+				ensurePinnedBuffer((size_t)num_voxels);
+
+				cudaEventRecord(insert_start_event);
+				
+				// Use pinned memory for faster transfer
+				std::memcpy(h_pinned_voxels, h_voxels, num_voxels * sizeof(Voxel));
+				cudaMemcpyAsync(d_voxels, h_pinned_voxels, num_voxels * sizeof(Voxel), cudaMemcpyHostToDevice);
+				
+				// Convert voxels to key-value pairs
+				int blockSize = 256;
+				int gridSize = (num_voxels + blockSize - 1) / blockSize;
+				voxelsToKeyValue<<<gridSize, blockSize>>>(d_voxels, num_voxels, d_keys, d_vals);
+				
+				// Sort by keys using CUB
+				size_t sort_temp_bytes = 0;
+				cub::DeviceRadixSort::SortPairs(nullptr, sort_temp_bytes,
+					d_keys, d_keys_out, d_vals, d_vals_out, num_voxels);
+				
+				if (sort_temp_bytes > temp_storage_bytes) {
+					if (d_temp_storage) cudaFree(d_temp_storage);
+					cudaMalloc(&d_temp_storage, sort_temp_bytes);
+					temp_storage_bytes = sort_temp_bytes;
+				}
+				
+				cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes,
+					d_keys, d_keys_out, d_vals, d_vals_out, num_voxels);
+				
+				// Reduce by key using CUB
+				int* d_num_unique;
+				cudaMalloc(&d_num_unique, sizeof(int));
+				
+				size_t reduce_temp_bytes = 0;
+				cub::DeviceReduce::ReduceByKey(nullptr, reduce_temp_bytes,
+					d_keys_out, d_keys, d_vals_out, d_vals, d_num_unique, cub::Sum(), num_voxels);
+				
+				if (reduce_temp_bytes > temp_storage_bytes) {
+					cudaFree(d_temp_storage);
+					cudaMalloc(&d_temp_storage, reduce_temp_bytes);
+					temp_storage_bytes = reduce_temp_bytes;
+				}
+				
+				cub::DeviceReduce::ReduceByKey(d_temp_storage, reduce_temp_bytes,
+					d_keys_out, d_keys, d_vals_out, d_vals, d_num_unique, cub::Sum(), num_voxels);
+				
+				int num_unique;
+				cudaMemcpy(&num_unique, d_num_unique, sizeof(int), cudaMemcpyDeviceToHost);
+				cudaFree(d_num_unique);
+				
+				// Convert back to voxels and insert
+				gridSize = (num_unique + blockSize - 1) / blockSize;
+				keyValueToVoxels<<<gridSize, blockSize>>>(d_keys, d_vals, num_unique, d_voxels);
+				
+				gridSize = (num_unique + blockSize - 1) / blockSize;
+				insertOrUpdateVoxels<<<gridSize, blockSize>>>(
+					d_voxels, num_unique, d_hash_table, table_size, d_insert_count
+				);
+				
+				cudaEventRecord(insert_stop_event);
+				cudaEventSynchronize(insert_stop_event);
+			}
+			
+			// Extract all voxels from hash table (optimized with pinned memory)
+			int VoxelGPUManager::extractAll(Voxel** h_output_voxels) {
+				int* d_output_count;
+				cudaMalloc(&d_output_count, sizeof(int));
+				cudaMemset(d_output_count, 0, sizeof(int));
+				
+				// Ensure we have enough device buffer space
+				ensureVoxelBuffer(table_size);
+				
+				int blockSize = 256;
+				int gridSize = (table_size + blockSize - 1) / blockSize;
+				
+				extractVoxels<<<gridSize, blockSize>>>(
+					d_hash_table, table_size, d_voxels, d_output_count
+				);
+				
+				cudaDeviceSynchronize();
+				
+				// Get count first
+				int output_count;
+				cudaMemcpy(&output_count, d_output_count, sizeof(int), cudaMemcpyDeviceToHost);
+				
+				// Allocate output and use pinned memory for faster transfer
+				*h_output_voxels = new Voxel[output_count];
+				ensurePinnedBuffer(output_count);
+				
+				cudaMemcpy(h_pinned_voxels, d_voxels, output_count * sizeof(Voxel), cudaMemcpyDeviceToHost);
+				std::memcpy(*h_output_voxels, h_pinned_voxels, output_count * sizeof(Voxel));
+				
+				cudaFree(d_output_count);
+				
+				return output_count;
+			}
+			
+			// Clear hash table
+			void VoxelGPUManager::clear() {
+				cudaMemset(d_hash_table, 0, table_size * sizeof(VoxelHashEntry));
+				cudaMemset(d_insert_count, 0, sizeof(int));
+			}
 
 			// ---------------------------------------------
 			// Fast manager: per-batch accumulate via sort+reduce

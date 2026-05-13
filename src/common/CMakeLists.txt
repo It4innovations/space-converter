@@ -126,6 +126,11 @@ if(WITH_GPU_CUDA)
         CUDA_STANDARD_REQUIRED ON
     )
     
+    # Add extended lambda support for NanoVDB CUDA features
+    target_compile_options(space_common PRIVATE
+        $<$<COMPILE_LANGUAGE:CUDA>:--extended-lambda>
+    )
+    
     if(WIN32)
         # Add MSVC standard conforming preprocessor flag for CUDA
         target_compile_options(space_common PRIVATE
