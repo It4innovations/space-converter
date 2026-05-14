@@ -485,6 +485,7 @@ namespace space_converter {
 #endif			
 			{
 				grid_main.sparse_grid = std::make_shared<common::vdb::sparse::VoxelOpenMPManager>();
+				//grid_main.sparse_grid = std::make_shared<common::vdb::sparse::VoxelNanoVDBManager>();				
 				grid_main.sparse_grid->init(convert_vdb_base->get_local_num_particles()); // TODO: convert_vdb_base->get_local_num_particles()
 			}
 		}

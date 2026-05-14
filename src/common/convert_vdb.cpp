@@ -971,12 +971,12 @@ namespace common {
 				nanovdb::Vec3d(0, 0, 0)
 			);
 
-			// Attempt to dynamic_cast to VoxelOpenMPManager
-			common::vdb::sparse::VoxelOpenMPManager* voxel_omp_manager = dynamic_cast<common::vdb::sparse::VoxelOpenMPManager*>(voxel_manager);
-			if (voxel_omp_manager) {
-				auto acc_dst = nano_grid->getAccessor();
+// Attempt to dynamic_cast to VoxelOpenMPManager
+		common::vdb::sparse::VoxelOpenMPManager* voxel_omp_manager = dynamic_cast<common::vdb::sparse::VoxelOpenMPManager*>(voxel_manager);
+		if (voxel_omp_manager) {
+			auto acc_dst = nano_grid->getAccessor();
 
-				for (unsigned int i = 0; voxel_omp_manager->table_size; i++) {
+			for (unsigned int i = 0; i < voxel_omp_manager->table_size; i++) {
 					if (voxel_omp_manager->hash_table[i].occupied != 1) continue;
 
 					nanovdb::Coord xyz(voxel_omp_manager->hash_table[i].i, voxel_omp_manager->hash_table[i].j, voxel_omp_manager->hash_table[i].k);
@@ -1093,23 +1093,29 @@ namespace common {
 			//transform->postTranslate(openvdb::Vec3d(dense_manager->offset[0] * transform_scale, dense_manager->offset[1] * transform_scale, dense_manager->offset[2] * transform_scale));
 			floatgrid->setTransform(transform);
 
-			// Attempt to dynamic_cast to VoxelOpenMPManager
-			common::vdb::sparse::VoxelOpenMPManager* voxel_omp_manager = dynamic_cast<common::vdb::sparse::VoxelOpenMPManager*>(voxel_manager);
-			if (voxel_omp_manager) {
-				auto acc_dst = floatgrid->getAccessor();
+// Attempt to dynamic_cast to VoxelCPUManager (works for OpenMP, NanoVDB, OpenVDB managers)
+		common::vdb::sparse::VoxelCPUManager* voxel_cpu_manager = dynamic_cast<common::vdb::sparse::VoxelCPUManager*>(voxel_manager);
+		if (voxel_cpu_manager) {
+			auto acc_dst = floatgrid->getAccessor();
 
-				for (unsigned int i = 0; i < voxel_omp_manager->table_size; i++) {
-					if (voxel_omp_manager->hash_table[i].occupied != 1) {
-						continue;
-					}
+			// Use common interface method to extract all voxels
+			common::vdb::sparse::Voxel* voxels = nullptr;
+			int voxel_count = voxel_cpu_manager->extractAll(&voxels);
 
-					openvdb::Coord xyz(voxel_omp_manager->hash_table[i].i, voxel_omp_manager->hash_table[i].j, voxel_omp_manager->hash_table[i].k);
-					float value = voxel_omp_manager->hash_table[i].value;
-					// Only store non-zero values to maintain sparse storage efficiency
-					// Background value (0.0f) is implicit in OpenVDB
-					if (value != 0.0f) {
-						acc_dst.setValue(xyz, value);
-					}
+			// Populate OpenVDB grid from extracted voxels
+			for (int i = 0; i < voxel_count; i++) {
+				openvdb::Coord xyz(voxels[i].i, voxels[i].j, voxels[i].k);
+				float value = voxels[i].value;
+				// Only store non-zero values to maintain sparse storage efficiency
+				// Background value (0.0f) is implicit in OpenVDB
+				if (value != 0.0f) {
+					acc_dst.setValue(xyz, value);
+				}
+			}
+
+			// Clean up extracted voxel array
+			if (voxels != nullptr) {
+				delete[] voxels;
 				}
 
 				return floatgrid;

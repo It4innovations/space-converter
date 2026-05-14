@@ -56,8 +56,8 @@ namespace common {
 					return;
 				}
 
-				float min_x = FLT_MAX, min_y = FLT_MAX, min_z = FLT_MAX;
-				float max_x = -FLT_MAX, max_y = -FLT_MAX, max_z = -FLT_MAX;
+				float min_x = bbox_min[0], min_y = bbox_min[1], min_z = bbox_min[2];
+				float max_x = bbox_max[0], max_y = bbox_max[1], max_z = bbox_max[2];
 
 				// Parallel reduction to find min/max coordinates
 #ifdef WITH_OPENMP

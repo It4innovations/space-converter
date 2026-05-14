@@ -159,8 +159,8 @@ namespace common {
                 CUDA_CHECK_ERROR(cudaMalloc(&d_bbox_max, 3 * sizeof(float)));
                 
                 // Initialize GPU results with extreme values
-                float init_min[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
-                float init_max[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
+                float init_min[3] = { bbox_min[0], bbox_min[1], bbox_min[2] };
+                float init_max[3] = { bbox_max[0], bbox_max[1], bbox_max[2] };
                 CUDA_CHECK_ERROR(cudaMemcpy(d_offset, offset_position, 3 * sizeof(float), cudaMemcpyHostToDevice));
                 CUDA_CHECK_ERROR(cudaMemcpy(d_bbox_min, init_min, 3 * sizeof(float), cudaMemcpyHostToDevice));
                 CUDA_CHECK_ERROR(cudaMemcpy(d_bbox_max, init_max, 3 * sizeof(float), cudaMemcpyHostToDevice));

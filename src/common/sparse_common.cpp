@@ -37,34 +37,39 @@ namespace common {
 				return hash % table_size;
 			}
 
-			VoxelOpenMPManager::VoxelOpenMPManager(): table_size(0), insert_count(0), hash_table(nullptr), common::vdb::VoxelSparseManager() {
-			}
-			
-			void VoxelOpenMPManager::init(unsigned int expected_voxels) {
-				// Size hash table with load factor consideration
-				table_size = (unsigned int)(expected_voxels / HASH_TABLE_LOAD_FACTOR);
-				insert_count = 0;
-				
-				// Allocate hash table on CPU
-				hash_table = new VoxelHashEntry[table_size];
-				
-				// Initialize hash table using OpenMP
-				#pragma omp parallel for
-				for (unsigned int i = 0; i < table_size; i++) {
-					hash_table[i].i = EMPTY_KEY;
-					hash_table[i].j = EMPTY_KEY;
-					hash_table[i].k = EMPTY_KEY;
-					hash_table[i].value = 0.0f;
-					hash_table[i].occupied = 0;
-				}
-			}
-			
-			VoxelOpenMPManager::~VoxelOpenMPManager() {
+		VoxelOpenMPManager::VoxelOpenMPManager(): VoxelCPUManager(), table_size(0), insert_count(0), hash_table(nullptr) {
+		}
+		
+		VoxelOpenMPManager::~VoxelOpenMPManager() {
+			if (hash_table != nullptr) {
 				delete[] hash_table;
 			}
+		}
+		
+		void VoxelOpenMPManager::init(unsigned int expected_voxels) {
+			// Size hash table with load factor consideration
+			table_size = (unsigned int)(expected_voxels / HASH_TABLE_LOAD_FACTOR);
+			insert_count = 0;
 			
-			// Helper for sequential insertion
-			void VoxelOpenMPManager::insertOrUpdatePackedSequential(uint64_t key, float value) {
+			// Allocate hash table on CPU
+			if (hash_table != nullptr) {
+				delete[] hash_table;
+			}
+			hash_table = new VoxelHashEntry[table_size];
+			
+			// Initialize hash table using OpenMP
+			#pragma omp parallel for
+			for (unsigned int i = 0; i < table_size; i++) {
+				hash_table[i].i = EMPTY_KEY;
+				hash_table[i].j = EMPTY_KEY;
+				hash_table[i].k = EMPTY_KEY;
+				hash_table[i].value = 0.0f;
+				hash_table[i].occupied = 0;
+			}
+		}
+		
+		// Helper for sequential insertion
+		void VoxelOpenMPManager::insertOrUpdatePackedSequential(uint64_t key, float value) {
 					int x, y, z;
 					unpackCoord3(key, x, y, z);
 					unsigned int slot = hash3D_cpu(x, y, z);
@@ -295,154 +300,6 @@ namespace common {
 				for (const auto& kv : merged) {
 					insertOrUpdatePackedSequential(kv.first, kv.second);
 				}
-			}
-
-			// ---------------------------------------------
-			// VoxelCPUManager implementations
-			// ---------------------------------------------
-			
-			void VoxelCPUManager::serialize(uint8_t* bin_data) {
-				uint8_t* ptr = bin_data;
-				
-				memcpy(ptr, &insert_count, sizeof(int));
-				ptr += sizeof(int);
-				memcpy(ptr, &table_size, sizeof(unsigned int));
-				ptr += sizeof(unsigned int);
-				memcpy(ptr, hash_table, sizeof(VoxelHashEntry) * table_size);
-			}
-			
-			void VoxelCPUManager::deserialize(uint8_t* bin_data) {
-				const uint8_t* ptr = bin_data;
-				memcpy(&insert_count, ptr, sizeof(int));
-				ptr += sizeof(int);
-				memcpy(&table_size, ptr, sizeof(unsigned int));
-				ptr += sizeof(unsigned int);
-
-				if (hash_table) {
-					delete[] hash_table;
-				}
-				hash_table = new VoxelHashEntry[table_size];
-				memcpy(hash_table, ptr, sizeof(VoxelHashEntry) * table_size);
-			}
-			
-			void VoxelCPUManager::merge(common::vdb::VoxelSparseManager* _other) {
-				VoxelCPUManager* other = dynamic_cast<VoxelCPUManager*>(_other);
-				if (!other) {
-					printf("[VoxelCPUManager::merge] Error: Incompatible manager type\n");
-					return;
-				}
-
-				const int thread_count = omp_get_max_threads();
-				std::vector<std::unordered_map<uint64_t, float>> thread_maps(thread_count);
-				
-				#pragma omp parallel
-				{
-					int tid = omp_get_thread_num();
-					auto& local_map = thread_maps[tid];
-					
-					#pragma omp for schedule(static)
-					for (unsigned int i = 0; i < other->table_size; i++) {
-						if (other->hash_table[i].occupied == 1) {
-							uint64_t key = packCoord3(other->hash_table[i].i, other->hash_table[i].j, other->hash_table[i].k);
-							local_map[key] += other->hash_table[i].value;
-						}
-					}
-				}
-				
-				size_t total_local_unique = 0;
-				for (const auto& m : thread_maps) {
-					total_local_unique += m.size();
-				}
-				std::unordered_map<uint64_t, float> merged;
-				merged.reserve(total_local_unique + total_local_unique / 4 + 1);
-				
-				for (const auto& m : thread_maps) {
-					for (const auto& kv : m) {
-						merged[kv.first] += kv.second;
-					}
-				}
-				
-				for (const auto& kv : merged) {
-					insertOrUpdatePackedSequential(kv.first, kv.second);
-				}
-			}
-			
-			// Insert or update voxels using OpenMP parallelization
-			void VoxelCPUManager::insertOrUpdate(Voxel* h_voxels, int num_voxels) {
-				if (num_voxels <= 0) return;
-
-				const int thread_count = omp_get_max_threads();
-				std::vector<std::unordered_map<uint64_t, float>> thread_maps(thread_count);
-
-				#pragma omp parallel
-				{
-					int tid = omp_get_thread_num();
-					auto& local_map = thread_maps[tid];
-					local_map.reserve((size_t)num_voxels / (size_t)thread_count + 64);
-
-					#pragma omp for schedule(static)
-					for (int idx = 0; idx < num_voxels; idx++) {
-						const Voxel& v = h_voxels[idx];
-						const uint64_t key = packCoord3(v.i, v.j, v.k);
-						local_map[key] += v.value;
-					}
-				}
-
-				size_t total_local_unique = 0;
-				for (const auto& m : thread_maps) {
-					total_local_unique += m.size();
-				}
-				std::unordered_map<uint64_t, float> merged;
-				merged.reserve(total_local_unique + total_local_unique / 4 + 1);
-
-				for (const auto& m : thread_maps) {
-					for (const auto& kv : m) {
-						merged[kv.first] += kv.second;
-					}
-				}
-
-				for (const auto& kv : merged) {
-					insertOrUpdatePackedSequential(kv.first, kv.second);
-				}
-			}
-			
-			// Extract all voxels from hash table using OpenMP
-			int VoxelCPUManager::extractAll(Voxel** h_output_voxels) {
-				// Thread-local storage for voxel collection
-				std::vector<std::vector<Voxel>> thread_voxels(omp_get_max_threads());
-				
-				// Parallel extraction - each thread collects its voxels
-				#pragma omp parallel
-				{
-					int thread_id = omp_get_thread_num();
-					
-					#pragma omp for schedule(static)
-					for (unsigned int idx = 0; idx < table_size; idx++) {
-						if (hash_table[idx].occupied == 1) {
-							thread_voxels[thread_id].push_back(Voxel(
-								hash_table[idx].i,
-								hash_table[idx].j,
-								hash_table[idx].k,
-								hash_table[idx].value
-							));
-						}
-					}
-				}
-				
-				// Combine thread-local results
-				int total_count = 0;
-				for (const auto& vec : thread_voxels) {
-					total_count += vec.size();
-				}
-				
-				*h_output_voxels = new Voxel[total_count];
-				int offset = 0;
-				for (const auto& vec : thread_voxels) {
-					std::copy(vec.begin(), vec.end(), *h_output_voxels + offset);
-					offset += vec.size();
-				}
-				
-				return total_count;
 			}
 
 			// ---------------------------------------------
