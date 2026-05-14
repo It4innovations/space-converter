@@ -18,7 +18,7 @@
 
 #pragma once
 
-//#include "convert_vdb.h"
+ //#include "convert_vdb.h"
 
 #include <cstdint>
 #include <unordered_map>
@@ -30,19 +30,6 @@
 // CUDA includes
 #ifdef WITH_GPU_CUDA
 #include <cuda_runtime.h>
-#endif
-
-// NanoVDB includes
-#include <nanovdb/NanoVDB.h>
-#include <nanovdb/GridHandle.h>
-#include <nanovdb/tools/GridBuilder.h>
-#include <nanovdb/tools/CreateNanoGrid.h>
-
-// OpenVDB includes
-#ifdef WITH_OPENVDB
-#	include <openvdb/openvdb.h>
-#	include <openvdb/Grid.h>
-#	include <openvdb/tree/Tree.h>
 #endif
 
 #define COORD_BITS 21
@@ -66,163 +53,22 @@ namespace common {
 				float value;   ///< Voxel value (density, temperature, etc.)
 
 #ifdef __CUDACC__
-				__host__ __device__ 
+				__host__ __device__
 #endif
-				Voxel() : i(0), j(0), k(0), value(0.0f) {}
-				
+					Voxel() : i(0), j(0), k(0), value(0.0f) {}
+
 #ifdef __CUDACC__
-				__host__ __device__ 
+				__host__ __device__
 #endif					
-				Voxel(int _i, int _j, int _k, float _value) 
-					: i(_i), j(_j), k(_k), value(_value) {}
+					Voxel(int _i, int _j, int _k, float _value)
+					: i(_i), j(_j), k(_k), value(_value) {
+				}
 			};
 
-			// /**
-			//  * @brief Sparse grid representation storing only non-empty voxels
-			//  * 
-			//  * Stores sparse voxel data as (i, j, k, value) tuples, replacing
-			//  * the NanoVDB and OpenVDB grid representations with a simpler format.
-			//  * Used for VDBParticleType::eSparse representation.
-			//  */
-			// struct SparseParticles
-			// {
-			// 	std::vector<Voxel> voxels;  ///< Collection of non-empty voxels
-
-			// 	/**
-			// 	 * @brief Add a voxel to the sparse grid
-			// 	 * @param i X coordinate
-			// 	 * @param j Y coordinate
-			// 	 * @param k Z coordinate
-			// 	 * @param value Voxel value
-			// 	 */
-			// 	void add_voxel(int i, int j, int k, float value) {
-			// 		voxels.emplace_back(i, j, k, value);
-			// 	}
-
-			// 	/**
-			// 	 * @brief Clear all voxel data
-			// 	 */
-			// 	void clear() {
-			// 		voxels.clear();
-			// 	}
-
-			// 	/**
-			// 	 * @brief Get the number of active voxels
-			// 	 * @return Number of voxels in the sparse grid
-			// 	 */
-			// 	size_t size() const {
-			// 		return voxels.size();
-			// 	}
-
-			// 	/**
-			// 	 * @brief Reserve space for voxels to avoid reallocation
-			// 	 * @param count Expected number of voxels
-			// 	 */
-			// 	void reserve(size_t count) {
-			// 		voxels.reserve(count);
-			// 	}
-
-			// 	/**
-			// 	 * @brief Serialize sparse grid data to a binary file
-			// 	 * @param filename Path to output file
-			// 	 */
-			// 	void serialize(const std::string& filename) const {
-			// 		std::ofstream out(filename, std::ios::binary);
-			// 		if (!out) {
-			// 			throw std::runtime_error("Failed to open file for writing");
-			// 		}
-
-			// 		// Write the number of voxels
-			// 		size_t voxel_count = voxels.size();
-			// 		out.write(reinterpret_cast<const char*>(&voxel_count), sizeof(voxel_count));
-
-			// 		// Write all voxel data
-			// 		out.write(reinterpret_cast<const char*>(voxels.data()), voxel_count * sizeof(Voxel));
-
-			// 		out.close();
-			// 	}
-
-			// 	/**
-			// 	 * @brief Deserialize sparse grid data from a binary file
-			// 	 * @param filename Path to input file
-			// 	 */
-			// 	void deserialize(const std::string& filename) {
-			// 		std::ifstream in(filename, std::ios::binary);
-			// 		if (!in) {
-			// 			throw std::runtime_error("Failed to open file for reading");
-			// 		}
-
-			// 		// Read the number of voxels
-			// 		size_t voxel_count;
-			// 		in.read(reinterpret_cast<char*>(&voxel_count), sizeof(voxel_count));
-
-			// 		// Read all voxel data
-			// 		voxels.resize(voxel_count);
-			// 		in.read(reinterpret_cast<char*>(voxels.data()), voxel_count * sizeof(Voxel));
-
-			// 		in.close();
-			// 	}
-
-			// 	/**
-			// 	 * @brief Serialize sparse grid data to a binary buffer (for MPI/network transfer)
-			// 	 * @param bin_data Output buffer to store serialized data
-			// 	 */
-			// 	void serialize(std::vector<uint8_t>& bin_data) const {
-			// 		size_t voxel_count = voxels.size();
-			// 		size_t total_size = sizeof(voxel_count) + voxel_count * sizeof(Voxel);
-					
-			// 		bin_data.resize(total_size);
-			// 		uint8_t* ptr = bin_data.data();
-
-			// 		// Write voxel count
-			// 		memcpy(ptr, &voxel_count, sizeof(voxel_count));
-			// 		ptr += sizeof(voxel_count);
-
-			// 		// Write voxel data
-			// 		memcpy(ptr, voxels.data(), voxel_count * sizeof(Voxel));
-			// 	}
-
-			// 	/**
-			// 	 * @brief Deserialize sparse grid data from a binary buffer
-			// 	 * @param bin_data Input buffer containing serialized data
-			// 	 */
-			// 	void deserialize(const std::vector<uint8_t>& bin_data) {
-			// 		const uint8_t* ptr = bin_data.data();
-
-			// 		// Read voxel count
-			// 		size_t voxel_count;
-			// 		memcpy(&voxel_count, ptr, sizeof(voxel_count));
-			// 		ptr += sizeof(voxel_count);
-
-			// 		// Read voxel data
-			// 		voxels.resize(voxel_count);
-			// 		memcpy(voxels.data(), ptr, voxel_count * sizeof(Voxel));
-			// 	}
-
-			// 	/**
-			// 	 * @brief Merge another SparseParticles object into this one
-			// 	 * @param other Source sparse grid to merge
-			// 	 * 
-			// 	 * Appends all voxels from the other sparse grid into this one.
-			// 	 */
-			// 	void merge(const SparseParticles& other) {
-			// 		voxels.insert(voxels.end(), other.voxels.begin(), other.voxels.end());
-			// 	}
-			// };
-
-			// ---------------------------------------------
-			// Key packing (lossless within chosen range)
-			// 21 bits per axis => range [-2^20, 2^20-1]
-			// i,j,k must be within [-1,048,576, 1,048,575]
-			// ---------------------------------------------
-			//static constexpr int   COORD_BITS = 21;
-			//static constexpr int   COORD_BIAS = 1 << (COORD_BITS - 1); // 2^20
-			//static constexpr uint64_t COORD_MASK = (1ull << COORD_BITS) - 1ull;
-
 #ifdef __CUDACC__
-			__host__ __device__ 
+			__host__ __device__
 #endif			
-			inline uint64_t packCoord3(int x, int y, int z)
+				inline uint64_t packCoord3(int x, int y, int z)
 			{
 				// Note: for production, you may want to clamp or assert in debug.
 				uint64_t ux = (uint64_t)(x + COORD_BIAS) & COORD_MASK;
@@ -233,11 +79,11 @@ namespace common {
 			}
 
 #ifdef __CUDACC__			
-			__host__ __device__ 
+			__host__ __device__
 #endif			
-			inline void unpackCoord3(uint64_t key, int &x, int &y, int &z)
+				inline void unpackCoord3(uint64_t key, int& x, int& y, int& z)
 			{
-				uint64_t ux = (key) & COORD_MASK;
+				uint64_t ux = (key)&COORD_MASK;
 				uint64_t uy = (key >> COORD_BITS) & COORD_MASK;
 				uint64_t uz = (key >> (2 * COORD_BITS)) & COORD_MASK;
 
@@ -254,42 +100,33 @@ namespace common {
 			};
 
 			// ---------------------------------------------
-			// Abstract base class for CPU-based voxel managers
-			// ---------------------------------------------
-			class VoxelCPUManager : public common::vdb::VoxelSparseManager {
-			public:
-				VoxelCPUManager() : common::vdb::VoxelSparseManager() {}
-				virtual ~VoxelCPUManager() {}
-			};
-
-			// ---------------------------------------------
 			// OpenMP-based CPU voxel manager
 			// ---------------------------------------------
-			class VoxelOpenMPManager: public VoxelCPUManager {
+			class VoxelOpenMPManager : public common::vdb::VoxelSparseManager {
 			public:
 				VoxelHashEntry* hash_table;
 				unsigned int table_size;
 				int insert_count;
-				
+
 				// Hash function for 3D coordinates (CPU version)
 				inline unsigned int hash3D_cpu(int i, int j, int k) const;
-				
+
 			public:
 				VoxelOpenMPManager();
 				~VoxelOpenMPManager();
 
 			public:
 				void init(unsigned int expected_voxels) override;
-				
+
 				// Helper for sequential insertion
 				void insertOrUpdatePackedSequential(uint64_t key, float value) override;
 
 				// Serialization: write current voxel data to binary buffer
-				void serialize(uint8_t *bin_data) override;
-				
+				void serialize(uint8_t* bin_data) override;
+
 				// Deserialization: read voxel data from binary buffer
-				void deserialize(uint8_t *bin_data) override;
-				
+				void deserialize(uint8_t* bin_data) override;
+
 				// Merge: combine voxels from another manager (accumulate values)
 				void merge(common::vdb::VoxelSparseManager* other) override;
 
@@ -305,189 +142,38 @@ namespace common {
 				}
 
 			public:
-				
+
 				// Insert or update voxels using OpenMP parallelization with thread-local pre-aggregation
 				void insertOrUpdate(Voxel* h_voxels, int num_voxels);
-				
+
 				// Extract all voxels from hash table using OpenMP
 				int extractAll(Voxel** h_output_voxels);
-				
+
 				// Clear hash table
-				void clear();				
+				void clear();
 			};
-
-			// ---------------------------------------------
-			// NanoVDB-based voxel manager (CPU construction)
-			// ---------------------------------------------
-			class VoxelNanoVDBManager : public VoxelCPUManager {
-			private:
-				nanovdb::GridHandle<> gridHandle;
-#if OPENVDB_VERSION == 11
-				std::shared_ptr<nanovdb::build::FloatGrid> persistentGrid;
-#else
-				std::shared_ptr<nanovdb::tools::build::FloatGrid> persistentGrid;
-#endif
-				
-			public:
-				VoxelNanoVDBManager() : VoxelCPUManager() {
-					// Initialize persistent destination grid
-#if OPENVDB_VERSION == 11
-					persistentGrid = std::make_shared<nanovdb::build::FloatGrid>(0.0f, "density", nanovdb::GridClass::FogVolume);
-#else
-					persistentGrid = std::make_shared<nanovdb::tools::build::FloatGrid>(0.0f, "density", nanovdb::GridClass::FogVolume);
-#endif
-				}
-				
-				~VoxelNanoVDBManager() {}
-
-			public:
-				void init(unsigned int expected_voxels) override {
-					// NanoVDB doesn't need pre-allocation
-				}
-				
-				void insertOrUpdatePackedSequential(uint64_t key, float value) override {
-					// Not implemented for NanoVDB (uses batch insertion)
-				}
-				
-				void serialize(uint8_t* bin_data) override;
-				void deserialize(uint8_t* bin_data) override;
-				void merge(common::vdb::VoxelSparseManager* other) override;
-				
-				void merge(uint8_t* bin_data) override {
-					VoxelNanoVDBManager temp_manager;
-					temp_manager.deserialize(bin_data);
-					this->merge(&temp_manager);
-				}
-				
-				size_t mem_size() const override {
-					return gridHandle.size();
-				}
-				
-			public:
-				// Insert or update voxels (like VoxelGPUManager::insertOrUpdate)
-				void buildFromVoxels(Voxel* h_voxels, int num_voxels);
-				
-				// Extract voxels back from NanoVDB grid
-				int extractAll(Voxel** h_output_voxels);
-				
-				// Clear persistent grid
-				void clear() {
-#if OPENVDB_VERSION == 11
-					persistentGrid = std::make_shared<nanovdb::build::FloatGrid>(0.0f, "density", nanovdb::GridClass::FogVolume);
-#else
-					persistentGrid = std::make_shared<nanovdb::tools::build::FloatGrid>(0.0f, "density", nanovdb::GridClass::FogVolume);
-#endif
-					gridHandle = nanovdb::GridHandle<>();
-				}
-				
-				// Alias for consistency with VoxelGPUManager
-				void insertOrUpdate(Voxel* h_voxels, int num_voxels) {
-					buildFromVoxels(h_voxels, num_voxels);
-				}
-				
-				// Get grid handle for GPU operations
-				const nanovdb::GridHandle<>& getGridHandle() const {
-					return gridHandle;
-				}
-			};
-
-#ifdef WITH_OPENVDB
-			// ---------------------------------------------
-			// OpenVDB-based voxel manager (CPU construction)
-			// ---------------------------------------------
-			class VoxelOpenVDBManager : public VoxelCPUManager {
-			private:
-				openvdb::FloatGrid::Ptr persistentGrid;
-				
-			public:
-				VoxelOpenVDBManager() : VoxelCPUManager() {
-					// Initialize persistent destination grid
-					persistentGrid = openvdb::FloatGrid::create(0.0f);
-					persistentGrid->setName("density");
-					persistentGrid->setGridClass(openvdb::GRID_FOG_VOLUME);
-				}
-				
-				~VoxelOpenVDBManager() {}
-
-			public:
-				void init(unsigned int expected_voxels) override {
-					// OpenVDB doesn't need pre-allocation
-				}
-				
-				void insertOrUpdatePackedSequential(uint64_t key, float value) override {
-					// Not implemented for OpenVDB (uses batch insertion)
-				}
-				
-				void serialize(uint8_t* bin_data) override;
-				void deserialize(uint8_t* bin_data) override;
-				void merge(common::vdb::VoxelSparseManager* other) override;
-				
-				void merge(uint8_t* bin_data) override {
-					VoxelOpenVDBManager temp_manager;
-					temp_manager.deserialize(bin_data);
-					this->merge(&temp_manager);
-				}
-				
-				size_t mem_size() const override {
-					return persistentGrid->memUsage();
-				}
-				
-			public:
-				// Insert or update voxels (like VoxelNanoVDBManager::buildFromVoxels)
-				void buildFromVoxels(Voxel* h_voxels, int num_voxels);
-				
-				// Extract voxels back from OpenVDB grid
-				int extractAll(Voxel** h_output_voxels);
-				
-				// Clear persistent grid
-				void clear() {
-					persistentGrid = openvdb::FloatGrid::create(0.0f);
-					persistentGrid->setName("density");
-					persistentGrid->setGridClass(openvdb::GRID_FOG_VOLUME);
-				}
-				
-				// Alias for consistency with other managers
-				void insertOrUpdate(Voxel* h_voxels, int num_voxels) {
-					buildFromVoxels(h_voxels, num_voxels);
-				}
-				
-				// Get grid pointer for external operations
-				openvdb::FloatGrid::Ptr getGrid() const {
-					return persistentGrid;
-				}
-			};
-#endif // WITH_OPENVDB
 
 #ifdef WITH_GPU_CUDA
 			// ---------------------------------------------
-			// Abstract base class for GPU-based voxel managers
-			// ---------------------------------------------
-			class VoxelGPUManager : public common::vdb::VoxelSparseManager {
-			public:
-				VoxelGPUManager() : common::vdb::VoxelSparseManager() {}
-				virtual ~VoxelGPUManager() {}
-			};
-
-			// ---------------------------------------------
 			// GPU-based voxel manager using sort+reduce
 			// ---------------------------------------------
-			class VoxelGPUManagerSortReduce : public VoxelGPUManager {
+			class VoxelGPUManagerSortReduce : public common::vdb::VoxelSparseManager {
 			public:
 				VoxelGPUManagerSortReduce();
 				~VoxelGPUManagerSortReduce();
 
 			public:
 				void init(unsigned int expected_voxels) override;
-				
+
 				// Helper for sequential insertion
 				//void insertOrUpdatePackedSequential(uint64_t key, float value) override;
 
 				// Serialization: write current voxel data to binary buffer
-				void serialize(uint8_t *bin_data) override;
-				
+				void serialize(uint8_t* bin_data) override;
+
 				// Deserialization: read voxel data from binary buffer
-				void deserialize(uint8_t *bin_data) override;
-				
+				void deserialize(uint8_t* bin_data) override;
+
 				// Merge: combine voxels from another manager (accumulate values)
 				void merge(common::vdb::VoxelSparseManager* other) override;
 
@@ -507,8 +193,8 @@ namespace common {
 					temp_manager.deserialize(bin_data);
 					this->merge(&temp_manager);
 				}
-				
-				
+
+
 			public:
 				// Accumulate a batch of voxels: output becomes unique (i,j,k) with summed values
 				// Returns number of unique voxels in the batch.
@@ -516,13 +202,13 @@ namespace common {
 
 				// Extract the last accumulated unique voxels back to host
 				int extractAll(Voxel** h_output_voxels);
-				
+
 				// CPU-side serialization: write current voxel data to binary buffer
 				void serializeCPU(uint8_t* bin_data);
-				
+
 				// CPU-side deserialization: read voxel data from binary buffer
 				void deserializeCPU(uint8_t* bin_data);
-				
+
 				// CPU-side merge: combine voxels from another manager (uses host memory)
 				void mergeCPU(common::vdb::VoxelSparseManager* other);
 
@@ -573,7 +259,7 @@ namespace common {
 				uint64_t* d_particle_count = nullptr;
 
 				// Persistent device copies of per-call host parameters
-				int*   d_bbox_min_orig   = nullptr;
+				int* d_bbox_min_orig = nullptr;
 				float* d_offset_position = nullptr;
 				float* d_bbox_sphere_pos = nullptr;
 			};

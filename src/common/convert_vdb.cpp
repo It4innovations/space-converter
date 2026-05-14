@@ -60,11 +60,11 @@
 #include "utility/dense_utility.h"
 
 namespace common {
-	namespace vdb {	
-		
+	namespace vdb {
+
 		/**
 		 * @brief Read precomputed particle radii and densities from binary files
-		 * 
+		 *
 		 * Loads particle neighbor search results from disk for each particle type.
 		 * This avoids recomputing expensive neighbor searches.
 		 */
@@ -119,7 +119,7 @@ namespace common {
 
 		/**
 		 * @brief Write precomputed particle radii and densities to binary files
-		 * 
+		 *
 		 * Saves particle neighbor search results to disk for later reuse.
 		 */
 		void ConvertVDBBase::write_radius_from_file(std::string& calc_radius_neigh_file)
@@ -167,7 +167,7 @@ namespace common {
 
 			size_t no_points = get_local_num_particles();
 			int ptype_count = get_num_types();
-			
+
 			cache_manager.pos_particles_per_ptype.resize(ptype_count);
 			cache_manager.radius_particles_per_ptype.resize(ptype_count);
 			cache_manager.rho_particles_per_ptype.resize(ptype_count);
@@ -294,11 +294,11 @@ namespace common {
 #ifdef WITH_CUDAKDTREE
 		/**
 		 * @brief Calculate particle radii using CUDA-accelerated k-NN search
-		 * 
+		 *
 		 * Uses GPU-accelerated KD-tree to find k-nearest neighbors for each particle.
 		 * Computes smoothing radius and density based on neighbor distances.
 		 */
-		void ConvertVDBBase::calculate_radius_by_cudakdtree(int calc_radius_neigh, std::string& calc_radius_neigh_file, bool use_cycling, bool use_cudakdtree_cpu, float maxRadius, common::SpaceData::DenseType &rho_kernel)
+		void ConvertVDBBase::calculate_radius_by_cudakdtree(int calc_radius_neigh, std::string& calc_radius_neigh_file, bool use_cycling, bool use_cudakdtree_cpu, float maxRadius, common::SpaceData::DenseType& rho_kernel)
 		{
 			double t_start = omp_get_wtime();
 
@@ -317,48 +317,48 @@ namespace common {
 
 				for (int ptype = 0; ptype < ptype_count; ptype++) {
 
-// 					std::vector<float> points;
-// 					std::vector < std::vector<float> > points_thread(num_threads);
+					// 					std::vector<float> points;
+					// 					std::vector < std::vector<float> > points_thread(num_threads);
 
-// 					std::vector<float> pmass;
-// 					std::vector < std::vector<float> > pmass_thread(num_threads);
+					// 					std::vector<float> pmass;
+					// 					std::vector < std::vector<float> > pmass_thread(num_threads);
 
-// #pragma omp parallel num_threads(num_threads) 
-// 					{
-// 						int tid = omp_get_thread_num();
+					// #pragma omp parallel num_threads(num_threads) 
+					// 					{
+					// 						int tid = omp_get_thread_num();
 
-// #pragma omp for
-// 						for (size_t i = 0; i < no_points; i++) {
+					// #pragma omp for
+					// 						for (size_t i = 0; i < no_points; i++) {
 
-// 							if (get_particle_type(i) != ptype)
-// 								continue;
+					// 							if (get_particle_type(i) != ptype)
+					// 								continue;
 
-// 							double Pos[3];
-// 							get_particle_position(i, Pos);
+					// 							double Pos[3];
+					// 							get_particle_position(i, Pos);
 
-// 							// Collect particle positions per thread
-// 							points_thread[tid].push_back(Pos[0]);
-// 							points_thread[tid].push_back(Pos[1]);
-// 							points_thread[tid].push_back(Pos[2]);
+					// 							// Collect particle positions per thread
+					// 							points_thread[tid].push_back(Pos[0]);
+					// 							points_thread[tid].push_back(Pos[1]);
+					// 							points_thread[tid].push_back(Pos[2]);
 
-// 							double mass = get_particle_mass(i);
-// 							pmass_thread[tid].push_back(mass);
-// 						}
-// 					}
+					// 							double mass = get_particle_mass(i);
+					// 							pmass_thread[tid].push_back(mass);
+					// 						}
+					// 					}
 
-// 					// Merge thread-local results in order to maintain particle index consistency
-// 					// Thread order must be preserved to match particle IDs with computed radii
-// 					std::vector<float> result;
-// 					for (int t = 0; t < num_threads; ++t) {
-// 						points.insert(points.end(), points_thread[t].begin(), points_thread[t].end());
-// 						pmass.insert(pmass.end(), pmass_thread[t].begin(), pmass_thread[t].end());
-// 					}
+					// 					// Merge thread-local results in order to maintain particle index consistency
+					// 					// Thread order must be preserved to match particle IDs with computed radii
+					// 					std::vector<float> result;
+					// 					for (int t = 0; t < num_threads; ++t) {
+					// 						points.insert(points.end(), points_thread[t].begin(), points_thread[t].end());
+					// 						pmass.insert(pmass.end(), pmass_thread[t].begin(), pmass_thread[t].end());
+					// 					}
 
-// 					cache_manager.particles_ptype_offset[ptype + 1] = cache_manager.particles_ptype_offset[ptype] + points.size() / 3;
+					// 					cache_manager.particles_ptype_offset[ptype + 1] = cache_manager.particles_ptype_offset[ptype] + points.size() / 3;
 
-// 					printf("cudakdtree: init: %f\n", omp_get_wtime() - t_start);
+					// 					printf("cudakdtree: init: %f\n", omp_get_wtime() - t_start);
 
-					// Run GPU/CPU-based k-Nearest Neighbor search
+										// Run GPU/CPU-based k-Nearest Neighbor search
 					utility::cudakdtree::run_knn(cache_manager.pos_particles_per_ptype[ptype].data(), cache_manager.pos_particles_per_ptype[ptype].size() / 3, calc_radius_neigh + 1, cache_manager.radius_particles_per_ptype[ptype], cache_manager.rho_particles_per_ptype[ptype], cache_manager.mass_particles_per_ptype[ptype], !use_cudakdtree_cpu, use_cycling, maxRadius, rho_kernel);
 				}
 
@@ -376,7 +376,7 @@ namespace common {
 #ifdef WITH_NANOFLANN
 		/**
 		 * @brief Calculate particle radii using CPU-based nanoflann k-NN search
-		 * 
+		 *
 		 * Uses CPU-based KD-tree (nanoflann library) to find k-nearest neighbors.
 		 * Computes smoothing radius and density based on neighbor distances.
 		 */
@@ -399,48 +399,48 @@ namespace common {
 
 				for (int ptype = 0; ptype < ptype_count; ptype++) {
 
-// 					std::vector<float> points;
-// 					std::vector < std::vector<float> > points_thread(num_threads);
+					// 					std::vector<float> points;
+					// 					std::vector < std::vector<float> > points_thread(num_threads);
 
-// 					std::vector<float> pmass;
-// 					std::vector < std::vector<float> > pmass_thread(num_threads);
+					// 					std::vector<float> pmass;
+					// 					std::vector < std::vector<float> > pmass_thread(num_threads);
 
-// #pragma omp parallel num_threads(num_threads) 
-// 					{
-// 						int tid = omp_get_thread_num();
+					// #pragma omp parallel num_threads(num_threads) 
+					// 					{
+					// 						int tid = omp_get_thread_num();
 
-// #pragma omp for
-// 						for (size_t i = 0; i < no_points; i++) {
+					// #pragma omp for
+					// 						for (size_t i = 0; i < no_points; i++) {
 
-// 							if (get_particle_type(i) != ptype)
-// 								continue;
+					// 							if (get_particle_type(i) != ptype)
+					// 								continue;
 
-// 							double Pos[3];
-// 							get_particle_position(i, Pos);
+					// 							double Pos[3];
+					// 							get_particle_position(i, Pos);
 
-// 							// Collect particle positions per thread (x, y, z interleaved)
-// 							points_thread[tid].push_back(Pos[0]);
-// 							points_thread[tid].push_back(Pos[1]);
-// 							points_thread[tid].push_back(Pos[2]);
+					// 							// Collect particle positions per thread (x, y, z interleaved)
+					// 							points_thread[tid].push_back(Pos[0]);
+					// 							points_thread[tid].push_back(Pos[1]);
+					// 							points_thread[tid].push_back(Pos[2]);
 
-// 							// Store mass for density computation
-// 							double mass = get_particle_mass(i);
-// 							pmass_thread[tid].push_back(mass);
-// 						}
-// 					}
+					// 							// Store mass for density computation
+					// 							double mass = get_particle_mass(i);
+					// 							pmass_thread[tid].push_back(mass);
+					// 						}
+					// 					}
 
-// 					// Merge thread-local results in thread order to maintain particle index consistency
-// 					// This is critical for correct radius lookup later
-// 					std::vector<float> result;
-// 					for (int t = 0; t < num_threads; ++t) {
-// 						points.insert(points.end(), points_thread[t].begin(), points_thread[t].end());
-// 						pmass.insert(pmass.end(), pmass_thread[t].begin(), pmass_thread[t].end());
-// 					}
+					// 					// Merge thread-local results in thread order to maintain particle index consistency
+					// 					// This is critical for correct radius lookup later
+					// 					std::vector<float> result;
+					// 					for (int t = 0; t < num_threads; ++t) {
+					// 						points.insert(points.end(), points_thread[t].begin(), points_thread[t].end());
+					// 						pmass.insert(pmass.end(), pmass_thread[t].begin(), pmass_thread[t].end());
+					// 					}
 
-// 					// Store particle count offset for this type (cumulative sum)
-// 					cache_manager.particles_ptype_offset[ptype + 1] = cache_manager.particles_ptype_offset[ptype] + points.size() / 3;
+					// 					// Store particle count offset for this type (cumulative sum)
+					// 					cache_manager.particles_ptype_offset[ptype + 1] = cache_manager.particles_ptype_offset[ptype] + points.size() / 3;
 
-// 					printf("nanoflann: init: %f\n", omp_get_wtime() - t_start);
+					// 					printf("nanoflann: init: %f\n", omp_get_wtime() - t_start);
 
 					if (cache_manager.pos_particles_per_ptype[ptype].size() > 0) {
 						// Run k-NN search (calc_radius_neigh + 1 includes the query point itself)
@@ -459,7 +459,7 @@ namespace common {
 
 		/**
 		 * @brief Main conversion function: converts particle data to VDB grids
-		 * 
+		 *
 		 * This is the core function that:
 		 * 1. Iterates through cached particles of a specific type
 		 * 2. Filters by type, bounding box, and value ranges
@@ -498,10 +498,10 @@ namespace common {
 			common::SpaceData::AnimType anim_type,
 			int frame_req,
 			int frame,
-			float *bbox_sphere_pos,
+			float* bbox_sphere_pos,
 			float bbox_sphere_r,
 			bool use_simple_density,
-			float *offset_position
+			float* offset_position
 		)
 		{
 #ifdef WITH_OPENMP
@@ -534,13 +534,13 @@ namespace common {
 				//grid.nano_grid->setTransform(transform_scale);
 				grid.sparse_grid->set_transform(transform_scale);
 			}
-// #ifdef WITH_OPENVDB
-// 			else if (grid.type == VDBParticleType::eOpenVDB) {
-// 				// Create linear transform for OpenVDB grid
-// 				openvdb::math::Transform::Ptr transform = openvdb::math::Transform::createLinearTransform(transform_scale);
-// 				grid.vdb_grid->setTransform(transform);
-// 			}
-// #endif
+			// #ifdef WITH_OPENVDB
+			// 			else if (grid.type == VDBParticleType::eOpenVDB) {
+			// 				// Create linear transform for OpenVDB grid
+			// 				openvdb::math::Transform::Ptr transform = openvdb::math::Transform::createLinearTransform(transform_scale);
+			// 				grid.vdb_grid->setTransform(transform);
+			// 			}
+			// #endif
 			else if (grid.type == VDBParticleType::eRawParticles) {
 				// Reserve space for raw particle arrays
 				raw_positions.values.reserve(no_points);
@@ -651,7 +651,7 @@ namespace common {
 					bbox_z_max_norm,
 					scale_space_diagonal,
 					offset_position
-				);				
+				);
 			}
 			else
 #endif
@@ -720,7 +720,7 @@ namespace common {
 
 		/**
 		 * @brief Merge two VDB grids by summing their values
-		 * 
+		 *
 		 * Handles merging of different grid types (dense, sparse, serialized).
 		 * Used in MPI distributed processing to combine partial results.
 		 */
@@ -795,7 +795,7 @@ namespace common {
 
 		/**
 		 * @brief Find axis-aligned bounding box containing all particles
-		 * 
+		 *
 		 * Computes min/max coordinates across all particles of a given type.
 		 * Used to determine grid extents before conversion.
 		 * Uses cached particle positions and dispatches to CPU or GPU kernel.
@@ -851,7 +851,7 @@ namespace common {
 
 		/**
 		 * @brief Find min/max value range for a particle data block
-		 * 
+		 *
 		 * Scans all particles to determine value range for normalization.
 		 */
 		void ConvertVDBBase::iolib_find_minmax(
@@ -888,7 +888,7 @@ namespace common {
 		{
 			std::shared_ptr<nanovdb::tools::build::FloatGrid> nano_grid = std::make_shared<nanovdb::tools::build::FloatGrid>(0.0f, "density", nanovdb::GridClass::FogVolume);
 
-// Create NanoVDB transform with scale factor and translation offset
+			// Create NanoVDB transform with scale factor and translation offset
 
 			nano_grid->setTransform(
 				transform_scale,
@@ -909,7 +909,7 @@ namespace common {
 						// Get raw density and temp values from dense grid
 						size_t index = dense_manager->get_index(x, y, z);
 						float density = dense_manager->data_density[index];
-						
+
 						float temp = 0.0f;
 						temp = dense_manager->data_temp[index];
 
@@ -935,12 +935,12 @@ namespace common {
 			}
 #endif
 
-		/**
-		 * @brief Copy normalized dense data to sparse NanoVDB grid
-		 * 
-		 * Iterates through dense array and copies non-zero values to sparse structure.
-		 * This maintains memory efficiency by only storing occupied voxels.
-		 */
+			/**
+			 * @brief Copy normalized dense data to sparse NanoVDB grid
+			 *
+			 * Iterates through dense array and copies non-zero values to sparse structure.
+			 * This maintains memory efficiency by only storing occupied voxels.
+			 */
 			auto acc_dst = nano_grid->getAccessor();
 			for (int z = 0; z < dense_manager->z(); z++) {
 				for (int y = 0; y < dense_manager->y(); y++) {
@@ -971,13 +971,15 @@ namespace common {
 				nanovdb::Vec3d(0, 0, 0)
 			);
 
-// Attempt to dynamic_cast to VoxelOpenMPManager
-		common::vdb::sparse::VoxelOpenMPManager* voxel_omp_manager = dynamic_cast<common::vdb::sparse::VoxelOpenMPManager*>(voxel_manager);
-		if (voxel_omp_manager) {
-			auto acc_dst = nano_grid->getAccessor();
+			// Attempt to dynamic_cast to VoxelOpenMPManager
+			common::vdb::sparse::VoxelOpenMPManager* voxel_omp_manager = dynamic_cast<common::vdb::sparse::VoxelOpenMPManager*>(voxel_manager);
+			if (voxel_omp_manager) {
+				auto acc_dst = nano_grid->getAccessor();
 
-			for (unsigned int i = 0; i < voxel_omp_manager->table_size; i++) {
-					if (voxel_omp_manager->hash_table[i].occupied != 1) continue;
+				size_t total_occupied = 0;
+				for (unsigned int i = 0; i < voxel_omp_manager->table_size; i++) {
+					if (voxel_omp_manager->hash_table[i].occupied != 1)
+						continue;
 
 					nanovdb::Coord xyz(voxel_omp_manager->hash_table[i].i, voxel_omp_manager->hash_table[i].j, voxel_omp_manager->hash_table[i].k);
 					float value = voxel_omp_manager->hash_table[i].value;
@@ -985,52 +987,60 @@ namespace common {
 					// Background value (0.0f) is implicit in NanoVDB
 					if (value != 0.0f) {
 						acc_dst.setValue(xyz, value);
+						total_occupied++;
 					}
 				}
+
+				printf("VoxelOpenMPManager: Total occupied voxels: %f %%\n", 100.0f * (float)total_occupied / (float)voxel_omp_manager->table_size);
 			}
+
 
 #ifdef WITH_GPU_CUDA
-		// Attempt to dynamic_cast to VoxelGPUManagerSortReduce
-		common::vdb::sparse::VoxelGPUManagerSortReduce* voxel_gpu_manager = dynamic_cast<common::vdb::sparse::VoxelGPUManagerSortReduce*>(voxel_manager);
-		if (voxel_gpu_manager) {
-			uint64_t* h_keys = new uint64_t[voxel_gpu_manager->m_last_count];
-			float* h_vals = new float[voxel_gpu_manager->m_last_count];
-			voxel_gpu_manager->get_keys_values_from_device(h_keys, h_vals);
+			// Attempt to dynamic_cast to VoxelGPUManagerSortReduce
+			common::vdb::sparse::VoxelGPUManagerSortReduce* voxel_gpu_manager = dynamic_cast<common::vdb::sparse::VoxelGPUManagerSortReduce*>(voxel_manager);
+			if (voxel_gpu_manager) {
+				uint64_t* h_keys = new uint64_t[voxel_gpu_manager->m_last_count];
+				float* h_vals = new float[voxel_gpu_manager->m_last_count];
+				voxel_gpu_manager->get_keys_values_from_device(h_keys, h_vals);
 
-			auto acc_dst = nano_grid->getAccessor();
-			for (unsigned int i = 0; i < voxel_gpu_manager->m_last_count; i++) {
-				int x, y, z;
-				common::vdb::sparse::unpackCoord3(h_keys[i], x, y, z);
-				nanovdb::Coord xyz(x, y, z);
-				float value = h_vals[i];
-				// Only store non-zero values to maintain sparse storage efficiency
-				// Background value (0.0f) is implicit in NanoVDB
-				if (value != 0.0f) {
-					acc_dst.setValue(xyz, value);
+				size_t total_occupied = 0;
+				auto acc_dst = nano_grid->getAccessor();
+				for (unsigned int i = 0; i < voxel_gpu_manager->m_last_count; i++) {
+					int x, y, z;
+					common::vdb::sparse::unpackCoord3(h_keys[i], x, y, z);
+					nanovdb::Coord xyz(x, y, z);
+					float value = h_vals[i];
+					// Only store non-zero values to maintain sparse storage efficiency
+					// Background value (0.0f) is implicit in NanoVDB
+					if (value != 0.0f) {
+						acc_dst.setValue(xyz, value);
+						total_occupied++;
+					}
 				}
+				delete[] h_keys;
+				delete[] h_vals;
+
+				printf("VoxelGPUManagerSortReduce: Total occupied voxels: %f %%\n", 100.0f * (float)total_occupied / (float)voxel_gpu_manager->m_last_count);
 			}
-			delete[] h_keys;
-			delete[] h_vals;
-		}
 #endif
 
-		return nano_grid;
-	}
+			return nano_grid;
+		}
 
 #endif // WITH_NANOVDB
 
 #if defined(WITH_OPENVDB)
-	/**
-	 * @brief Convert dense grid to sparse OpenVDB grid
-	 * 
-	 * Converts regular dense grid to memory-efficient sparse OpenVDB format.
-	 * Applies normalization and uses OpenVDB's optimized dense-to-sparse conversion.
-	 */
-	openvdb::FloatGrid::Ptr ConvertVDBBase::dense_to_openvdb(VoxelDenseManager* dense_manager, double transform_scale, common::SpaceData::DenseType dense_type, common::SpaceData::DenseNorm dense_norm)
-	{
-		openvdb::FloatGrid::Ptr floatgrid = openvdb::FloatGrid::create(0.0f);
+		/**
+		 * @brief Convert dense grid to sparse OpenVDB grid
+		 *
+		 * Converts regular dense grid to memory-efficient sparse OpenVDB format.
+		 * Applies normalization and uses OpenVDB's optimized dense-to-sparse conversion.
+		 */
+		openvdb::FloatGrid::Ptr ConvertVDBBase::dense_to_openvdb(VoxelDenseManager* dense_manager, double transform_scale, common::SpaceData::DenseType dense_type, common::SpaceData::DenseNorm dense_norm)
+		{
+			openvdb::FloatGrid::Ptr floatgrid = openvdb::FloatGrid::create(0.0f);
 
-		// Configure grid metadata
+			// Configure grid metadata
 			floatgrid->setGridClass(openvdb::GRID_FOG_VOLUME);
 			std::string grid_name("density");
 			floatgrid->setName(grid_name);
@@ -1052,7 +1062,7 @@ namespace common {
 						float density = dense_manager->data_density[index];
 
 						float temp = 0.0f;
-						temp = dense_manager->data_temp[index];						
+						temp = dense_manager->data_temp[index];
 
 						// Apply normalization if enabled
 						if (dense_norm != common::SpaceData::DenseNorm::eNone) {
@@ -1093,29 +1103,29 @@ namespace common {
 			//transform->postTranslate(openvdb::Vec3d(dense_manager->offset[0] * transform_scale, dense_manager->offset[1] * transform_scale, dense_manager->offset[2] * transform_scale));
 			floatgrid->setTransform(transform);
 
-// Attempt to dynamic_cast to VoxelCPUManager (works for OpenMP, NanoVDB, OpenVDB managers)
-		common::vdb::sparse::VoxelCPUManager* voxel_cpu_manager = dynamic_cast<common::vdb::sparse::VoxelCPUManager*>(voxel_manager);
-		if (voxel_cpu_manager) {
-			auto acc_dst = floatgrid->getAccessor();
+			// Attempt to dynamic_cast to VoxelCPUManager (works for OpenMP, NanoVDB, OpenVDB managers)
+			common::vdb::sparse::VoxelCPUManager* voxel_cpu_manager = dynamic_cast<common::vdb::sparse::VoxelCPUManager*>(voxel_manager);
+			if (voxel_cpu_manager) {
+				auto acc_dst = floatgrid->getAccessor();
 
-			// Use common interface method to extract all voxels
-			common::vdb::sparse::Voxel* voxels = nullptr;
-			int voxel_count = voxel_cpu_manager->extractAll(&voxels);
+				// Use common interface method to extract all voxels
+				common::vdb::sparse::Voxel* voxels = nullptr;
+				int voxel_count = voxel_cpu_manager->extractAll(&voxels);
 
-			// Populate OpenVDB grid from extracted voxels
-			for (int i = 0; i < voxel_count; i++) {
-				openvdb::Coord xyz(voxels[i].i, voxels[i].j, voxels[i].k);
-				float value = voxels[i].value;
-				// Only store non-zero values to maintain sparse storage efficiency
-				// Background value (0.0f) is implicit in OpenVDB
-				if (value != 0.0f) {
-					acc_dst.setValue(xyz, value);
+				// Populate OpenVDB grid from extracted voxels
+				for (int i = 0; i < voxel_count; i++) {
+					openvdb::Coord xyz(voxels[i].i, voxels[i].j, voxels[i].k);
+					float value = voxels[i].value;
+					// Only store non-zero values to maintain sparse storage efficiency
+					// Background value (0.0f) is implicit in OpenVDB
+					if (value != 0.0f) {
+						acc_dst.setValue(xyz, value);
+					}
 				}
-			}
 
-			// Clean up extracted voxel array
-			if (voxels != nullptr) {
-				delete[] voxels;
+				// Clean up extracted voxel array
+				if (voxels != nullptr) {
+					delete[] voxels;
 				}
 
 				return floatgrid;
@@ -1153,7 +1163,7 @@ namespace common {
 
 		/**
 		 * @brief Serialize OpenVDB grid to binary buffer
-		 * 
+		 *
 		 * Converts OpenVDB grid to binary format for MPI transfer or file I/O.
 		 * Uses OpenVDB's streaming API for efficient serialization.
 		 */
@@ -1163,7 +1173,7 @@ namespace common {
 			std::ostringstream stream(std::ios_base::binary);
 			openvdb::io::Stream(stream).write({ grid });
 			stream.flush();
-			
+
 			// Convert string stream to byte vector
 			const std::string& str = stream.str();
 			file_content.assign(str.begin(), str.end());
@@ -1171,7 +1181,7 @@ namespace common {
 
 		/**
 		 * @brief Serialize two OpenVDB grids to binary buffer
-		 * 
+		 *
 		 * Similar to openvdb_to_vector but handles two grids in one stream.
 		 */
 		void ConvertVDBBase::openvdb_to_vector2(openvdb::FloatGrid::Ptr grid1, openvdb::FloatGrid::Ptr grid2, std::vector<uint8_t>& file_content)
@@ -1180,7 +1190,7 @@ namespace common {
 			std::ostringstream stream(std::ios_base::binary);
 			openvdb::io::Stream(stream).write({ grid1, grid2 });
 			stream.flush();
-			
+
 			// Convert to byte vector
 			const std::string& str = stream.str();
 			file_content.assign(str.begin(), str.end());
@@ -1188,7 +1198,7 @@ namespace common {
 
 		/**
 		 * @brief Deserialize OpenVDB grid from binary buffer
-		 * 
+		 *
 		 * Reconstructs OpenVDB grid from binary data received via MPI or loaded from file.
 		 */
 		openvdb::FloatGrid::Ptr ConvertVDBBase::vector_to_openvdb(std::vector<uint8_t>& file_content)
@@ -1215,7 +1225,7 @@ namespace common {
 
 		/**
 		 * @brief Get particle radius for rasterization
-		 * 
+		 *
 		 * Computes particle smoothing radius from:
 		 * - Precomputed neighbor search results (if available)
 		 * - SPH smoothing length (hsml)
@@ -1263,15 +1273,15 @@ namespace common {
 
 		/**
 		 * @brief Get particle density (rho) value
-		 * 
+		 *
 		 * Returns density from precomputed k-NN results if available,
 		 * otherwise falls back to internal particle data.
 		 */
 		double ConvertVDBBase::get_particle_rho(uint64_t id) {
 			double mass = get_particle_mass(id);
 			if (mass != 0.0) {
-			// Check if we have precomputed density for this particle
-			int particle_type = get_particle_type(id);
+				// Check if we have precomputed density for this particle
+				int particle_type = get_particle_type(id);
 				if (cache_manager.rho_particles_per_ptype.size() > 0 && cache_manager.rho_particles_per_ptype[particle_type].size() > 0) {
 					return cache_manager.rho_particles_per_ptype[particle_type][id - cache_manager.particles_ptype_offset[particle_type]];
 				}
@@ -1282,7 +1292,7 @@ namespace common {
 
 		/**
 		 * @brief Get types and available data blocks
-		 * 
+		 *
 		 * Returns availability of data blocks for each particle type.
 		 * Includes precomputed density from k-NN search if available.
 		 */
@@ -1302,7 +1312,7 @@ namespace common {
 
 		/**
 		 * @brief Get normalized particle value for a specific data block
-		 * 
+		 *
 		 * Returns particle property value (density, temperature, etc.).
 		 * Handles special case for density block with k-NN precomputed values.
 		 */
@@ -1323,10 +1333,10 @@ namespace common {
 
 			return get_particle_value_internal(blocknr, id, out_value);
 		}
-		
+
 		/**
 		 * @brief Get number of components for a particle value
-		 * 
+		 *
 		 * Returns 1 for scalars, 3 for vectors, etc.
 		 */
 		int ConvertVDBBase::get_particle_value_comp(int blocknr, uint64_t id) {
@@ -1335,7 +1345,7 @@ namespace common {
 
 		/**
 		 * @brief Format filename with zero-padded number
-		 * 
+		 *
 		 * Replaces "{}" placeholders in pattern with formatted number.
 		 * Numbers < 1000 are zero-padded to 3 digits (e.g., "001", "042").
 		 */
@@ -1365,7 +1375,7 @@ namespace common {
 			}
 
 			return result;
-		}		
+		}
 
 	}//vdb
 

@@ -199,7 +199,7 @@ namespace common {
 				d_min_out(nullptr), d_max_out(nullptr),
 				d_particle_count(nullptr),
 				d_bbox_min_orig(nullptr), d_offset_position(nullptr), d_bbox_sphere_pos(nullptr),
-				VoxelGPUManager()
+				common::vdb::VoxelSparseManager()
 			{
 
 			}
