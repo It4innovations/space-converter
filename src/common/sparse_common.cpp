@@ -75,20 +75,21 @@ namespace common {
 				unsigned int slot = hash3D_cpu(x, y, z);
 
 				for (unsigned int probe = 0; probe < table_size; probe++) {
-					if (hash_table[slot].occupied == 0) {
-						hash_table[slot].i = x;
-						hash_table[slot].j = y;
-						hash_table[slot].k = z;
-						hash_table[slot].value = value;
-						hash_table[slot].occupied = 1;
+					unsigned int idx = (slot + probe) % table_size;
+					if (hash_table[idx].occupied == 0) {
+						hash_table[idx].i = x;
+						hash_table[idx].j = y;
+						hash_table[idx].k = z;
+						hash_table[idx].value = value;
+						hash_table[idx].occupied = 1;
 						insert_count++;
 						return;
 					}
 
-					if (hash_table[slot].i == x &&
-						hash_table[slot].j == y &&
-						hash_table[slot].k == z) {
-						hash_table[slot].value += value;
+					if (hash_table[idx].i == x &&
+						hash_table[idx].j == y &&
+						hash_table[idx].k == z) {
+						hash_table[idx].value += value;
 						return;
 					}
 

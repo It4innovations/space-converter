@@ -991,7 +991,7 @@ namespace common {
 					}
 				}
 
-				printf("VoxelOpenMPManager: Total occupied voxels: %f %%\n", 100.0f * (float)total_occupied / (float)voxel_omp_manager->table_size);
+				printf("VoxelOpenMPManager: Total occupied voxels: %f %%\n", 100.0f * (float)total_occupied / (float)voxel_omp_manager->insert_count);
 			}
 
 
