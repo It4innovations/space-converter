@@ -643,6 +643,8 @@ namespace common {
 					bbox_sphere_pos,
 					bbox_sphere_r,
 					use_simple_density,
+					cache_manager.radius_particle_const,
+
 					bbox_x_min_norm,
 					bbox_x_max_norm,
 					bbox_y_min_norm,
@@ -698,6 +700,7 @@ namespace common {
 					bbox_sphere_pos,
 					bbox_sphere_r,
 					use_simple_density,
+					cache_manager.radius_particle_const,
 
 					bbox_x_min_norm,
 					bbox_x_max_norm,
@@ -898,6 +901,13 @@ namespace common {
 					dense_manager->offset[2] * transform_scale
 				)
 			);
+
+			common::vdb::dense::VoxelGPUDenseManager* dense_manager_gpu = dynamic_cast<common::vdb::dense::VoxelGPUDenseManager*>(dense_manager);
+			if(dense_manager_gpu)
+			{
+				// Use GPU-specific operations if needed
+				dense_manager_gpu->from_device();
+			}
 
 			// Normalize density values using temp buffer if available
 #ifndef WITH_NO_DATA_TEMP

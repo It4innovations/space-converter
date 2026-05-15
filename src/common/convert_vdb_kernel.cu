@@ -154,9 +154,9 @@ namespace common {
                 
                 // Allocate device memory for offset and results
                 float *d_offset, *d_bbox_min, *d_bbox_max;
-                CUDA_CHECK_ERROR(cudaMalloc(&d_offset, 3 * sizeof(float)));
-                CUDA_CHECK_ERROR(cudaMalloc(&d_bbox_min, 3 * sizeof(float)));
-                CUDA_CHECK_ERROR(cudaMalloc(&d_bbox_max, 3 * sizeof(float)));
+                CUDA_CHECK_ERROR(CUDA_MALLOC(&d_offset, 3 * sizeof(float)));
+                CUDA_CHECK_ERROR(CUDA_MALLOC(&d_bbox_min, 3 * sizeof(float)));
+                CUDA_CHECK_ERROR(CUDA_MALLOC(&d_bbox_max, 3 * sizeof(float)));
                 
                 // Initialize GPU results with extreme values
                 float init_min[3] = { bbox_min[0], bbox_min[1], bbox_min[2] };
@@ -177,7 +177,8 @@ namespace common {
                     d_bbox_min,
                     d_bbox_max
                 );
-                CUDA_CHECK_LAST_ERROR();
+                //CUDA_CHECK_LAST_ERROR();
+                CUDA_SYNC_CHECK();
                 
                 // Copy results back to host
                 CUDA_CHECK_ERROR(cudaMemcpy(bbox_min, d_bbox_min, 3 * sizeof(float), cudaMemcpyDeviceToHost));
@@ -189,7 +190,7 @@ namespace common {
                 CUDA_CHECK_ERROR(cudaFree(d_bbox_max));
                 
                 // Wait for GPU to finish
-                CUDA_SYNC_CHECK();
+                //CUDA_SYNC_CHECK();
             }
 
             /**
@@ -216,6 +217,7 @@ namespace common {
                 int frame_req,
                 int frame,
                 bool use_simple_density,
+                double radius_particle_const,
 
                 double bbox_x_min_norm,
                 double bbox_x_max_norm,
@@ -258,6 +260,7 @@ namespace common {
                     bbox_sphere_pos, bbox_sphere_r,
                     anim_type, frame_req, frame,
                     use_simple_density,
+                    radius_particle_const,
                     false, // is_dense_grid = false for sparse
                     // Outputs
                     Pos, px_norm, py_norm, pz_norm,
@@ -300,6 +303,7 @@ namespace common {
                 int frame_req,
                 int frame,
                 bool use_simple_density,
+                double radius_particle_const,
 
                 double bbox_x_min_norm,
                 double bbox_x_max_norm,
@@ -346,6 +350,7 @@ namespace common {
                     bbox_sphere_pos, bbox_sphere_r,
                     anim_type, frame_req, frame,
                     use_simple_density,
+                    radius_particle_const,
                     true, // is_dense_grid = true for dense
                     // Outputs
                     Pos, px_norm, py_norm, pz_norm,
@@ -370,6 +375,7 @@ namespace common {
                         dense_norm,
                         particle_fix_size,
                         radius_particles,
+                        radius_particle_const,
                         block_name_id,
                         Pos
                     );
@@ -399,6 +405,7 @@ namespace common {
                 int frame_req,
                 int frame,
                 bool use_simple_density,
+                double radius_particle_const,
 
                 double bbox_x_min_norm,
                 double bbox_x_max_norm,
@@ -433,10 +440,10 @@ namespace common {
                 //size_t* d_particle_valid;
                 //float* d_particle_values;
                 //
-                //CUDA_CHECK_ERROR(cudaMalloc(&d_voxel_keys, num_particles * sizeof(uint64_t)));
-                //CUDA_CHECK_ERROR(cudaMalloc(&d_voxel_values, num_particles * sizeof(float)));
-                //CUDA_CHECK_ERROR(cudaMalloc(&d_particle_valid, num_particles * sizeof(size_t)));
-                //CUDA_CHECK_ERROR(cudaMalloc(&d_particle_values, num_particles * sizeof(float)));
+                //CUDA_CHECK_ERROR(CUDA_MALLOC(&d_voxel_keys, num_particles * sizeof(uint64_t)));
+                //CUDA_CHECK_ERROR(CUDA_MALLOC(&d_voxel_values, num_particles * sizeof(float)));
+                //CUDA_CHECK_ERROR(CUDA_MALLOC(&d_particle_valid, num_particles * sizeof(size_t)));
+                //CUDA_CHECK_ERROR(CUDA_MALLOC(&d_particle_values, num_particles * sizeof(float)));
                 
                 // Reset particle counter before kernel launch
                 CUDA_CHECK_ERROR(cudaMemset(voxel_manager_gpu->d_particle_count, 0, sizeof(uint64_t)));
@@ -476,6 +483,7 @@ namespace common {
                     bbox_z_min_norm,
                     bbox_z_max_norm,
                     scale_space_diagonal,
+                    radius_particle_const,
 
                     voxel_manager_gpu->d_keys, voxel_manager_gpu->d_vals,
                     voxel_manager_gpu->d_particle_count
@@ -522,6 +530,7 @@ namespace common {
                 int frame_req,
                 int frame,
                 bool use_simple_density,
+                double radius_particle_const,
 
                 double bbox_x_min_norm,
                 double bbox_x_max_norm,
@@ -560,12 +569,12 @@ namespace common {
 //                
 //                size_t grid_size = grid.size();
 //                
-//                CUDA_CHECK_ERROR(cudaMalloc(&d_grid_data_density, grid_size * sizeof(float)));
-//                CUDA_CHECK_ERROR(cudaMalloc(&d_grid_data_temp, grid_size * sizeof(float)));
-//                CUDA_CHECK_ERROR(cudaMalloc(&d_grid_offset, 3 * sizeof(size_t)));
-//                CUDA_CHECK_ERROR(cudaMalloc(&d_grid_dims, 3 * sizeof(size_t)));
-//                CUDA_CHECK_ERROR(cudaMalloc(&d_particle_valid, num_particles * sizeof(size_t)));
-//                CUDA_CHECK_ERROR(cudaMalloc(&d_particle_values, num_particles * sizeof(float)));
+//                CUDA_CHECK_ERROR(CUDA_MALLOC(&d_grid_data_density, grid_size * sizeof(float)));
+//                CUDA_CHECK_ERROR(CUDA_MALLOC(&d_grid_data_temp, grid_size * sizeof(float)));
+//                CUDA_CHECK_ERROR(CUDA_MALLOC(&d_grid_offset, 3 * sizeof(size_t)));
+//                CUDA_CHECK_ERROR(CUDA_MALLOC(&d_grid_dims, 3 * sizeof(size_t)));
+//                CUDA_CHECK_ERROR(CUDA_MALLOC(&d_particle_valid, num_particles * sizeof(size_t)));
+//                CUDA_CHECK_ERROR(CUDA_MALLOC(&d_particle_values, num_particles * sizeof(float)));
 //                
 //                // Initialize grid on device
 //                CUDA_CHECK_ERROR(cudaMemcpy(d_grid_data_density, grid.data_density.data(), grid_size * sizeof(float), cudaMemcpyHostToDevice));
@@ -581,9 +590,9 @@ namespace common {
                 int* d_bbox_min_orig;
                 float* d_offset_position;
                 float* d_bbox_sphere_pos;
-                CUDA_CHECK_ERROR(cudaMalloc(&d_bbox_min_orig, 3 * sizeof(int)));
-                CUDA_CHECK_ERROR(cudaMalloc(&d_offset_position, 3 * sizeof(float)));
-                CUDA_CHECK_ERROR(cudaMalloc(&d_bbox_sphere_pos, 3 * sizeof(float)));
+                CUDA_CHECK_ERROR(CUDA_MALLOC(&d_bbox_min_orig, 3 * sizeof(int)));
+                CUDA_CHECK_ERROR(CUDA_MALLOC(&d_offset_position, 3 * sizeof(float)));
+                CUDA_CHECK_ERROR(CUDA_MALLOC(&d_bbox_sphere_pos, 3 * sizeof(float)));
                 CUDA_CHECK_ERROR(cudaMemcpy(d_bbox_min_orig, bbox_min_orig, 3 * sizeof(int), cudaMemcpyHostToDevice));
                 CUDA_CHECK_ERROR(cudaMemcpy(d_offset_position, offset_position, 3 * sizeof(float), cudaMemcpyHostToDevice));
                 CUDA_CHECK_ERROR(cudaMemcpy(d_bbox_sphere_pos, bbox_sphere_pos, 3 * sizeof(float), cudaMemcpyHostToDevice));
@@ -614,6 +623,7 @@ namespace common {
                     frame_req,
                     frame,
                     use_simple_density,
+                    radius_particle_const,
 
                     bbox_x_min_norm,
                     bbox_x_max_norm,
@@ -631,7 +641,8 @@ namespace common {
                     //d_particle_valid,
                     //d_particle_values
                 );
-                CUDA_CHECK_LAST_ERROR();
+                //CUDA_CHECK_LAST_ERROR();
+                CUDA_SYNC_CHECK();
 
                 // Free temporary device memory
                 CUDA_CHECK_ERROR(cudaFree(d_bbox_min_orig));
@@ -722,6 +733,7 @@ namespace common {
                 float* bbox_sphere_pos,
                 float bbox_sphere_r,
                 bool use_simple_density,
+                double radius_particle_const,
 
                 double bbox_x_min_norm,
                 double bbox_x_max_norm,
@@ -754,6 +766,8 @@ namespace common {
                         frame_req,
                         frame,
                         use_simple_density,
+                        radius_particle_const,
+
                         bbox_x_min_norm,
                         bbox_x_max_norm,
                         bbox_y_min_norm,
@@ -791,6 +805,7 @@ namespace common {
                         frame_req,
                         frame,
                         use_simple_density,
+                        radius_particle_const,
 
                         bbox_x_min_norm,
                         bbox_x_max_norm,

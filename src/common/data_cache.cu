@@ -38,7 +38,7 @@ namespace common {
 			// Allocate and copy values_particles
             if (!values_particles.empty()) {
                 size_t size_bytes = values_particles.size() * sizeof(float);
-                CUDA_CHECK_ERROR(cudaMalloc(&d_values_particles, size_bytes));
+                CUDA_CHECK_ERROR(CUDA_MALLOC(&d_values_particles, size_bytes));
                 CUDA_CHECK_ERROR(cudaMemcpy(d_values_particles, values_particles.data(), 
                          size_bytes, cudaMemcpyHostToDevice));
             } else {
@@ -57,7 +57,7 @@ namespace common {
             for (size_t i = 0; i < pos_particles_per_ptype.size(); ++i) {
                 size_t size_bytes = pos_particles_per_ptype[i].size() * sizeof(float);
                 if (size_bytes > 0) {
-                    CUDA_CHECK_ERROR(cudaMalloc(&d_pos_particles_per_ptype[i], size_bytes));
+                    CUDA_CHECK_ERROR(CUDA_MALLOC(&d_pos_particles_per_ptype[i], size_bytes));
                     CUDA_CHECK_ERROR(cudaMemcpy(d_pos_particles_per_ptype[i], pos_particles_per_ptype[i].data(), 
                              size_bytes, cudaMemcpyHostToDevice));
                 } else {
@@ -70,7 +70,7 @@ namespace common {
             for (size_t i = 0; i < particles_id_ordered_per_ptype.size(); ++i) {
                 size_t size_bytes = particles_id_ordered_per_ptype[i].size() * sizeof(size_t);
                 if (size_bytes > 0) {
-                    CUDA_CHECK_ERROR(cudaMalloc(&d_particles_id_ordered_per_ptype[i], size_bytes));
+                    CUDA_CHECK_ERROR(CUDA_MALLOC(&d_particles_id_ordered_per_ptype[i], size_bytes));
                     CUDA_CHECK_ERROR(cudaMemcpy(d_particles_id_ordered_per_ptype[i], particles_id_ordered_per_ptype[i].data(), 
                              size_bytes, cudaMemcpyHostToDevice));
                 } else {
@@ -83,7 +83,7 @@ namespace common {
             for (size_t i = 0; i < radius_particles_per_ptype.size(); ++i) {
                 size_t size_bytes = radius_particles_per_ptype[i].size() * sizeof(float);
                 if (size_bytes > 0) {
-                    CUDA_CHECK_ERROR(cudaMalloc(&d_radius_particles_per_ptype[i], size_bytes));
+                    CUDA_CHECK_ERROR(CUDA_MALLOC(&d_radius_particles_per_ptype[i], size_bytes));
                     CUDA_CHECK_ERROR(cudaMemcpy(d_radius_particles_per_ptype[i], radius_particles_per_ptype[i].data(), 
                              size_bytes, cudaMemcpyHostToDevice));
                 } else {
@@ -95,7 +95,7 @@ namespace common {
             d_particles_ptype_offset = nullptr;
             if (!particles_ptype_offset.empty()) {
                 size_t size_bytes = particles_ptype_offset.size() * sizeof(size_t);
-                CUDA_CHECK_ERROR(cudaMalloc(&d_particles_ptype_offset, size_bytes));
+                CUDA_CHECK_ERROR(CUDA_MALLOC(&d_particles_ptype_offset, size_bytes));
                 CUDA_CHECK_ERROR(cudaMemcpy(d_particles_ptype_offset, particles_ptype_offset.data(), 
                          size_bytes, cudaMemcpyHostToDevice));
             }
@@ -105,7 +105,7 @@ namespace common {
             for (size_t i = 0; i < rho_particles_per_ptype.size(); ++i) {
                 size_t size_bytes = rho_particles_per_ptype[i].size() * sizeof(float);
                 if (size_bytes > 0) {
-                    CUDA_CHECK_ERROR(cudaMalloc(&d_rho_particles_per_ptype[i], size_bytes));
+                    CUDA_CHECK_ERROR(CUDA_MALLOC(&d_rho_particles_per_ptype[i], size_bytes));
                     CUDA_CHECK_ERROR(cudaMemcpy(d_rho_particles_per_ptype[i], rho_particles_per_ptype[i].data(), 
                              size_bytes, cudaMemcpyHostToDevice));
                 } else {
@@ -118,7 +118,7 @@ namespace common {
             for (size_t i = 0; i < mass_particles_per_ptype.size(); ++i) {
                 size_t size_bytes = mass_particles_per_ptype[i].size() * sizeof(float);
                 if (size_bytes > 0) {
-                    CUDA_CHECK_ERROR(cudaMalloc(&d_mass_particles_per_ptype[i], size_bytes));
+                    CUDA_CHECK_ERROR(CUDA_MALLOC(&d_mass_particles_per_ptype[i], size_bytes));
                     CUDA_CHECK_ERROR(cudaMemcpy(d_mass_particles_per_ptype[i], mass_particles_per_ptype[i].data(), 
                              size_bytes, cudaMemcpyHostToDevice));
                 } else {

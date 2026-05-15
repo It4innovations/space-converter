@@ -97,6 +97,7 @@ namespace common {
 					common::SpaceData::DenseNorm dense_norm,
 					float particle_fix_size,
 					const float* radius_particles,
+					double radius_particle_const,
 					int block_name_id,
 					double* pos
 				) {
@@ -116,7 +117,7 @@ namespace common {
 					scale_space_diagonal,
 					particle_fix_size,
 					radius_particles,
-					1.0
+					radius_particle_const
 				);
 
 				int iradiusx = static_cast<int>(hsml);
@@ -248,6 +249,8 @@ namespace common {
 					int frame_req,
 					int frame,
 					bool use_simple_density,
+					double radius_particle_const,
+
 					bool is_dense_grid,
 					// Output parameters
 					double* out_Pos,
@@ -294,7 +297,7 @@ namespace common {
 						scale_space_diagonal,
 						particle_fix_size,
 						radius_particles,
-						1.0
+						radius_particle_const
 					);
 
 					if (out_px_norm + radiusxyz_max < bbox_x_min_norm || out_px_norm - radiusxyz_max > bbox_x_max_norm)
@@ -478,7 +481,8 @@ namespace common {
 				int frame,
 				float* bbox_sphere_pos,
 				float bbox_sphere_r,
-				bool use_simple_density,				
+				bool use_simple_density,
+				double radius_particle_const,
 
 				double bbox_x_min_norm,
 				double bbox_x_max_norm,
@@ -544,7 +548,8 @@ namespace common {
 				int frame,
 				float* bbox_sphere_pos,
 				float bbox_sphere_r,
-				bool use_simple_density,				
+				bool use_simple_density,
+				double radius_particle_const,
 
 				double bbox_x_min_norm,
 				double bbox_x_max_norm,

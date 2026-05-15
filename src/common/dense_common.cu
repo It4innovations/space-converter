@@ -159,12 +159,42 @@ namespace common {
 			__host__ void VoxelGPUDenseManager::create(size_t x, size_t y, size_t z) {
 				dims[0] = x;  dims[1] = y;  dims[2] = z;
 
-				data_density.resize(size());
-				memset(data_density.data(), 0, memsize());
+//				data_density.resize(size());
+//				memset(data_density.data(), 0, memsize());
+//#ifndef WITH_NO_DATA_TEMP
+//				data_temp.resize(size());
+//				memset(data_temp.data(), 0, memsize());
+//#endif
+
+				// d_data_density
+				if (d_data_density == nullptr)
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_data_density, memsize()));
+
+				CUDA_CHECK_ERROR(cudaMemset(d_data_density, 0, memsize()));
+
 #ifndef WITH_NO_DATA_TEMP
-				data_temp.resize(size());
-				memset(data_temp.data(), 0, memsize());
+				// d_data_temp
+				if (d_data_temp == nullptr)
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_data_temp, memsize()));
+
+				CUDA_CHECK_ERROR(cudaMemset(d_data_temp, 0, memsize()));
 #endif
+
+				// d_dims
+				if (d_dims == nullptr)
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_dims, 3 * sizeof(size_t)));
+				CUDA_CHECK_ERROR(cudaMemset(d_dims, 0, 3 * sizeof(size_t)));
+
+				// d_offset
+				if (d_offset == nullptr)
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_offset, 3 * sizeof(size_t)));
+				CUDA_CHECK_ERROR(cudaMemset(d_offset, 0, 3 * sizeof(size_t)));
+
+				// d_particle_count
+				if (d_particle_count == nullptr)
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_particle_count, sizeof(uint64_t)));
+				
+				CUDA_CHECK_ERROR(cudaMemset(d_particle_count, 0, sizeof(uint64_t)));
 			}
 
 			// 
@@ -177,34 +207,34 @@ namespace common {
 					return;
 
 				// d_data_density
-				if (d_data_density == nullptr)
-					CUDA_CHECK_ERROR(cudaMalloc(&d_data_density, memsize()));
+				//if (d_data_density == nullptr)
+				//	CUDA_CHECK_ERROR(CUDA_MALLOC(&d_data_density, memsize()));
 				CUDA_CHECK_ERROR(cudaMemcpy(d_data_density, data_density.data(), memsize(),
 					cudaMemcpyHostToDevice));
 
 #ifndef WITH_NO_DATA_TEMP
 				// d_data_temp
-				if (d_data_temp == nullptr)
-					CUDA_CHECK_ERROR(cudaMalloc(&d_data_temp, memsize()));
+				//if (d_data_temp == nullptr)
+				//	CUDA_CHECK_ERROR(CUDA_MALLOC(&d_data_temp, memsize()));
 				CUDA_CHECK_ERROR(cudaMemcpy(d_data_temp, data_temp.data(), memsize(),
 					cudaMemcpyHostToDevice));
 #endif
 
 				// d_dims
-				if (d_dims == nullptr)
-					CUDA_CHECK_ERROR(cudaMalloc(&d_dims, 3 * sizeof(size_t)));
+				//if (d_dims == nullptr)
+				//	CUDA_CHECK_ERROR(CUDA_MALLOC(&d_dims, 3 * sizeof(size_t)));
 				CUDA_CHECK_ERROR(cudaMemcpy(d_dims, dims, 3 * sizeof(size_t),
 					cudaMemcpyHostToDevice));
 
 				// d_offset
-				if (d_offset == nullptr)
-					CUDA_CHECK_ERROR(cudaMalloc(&d_offset, 3 * sizeof(size_t)));
+				//if (d_offset == nullptr)
+				//	CUDA_CHECK_ERROR(CUDA_MALLOC(&d_offset, 3 * sizeof(size_t)));
 				CUDA_CHECK_ERROR(cudaMemcpy(d_offset, offset, 3 * sizeof(size_t),
 					cudaMemcpyHostToDevice));
 
 				// d_particle_count
-				if (d_particle_count == nullptr)
-					CUDA_CHECK_ERROR(cudaMalloc(&d_particle_count, sizeof(uint64_t)));
+				//if (d_particle_count == nullptr)
+				//	CUDA_CHECK_ERROR(CUDA_MALLOC(&d_particle_count, sizeof(uint64_t)));
 				CUDA_CHECK_ERROR(cudaMemset(d_particle_count, 0, sizeof(uint64_t)));
 			}
 
@@ -259,8 +289,8 @@ namespace common {
 				const float init_min =  FLT_MAX;
 				const float init_max = -FLT_MAX;
 
-				CUDA_CHECK_ERROR(cudaMalloc(&d_min, sizeof(float)));
-				CUDA_CHECK_ERROR(cudaMalloc(&d_max, sizeof(float)));
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_min, sizeof(float)));
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_max, sizeof(float)));
 				CUDA_CHECK_ERROR(cudaMemcpy(d_min, &init_min, sizeof(float),
 					cudaMemcpyHostToDevice));
 				CUDA_CHECK_ERROR(cudaMemcpy(d_max, &init_max, sizeof(float),

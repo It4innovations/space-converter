@@ -72,3 +72,9 @@
         } \
     } while (0)
 
+
+#ifdef _WIN32
+#   define CUDA_MALLOC cudaMallocManaged
+#else
+#   define CUDA_MALLOC cudaMalloc
+#endif

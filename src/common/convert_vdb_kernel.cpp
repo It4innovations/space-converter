@@ -133,6 +133,7 @@ namespace common {
 				int frame_req,
 				int frame,
 				bool use_simple_density,
+				double radius_particle_const,
 
 				double bbox_x_min_norm,
 				double bbox_x_max_norm,
@@ -201,6 +202,8 @@ namespace common {
 								bbox_sphere_pos, bbox_sphere_r,
 								anim_type, frame_req, frame,
 								use_simple_density,
+								radius_particle_const,
+
 								false, // is_dense_grid = false for sparse
 								// Outputs
 								Pos, px_norm, py_norm, pz_norm,
@@ -306,6 +309,7 @@ namespace common {
 			int frame_req,
 			int frame,
 			bool use_simple_density,
+			double radius_particle_const,
 
 			double bbox_x_min_norm,
 			double bbox_x_max_norm,
@@ -354,6 +358,8 @@ namespace common {
 					bbox_sphere_pos, bbox_sphere_r,
 					anim_type, frame_req, frame,
 					use_simple_density,
+					radius_particle_const, 
+
 					true, // is_dense_grid = true for dense
 					// Outputs
 					Pos, px_norm, py_norm, pz_norm,
@@ -388,6 +394,7 @@ namespace common {
 					dense_norm,
 					particle_fix_size,
 					radius_particles,
+					radius_particle_const,
 					block_name_id,
 					Pos
 				);
@@ -448,6 +455,7 @@ namespace common {
 			int frame_req,
 			int frame,
 			bool use_simple_density,
+			double radius_particle_const,
 
 			double bbox_x_min_norm,
 			double bbox_x_max_norm,
@@ -511,6 +519,8 @@ namespace common {
 					bbox_sphere_pos, bbox_sphere_r,
 					anim_type, frame_req, frame,
 					use_simple_density,
+					radius_particle_const,
+
 					false, // is_dense_grid = false for raw
 					// Outputs
 					Pos, px_norm, py_norm, pz_norm,
@@ -554,7 +564,7 @@ namespace common {
 					scale_space_diagonal,
 					particle_fix_size,
 					radius_particles,
-					1.0 // radius_particle_const
+					radius_particle_const
 				);
 				raw_radius.values.push_back(pr);
 
@@ -620,7 +630,8 @@ namespace common {
 			int frame,
 			float* bbox_sphere_pos,
 			float bbox_sphere_r,
-			bool use_simple_density,			
+			bool use_simple_density,
+			double radius_particle_const,
 
 			double bbox_x_min_norm,
 			double bbox_x_max_norm,
@@ -653,6 +664,7 @@ namespace common {
 					frame_req,
 					frame,
 					use_simple_density,
+					radius_particle_const,
 
 					bbox_x_min_norm,
 					bbox_x_max_norm,
@@ -692,6 +704,7 @@ namespace common {
 					frame_req,
 					frame,
 					use_simple_density,
+					radius_particle_const,
 
 					bbox_x_min_norm,
 					bbox_x_max_norm,
@@ -729,6 +742,7 @@ namespace common {
 					frame_req,
 					frame,
 					use_simple_density,
+					radius_particle_const,
 
 					bbox_x_min_norm,
 					bbox_x_max_norm,

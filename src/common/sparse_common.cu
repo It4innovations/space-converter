@@ -207,18 +207,18 @@ namespace common {
 			void VoxelGPUManagerSortReduce::init(unsigned int expected_voxels)
 			{
 				    m_max = expected_voxels;
-					//cudaMalloc(&d_inVoxels, m_max * sizeof(Voxel));
+					//CUDA_MALLOC(&d_inVoxels, m_max * sizeof(Voxel));
 
-					CUDA_CHECK_ERROR(cudaMalloc(&d_keys, m_max * sizeof(uint64_t)));
-					CUDA_CHECK_ERROR(cudaMalloc(&d_vals, m_max * sizeof(float)));
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys, m_max * sizeof(uint64_t)));
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals, m_max * sizeof(float)));
 
-					CUDA_CHECK_ERROR(cudaMalloc(&d_keys_alt, m_max * sizeof(uint64_t)));
-					CUDA_CHECK_ERROR(cudaMalloc(&d_vals_alt, m_max * sizeof(float)));
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys_alt, m_max * sizeof(uint64_t)));
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals_alt, m_max * sizeof(float)));
 
 					// Worst-case: all unique => output size == input size
-					CUDA_CHECK_ERROR(cudaMalloc(&d_keys_out, m_max * sizeof(uint64_t)));
-					CUDA_CHECK_ERROR(cudaMalloc(&d_vals_out, m_max * sizeof(float)));
-					CUDA_CHECK_ERROR(cudaMalloc(&d_num_out, sizeof(int)));
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys_out, m_max * sizeof(uint64_t)));
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals_out, m_max * sizeof(float)));
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_num_out, sizeof(int)));
 
 					// Precompute temp storage sizes for CUB primitives (max)
 					size_t sort_bytes = 0;
@@ -227,7 +227,7 @@ namespace common {
 						d_vals, d_vals_alt,
 						(int)m_max);
 					m_sort_temp_bytes = sort_bytes;
-					CUDA_CHECK_ERROR(cudaMalloc(&d_sort_temp, m_sort_temp_bytes));
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_sort_temp, m_sort_temp_bytes));
 
 					size_t reduce_bytes = 0;
 					CustomSum op_sum;
@@ -238,20 +238,20 @@ namespace common {
 						op_sum,
 						(int)m_max);
 				m_reduce_temp_bytes = reduce_bytes;
-				CUDA_CHECK_ERROR(cudaMalloc(&d_reduce_temp, m_reduce_temp_bytes));
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_reduce_temp, m_reduce_temp_bytes));
 
 				// Allocate min/max output buffers
-				CUDA_CHECK_ERROR(cudaMalloc(&d_min_out, sizeof(float)));
-				CUDA_CHECK_ERROR(cudaMalloc(&d_max_out, sizeof(float)));
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_min_out, sizeof(float)));
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_max_out, sizeof(float)));
 
 				// Allocate and zero the processed-particle counter
-				CUDA_CHECK_ERROR(cudaMalloc(&d_particle_count, sizeof(uint64_t)));
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_particle_count, sizeof(uint64_t)));
 				CUDA_CHECK_ERROR(cudaMemset(d_particle_count, 0, sizeof(uint64_t)));
 
 				// Persistent device buffers for per-call host parameters
-				CUDA_CHECK_ERROR(cudaMalloc(&d_bbox_min_orig,   3 * sizeof(int)));
-				CUDA_CHECK_ERROR(cudaMalloc(&d_offset_position, 3 * sizeof(float)));
-				CUDA_CHECK_ERROR(cudaMalloc(&d_bbox_sphere_pos, 3 * sizeof(float)));
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_bbox_min_orig,   3 * sizeof(int)));
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_offset_position, 3 * sizeof(float)));
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_bbox_sphere_pos, 3 * sizeof(float)));
 
 				// Precompute temp storage for min/max reductions
 				size_t min_bytes = 0;
@@ -262,7 +262,7 @@ namespace common {
 				
 				// Use the larger of the two
 				m_minmax_temp_bytes = (min_bytes > max_bytes) ? min_bytes : max_bytes;
-				CUDA_CHECK_ERROR(cudaMalloc(&d_minmax_temp, m_minmax_temp_bytes));
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_minmax_temp, m_minmax_temp_bytes));
 			}
 
 			VoxelGPUManagerSortReduce::~VoxelGPUManagerSortReduce()
@@ -340,7 +340,7 @@ namespace common {
 
 					// H2D
 					Voxel* d_inVoxels = nullptr;
-					CUDA_CHECK_ERROR(cudaMalloc(&d_inVoxels, m_max * sizeof(Voxel)));
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_inVoxels, m_max * sizeof(Voxel)));
 					CUDA_CHECK_ERROR(cudaMemcpy(d_inVoxels, h_voxels, num_voxels * sizeof(Voxel), cudaMemcpyHostToDevice));
 
 					// map -> key/value
@@ -408,7 +408,7 @@ namespace common {
 					}
 
 					Voxel* d_out_voxels = nullptr;
-					CUDA_CHECK_ERROR(cudaMalloc(&d_out_voxels, n * sizeof(Voxel)));
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_out_voxels, n * sizeof(Voxel)));
 
 					{
 						int block = 256;
@@ -469,8 +469,8 @@ namespace common {
 				m_max = m_last_count;
 				ptr += sizeof(int);
 
-				CUDA_CHECK_ERROR(cudaMalloc(&d_keys_out, m_last_count * sizeof(uint64_t)));
-				CUDA_CHECK_ERROR(cudaMalloc(&d_vals_out, m_last_count * sizeof(float)));
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys_out, m_last_count * sizeof(uint64_t)));
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals_out, m_last_count * sizeof(float)));
 
 				CUDA_CHECK_ERROR(cudaMemcpy(d_keys_out, ptr, m_last_count * sizeof(uint64_t), cudaMemcpyHostToDevice));
 				ptr += m_last_count * sizeof(uint64_t);
@@ -588,8 +588,8 @@ namespace common {
 				m_max = m_last_count;
 				ptr += sizeof(int);
 
-				CUDA_CHECK_ERROR(cudaMalloc(&d_keys_out, m_last_count * sizeof(uint64_t)));
-				CUDA_CHECK_ERROR(cudaMalloc(&d_vals_out, m_last_count * sizeof(float)));
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys_out, m_last_count * sizeof(uint64_t)));
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals_out, m_last_count * sizeof(float)));
 
 				CUDA_CHECK_ERROR(cudaMemcpy(d_keys_out, ptr, m_last_count * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
 				ptr += m_last_count * sizeof(uint64_t);

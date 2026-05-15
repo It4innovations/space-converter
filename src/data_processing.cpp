@@ -71,6 +71,10 @@
 #	include <meric.h>
 #endif
 
+#ifdef WITH_GPU_CUDA
+#	include "utility/gpu_utility.h"
+#endif
+
 #ifdef _WIN32
 #	undef max              // Disable Windows macro to avoid conflicts with std::max
 #	undef min              // Disable Windows macro to avoid conflicts with std::min
@@ -670,24 +674,60 @@ namespace space_converter {
 		if (space_data.extracted_type == common::SpaceData::ExtractedType::eDense) {
 			grid_main_sum.type = common::vdb::VDBParticleType::eDense;
 
+#ifdef WITH_GPU_CUDA
+			if (from_cl.use_gpu_cuda)
+			{
+				grid_main_sum.dense_grid = std::make_shared<common::vdb::dense::VoxelGPUDenseManager>();
+			}
+			else
+#endif			
+			{
+				grid_main_sum.dense_grid = std::make_shared<common::vdb::dense::VoxelCPUDenseManager>();
+			}
+
 			if (from_cl.world_rank == 0 || space_data.anim_type != common::SpaceData::AnimType::eNone) {
 				grid_main_sum.dense_grid->create(space_data.bbox_dim, space_data.bbox_dim, space_data.bbox_dim);
 				memcpy(grid_main_sum.dense_grid->offset, grid_main.dense_grid->offset, sizeof(grid_main.dense_grid->offset));
 			}
 
+			common::vdb::dense::VoxelGPUDenseManager* grid_main_gpu_sum = dynamic_cast<common::vdb::dense::VoxelGPUDenseManager*>(grid_main_sum.dense_grid.get());
+			common::vdb::dense::VoxelGPUDenseManager* grid_main_gpu = dynamic_cast<common::vdb::dense::VoxelGPUDenseManager*>(grid_main.dense_grid.get());
+
 			if (space_data.anim_type != common::SpaceData::AnimType::eNone) {
-				// Animation mode: each rank keeps its own grid (no reduction)
-				memcpy(grid_main_sum.dense_grid->data_density.data(), grid_main.dense_grid->data_density.data(), grid_main.dense_grid->memsize());
+				if (grid_main_gpu && grid_main_gpu_sum) {
+#ifdef WITH_GPU_CUDA
+					// Animation mode: each rank keeps its own grid (no reduction)
+					CUDA_CHECK_ERROR(cudaMemcpy(grid_main_gpu_sum->d_data_density, grid_main_gpu->d_data_density, grid_main_gpu->memsize(), cudaMemcpyDeviceToDevice));
 #ifndef WITH_NO_DATA_TEMP				
-				memcpy(grid_main_sum.dense_grid->data_temp.data(), grid_main.dense_grid->data_temp.data(), grid_main.dense_grid->memsize());
+					CUDA_CHECK_ERROR(cudaMemcpy(grid_main_gpu_sum->d_data_temp, grid_main_gpu->d_data_temp, grid_main_gpu->memsize(), cudaMemcpyDeviceToDevice));
+#endif
+
+#endif
+				}
+				else {
+					// Animation mode: each rank keeps its own grid (no reduction)
+					memcpy(grid_main_sum.dense_grid->data_density.data(), grid_main.dense_grid->data_density.data(), grid_main.dense_grid->memsize());
+#ifndef WITH_NO_DATA_TEMP				
+					memcpy(grid_main_sum.dense_grid->data_temp.data(), grid_main.dense_grid->data_temp.data(), grid_main.dense_grid->memsize());
 #endif				
+				}
 			}
 			else {
-				// Standard mode: sum all grids to rank 0
-				mpi_reduce(grid_main.dense_grid->data_density.data(), grid_main_sum.dense_grid->data_density.data(), grid_main.dense_grid->size());
+				if (grid_main_gpu && grid_main_gpu_sum) {
+					// Standard mode: sum all grids to rank 0
+					mpi_reduce(grid_main_gpu->d_data_density, grid_main_gpu_sum->d_data_density, grid_main.dense_grid->size());
 #ifndef WITH_NO_DATA_TEMP				
-				mpi_reduce(grid_main.dense_grid->data_temp.data(), grid_main_sum.dense_grid->data_temp.data(), grid_main.dense_grid->size());
+					mpi_reduce(grid_main_gpu->d_data_temp, grid_main_gpu_sum->d_data_temp, grid_main.dense_grid->size());
+#endif
+				}
+				else {
+					// Standard mode: sum all grids to rank 0
+					mpi_reduce(grid_main.dense_grid->data_density.data(), grid_main_sum.dense_grid->data_density.data(), grid_main.dense_grid->size());
+#ifndef WITH_NO_DATA_TEMP				
+					mpi_reduce(grid_main.dense_grid->data_temp.data(), grid_main_sum.dense_grid->data_temp.data(), grid_main.dense_grid->size());
 #endif				
+				}
+
 			}
 
 			grid_main.dense_grid->clear();
