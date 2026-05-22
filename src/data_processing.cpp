@@ -705,21 +705,24 @@ namespace space_converter {
 				memcpy(grid_main_sum.dense_grid->offset, grid_main.dense_grid->offset, sizeof(grid_main.dense_grid->offset));
 			}
 
+#ifdef WITH_GPU_CUDA
 			common::vdb::dense::VoxelGPUDenseManager* grid_main_gpu_sum = dynamic_cast<common::vdb::dense::VoxelGPUDenseManager*>(grid_main_sum.dense_grid.get());
 			common::vdb::dense::VoxelGPUDenseManager* grid_main_gpu = dynamic_cast<common::vdb::dense::VoxelGPUDenseManager*>(grid_main.dense_grid.get());
+#endif
 
 			if (space_data.anim_type != common::SpaceData::AnimType::eNone) {
-				if (grid_main_gpu && grid_main_gpu_sum) {
 #ifdef WITH_GPU_CUDA
+				if (grid_main_gpu && grid_main_gpu_sum) {
 					// Animation mode: each rank keeps its own grid (no reduction)
 					CUDA_CHECK_ERROR(cudaMemcpy(grid_main_gpu_sum->d_data_density, grid_main_gpu->d_data_density, grid_main_gpu->memsize(), cudaMemcpyDeviceToDevice));
 #ifndef WITH_NO_DATA_TEMP				
 					CUDA_CHECK_ERROR(cudaMemcpy(grid_main_gpu_sum->d_data_temp, grid_main_gpu->d_data_temp, grid_main_gpu->memsize(), cudaMemcpyDeviceToDevice));
 #endif
 
-#endif
 				}
-				else {
+				else 
+#endif
+				{
 					// Animation mode: each rank keeps its own grid (no reduction)
 					memcpy(grid_main_sum.dense_grid->data_density.data(), grid_main.dense_grid->data_density.data(), grid_main.dense_grid->memsize());
 #ifndef WITH_NO_DATA_TEMP				
@@ -728,6 +731,7 @@ namespace space_converter {
 				}
 			}
 			else {
+#ifdef WITH_GPU_CUDA
 				if (grid_main_gpu && grid_main_gpu_sum) {
 					// Standard mode: sum all grids to rank 0
 					mpi_reduce(grid_main_gpu->d_data_density, grid_main_gpu_sum->d_data_density, grid_main.dense_grid->size());
@@ -735,7 +739,9 @@ namespace space_converter {
 					mpi_reduce(grid_main_gpu->d_data_temp, grid_main_gpu_sum->d_data_temp, grid_main.dense_grid->size());
 #endif
 				}
-				else {
+				else
+#endif
+				{
 					// Standard mode: sum all grids to rank 0
 					mpi_reduce(grid_main.dense_grid->data_density.data(), grid_main_sum.dense_grid->data_density.data(), grid_main.dense_grid->size());
 #ifndef WITH_NO_DATA_TEMP				

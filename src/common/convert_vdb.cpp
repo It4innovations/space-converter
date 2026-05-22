@@ -902,13 +902,14 @@ namespace common {
 				)
 			);
 
+#ifdef WITH_GPU_CUDA
 			common::vdb::dense::VoxelGPUDenseManager* dense_manager_gpu = dynamic_cast<common::vdb::dense::VoxelGPUDenseManager*>(dense_manager);
 			if(dense_manager_gpu)
 			{
 				// Use GPU-specific operations if needed
 				dense_manager_gpu->from_device();
 			}
-
+#endif
 			// Normalize density values using temp buffer if available
 #ifndef WITH_NO_DATA_TEMP
 #pragma omp parallel for
@@ -1095,12 +1096,14 @@ namespace common {
 //			}
 //#endif
 
+#ifdef WITH_GPU_CUDA
 			common::vdb::dense::VoxelGPUDenseManager* dense_manager_gpu = dynamic_cast<common::vdb::dense::VoxelGPUDenseManager*>(dense_manager);
 			if (dense_manager_gpu)
 			{
 				// Use GPU-specific operations if needed
 				dense_manager_gpu->from_device();
 			}
+#endif
 
 			// Normalize density values using temp buffer if available
 #ifndef WITH_NO_DATA_TEMP

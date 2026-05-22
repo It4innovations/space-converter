@@ -47,6 +47,7 @@ namespace common {
 				void create(size_t x, size_t y, size_t z) override;
 			};
 
+#ifdef WITH_GPU_CUDA
 			/**
 			 * @brief CPU + GPU concrete implementation of VoxelDenseManager.
 			 *
@@ -119,6 +120,7 @@ namespace common {
 				 */
 				void find_min_max(float& min_value, float& max_value);
 			};
+#endif
 		} // dense
 	} // vdb
 } // common
