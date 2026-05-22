@@ -1057,8 +1057,50 @@ namespace common {
 
 			// Create transform with scale and translation offset
 			openvdb::math::Transform::Ptr transform = openvdb::math::Transform::createLinearTransform(transform_scale);
-			transform->postTranslate(openvdb::Vec3d(dense_manager->offset[0] * transform_scale, dense_manager->offset[1] * transform_scale, dense_manager->offset[2] * transform_scale));
+			transform->postTranslate(openvdb::Vec3d(
+				dense_manager->offset[0] * transform_scale, 
+				dense_manager->offset[1] * transform_scale, 
+				dense_manager->offset[2] * transform_scale));
+
 			floatgrid->setTransform(transform);
+
+//			// Normalize density values using temp buffer if available
+//#ifndef WITH_NO_DATA_TEMP
+//#pragma omp parallel for
+//			for (int z = 0; z < dense_manager->z(); z++) {
+//				for (int y = 0; y < dense_manager->y(); y++) {
+//					for (int x = 0; x < dense_manager->x(); x++) {
+//
+//						// Get the value from the array						
+//						size_t index = dense_manager->get_index(x, y, z);
+//						float density = dense_manager->data_density[index];
+//
+//						float temp = 0.0f;
+//						temp = dense_manager->data_temp[index];
+//
+//						// Apply normalization if enabled
+//						if (dense_norm != common::SpaceData::DenseNorm::eNone) {
+//							density = density / temp;
+//						}
+//
+//						// Store normalized value or zero for invalid data
+//						if (!std::isnan(density)) {
+//							dense_manager->data_density[index] = density;
+//						}
+//						else {
+//							dense_manager->data_density[index] = 0.0f;
+//						}
+//					}
+//				}
+//			}
+//#endif
+
+			common::vdb::dense::VoxelGPUDenseManager* dense_manager_gpu = dynamic_cast<common::vdb::dense::VoxelGPUDenseManager*>(dense_manager);
+			if (dense_manager_gpu)
+			{
+				// Use GPU-specific operations if needed
+				dense_manager_gpu->from_device();
+			}
 
 			// Normalize density values using temp buffer if available
 #ifndef WITH_NO_DATA_TEMP
@@ -1067,20 +1109,25 @@ namespace common {
 				for (int y = 0; y < dense_manager->y(); y++) {
 					for (int x = 0; x < dense_manager->x(); x++) {
 
-						// Get the value from the array						
+						// Get raw density and temp values from dense grid
 						size_t index = dense_manager->get_index(x, y, z);
 						float density = dense_manager->data_density[index];
 
 						float temp = 0.0f;
 						temp = dense_manager->data_temp[index];
 
-						// Apply normalization if enabled
+						// Apply normalization: divide accumulated density by accumulated weights (temp buffer)
+						// This computes the weighted average for SPH-like density estimation
 						if (dense_norm != common::SpaceData::DenseNorm::eNone) {
 							density = density / temp;
 						}
 
-						// Store normalized value or zero for invalid data
+						// If the value is non-zero, set it in the grid
 						if (!std::isnan(density)) {
+							//accessor.setValue(openvdb::Coord(x + dense_manager->offset[0], y + dense_manager->offset[1], z + dense_manager->offset[2]), density);							
+							//if (dense_type == common::SpaceData::DenseType::eType2)
+							//	dense_manager->data_density[index] = std::log10(density);
+							//else
 							dense_manager->data_density[index] = density;
 						}
 						else {
@@ -1110,36 +1157,85 @@ namespace common {
 
 			// Create transform with scale and translation offset
 			openvdb::math::Transform::Ptr transform = openvdb::math::Transform::createLinearTransform(voxel_manager->transform_scale);
-			//transform->postTranslate(openvdb::Vec3d(dense_manager->offset[0] * transform_scale, dense_manager->offset[1] * transform_scale, dense_manager->offset[2] * transform_scale));
 			floatgrid->setTransform(transform);
 
-			// Attempt to dynamic_cast to VoxelCPUManager (works for OpenMP, NanoVDB, OpenVDB managers)
-			common::vdb::sparse::VoxelCPUManager* voxel_cpu_manager = dynamic_cast<common::vdb::sparse::VoxelCPUManager*>(voxel_manager);
-			if (voxel_cpu_manager) {
+			//// Attempt to dynamic_cast to VoxelCPUManager (works for OpenMP, NanoVDB, OpenVDB managers)
+			//common::vdb::sparse::VoxelOpenMPManager* voxel_omp_manager = dynamic_cast<common::vdb::sparse::VoxelOpenMPManager*>(voxel_manager);
+			//if (voxel_omp_manager) {
+			//	auto acc_dst = floatgrid->getAccessor();
+
+			//	// Use common interface method to extract all voxels
+			//	common::vdb::sparse::Voxel* voxels = nullptr;
+			//	int voxel_count = voxel_omp_manager->extractAll(&voxels);
+
+			//	// Populate OpenVDB grid from extracted voxels
+			//	for (int i = 0; i < voxel_count; i++) {
+			//		openvdb::Coord xyz(voxels[i].i, voxels[i].j, voxels[i].k);
+			//		float value = voxels[i].value;
+			//		// Only store non-zero values to maintain sparse storage efficiency
+			//		// Background value (0.0f) is implicit in OpenVDB
+			//		if (value != 0.0f) {
+			//			acc_dst.setValue(xyz, value);
+			//		}
+			//	}
+
+			//	// Clean up extracted voxel array
+			//	if (voxels != nullptr) {
+			//		delete[] voxels;
+			//	}
+
+			//	return floatgrid;
+			//}
+
+			// Attempt to dynamic_cast to VoxelOpenMPManager
+			common::vdb::sparse::VoxelOpenMPManager* voxel_omp_manager = dynamic_cast<common::vdb::sparse::VoxelOpenMPManager*>(voxel_manager);
+			if (voxel_omp_manager) {
 				auto acc_dst = floatgrid->getAccessor();
 
-				// Use common interface method to extract all voxels
-				common::vdb::sparse::Voxel* voxels = nullptr;
-				int voxel_count = voxel_cpu_manager->extractAll(&voxels);
+				size_t total_occupied = 0;
+				for (unsigned int i = 0; i < voxel_omp_manager->table_size; i++) {
+					if (voxel_omp_manager->hash_table[i].occupied != 1)
+						continue;
 
-				// Populate OpenVDB grid from extracted voxels
-				for (int i = 0; i < voxel_count; i++) {
-					openvdb::Coord xyz(voxels[i].i, voxels[i].j, voxels[i].k);
-					float value = voxels[i].value;
+					openvdb::Coord xyz(voxel_omp_manager->hash_table[i].i, voxel_omp_manager->hash_table[i].j, voxel_omp_manager->hash_table[i].k);
+					float value = voxel_omp_manager->hash_table[i].value;
 					// Only store non-zero values to maintain sparse storage efficiency
 					// Background value (0.0f) is implicit in OpenVDB
 					if (value != 0.0f) {
 						acc_dst.setValue(xyz, value);
+						total_occupied++;
 					}
 				}
 
-				// Clean up extracted voxel array
-				if (voxels != nullptr) {
-					delete[] voxels;
-				}
-
-				return floatgrid;
+				printf("VoxelOpenMPManager: Total occupied voxels: %f %%\n", 100.0f * (float)total_occupied / (float)voxel_omp_manager->insert_count);
 			}
+
+//#ifdef WITH_GPU_CUDA
+//			// Attempt to dynamic_cast to VoxelGPUManagerSortReduce
+//			common::vdb::sparse::VoxelGPUManagerSortReduce* voxel_gpu_manager = dynamic_cast<common::vdb::sparse::VoxelGPUManagerSortReduce*>(voxel_manager);
+//			if (voxel_gpu_manager) {
+//				uint64_t* h_keys = new uint64_t[voxel_gpu_manager->m_last_count];
+//				float* h_vals = new float[voxel_gpu_manager->m_last_count];
+//				voxel_gpu_manager->get_keys_values_from_device(h_keys, h_vals);
+//
+//				auto acc_dst = floatgrid->getAccessor();
+//				for (unsigned int i = 0; i < voxel_gpu_manager->m_last_count; i++) {
+//					int x, y, z;
+//					common::vdb::sparse::unpackCoord3(h_keys[i], x, y, z);
+//					openvdb::Coord xyz(x, y, z);
+//					float value = h_vals[i];
+//					// Only store non-zero values to maintain sparse storage efficiency
+//					// Background value (0.0f) is implicit in OpenVDB
+//					if (value != 0.0f) {
+//						acc_dst.setValue(xyz, value);
+//					}
+//				}
+//				delete[] h_keys;
+//				delete[] h_vals;
+//
+//				return floatgrid;
+//			}
+//#endif
 
 #ifdef WITH_GPU_CUDA
 			// Attempt to dynamic_cast to VoxelGPUManagerSortReduce
@@ -1149,6 +1245,7 @@ namespace common {
 				float* h_vals = new float[voxel_gpu_manager->m_last_count];
 				voxel_gpu_manager->get_keys_values_from_device(h_keys, h_vals);
 
+				size_t total_occupied = 0;
 				auto acc_dst = floatgrid->getAccessor();
 				for (unsigned int i = 0; i < voxel_gpu_manager->m_last_count; i++) {
 					int x, y, z;
@@ -1159,12 +1256,13 @@ namespace common {
 					// Background value (0.0f) is implicit in OpenVDB
 					if (value != 0.0f) {
 						acc_dst.setValue(xyz, value);
+						total_occupied++;
 					}
 				}
 				delete[] h_keys;
 				delete[] h_vals;
 
-				return floatgrid;
+				printf("VoxelGPUManagerSortReduce: Total occupied voxels: %f %%\n", 100.0f * (float)total_occupied / (float)voxel_gpu_manager->m_last_count);
 			}
 #endif
 

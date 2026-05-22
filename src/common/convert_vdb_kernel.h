@@ -35,6 +35,22 @@ namespace common {
 
 #ifdef __CUDACC__
 			__host__ __device__
+#endif
+				inline bool near_zero(float x)
+			{
+				return fabsf(x) <= FDATA_EPSILON;
+			}
+
+#ifdef __CUDACC__
+			__host__ __device__
+#endif
+				inline bool near_zero_norm3(float x, float y, float z)
+			{
+				return x * x + y * y + z * z <= 1e-12f;
+			}
+
+#ifdef __CUDACC__
+			__host__ __device__
 #endif            
 				inline double get_particle_radius(
 					uint64_t pid,
@@ -193,22 +209,27 @@ namespace common {
 
 							//x + y * dims[0] + z * dims[0] * dims[1];
 							size_t gindex = osx + osy * dims[0] + osz * dims[0] * dims[1];
+
+							if (!near_zero(d)) {
 #ifdef __CUDA_ARCH__
-							atomicAdd(data_density + gindex, d);
+								atomicAdd(data_density + gindex, d);
 #else
 #pragma omp atomic
-							data_density[gindex] += d;
+								data_density[gindex] += d;
 #endif
+							}
 
+							if (!near_zero(n)) {
 
-							if (data_temp != nullptr) {
+								if (data_temp != nullptr) {
 #ifdef __CUDA_ARCH__
-								atomicAdd(data_temp + gindex, n);
+									atomicAdd(data_temp + gindex, n);
 #else
 #pragma omp atomic
-								data_temp[gindex] += n;
+									data_temp[gindex] += n;
 #endif
 
+								}
 							}
 						}
 					}

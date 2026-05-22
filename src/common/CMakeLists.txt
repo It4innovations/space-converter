@@ -142,9 +142,9 @@ if(WITH_GPU_CUDA)
             $<$<COMPILE_LANGUAGE:CUDA>:-diag-suppress=20011,1408>
         )
         # Add debug symbols for CUDA device code in Debug builds
-        target_compile_options(space_common PRIVATE
-            $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CONFIG:Debug>>:-g;-G>
-        )
+        #target_compile_options(space_common PRIVATE
+        #    $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CONFIG:Debug>>:-g;-G>
+        #)
     endif()
 endif()
 

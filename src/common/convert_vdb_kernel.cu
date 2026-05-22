@@ -317,9 +317,8 @@ namespace common {
                 float* grid_data_temp,
                 size_t* grid_offset,
                 size_t* grid_dims,
+
                 uint64_t* particle_count  // Output: number of processed particles
-                //size_t* particle_valid,
-                //float* particle_values
             ) {
                 size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
                 
@@ -599,47 +598,45 @@ namespace common {
 
                 // Launch kernel
                 int blockSize = 256;
-                int numBlocks = (num_particles + blockSize - 1) / blockSize;
-                
+                int numBlocks = (num_particles + blockSize - 1) / blockSize;            
+
                 convert_to_dense_grid_kernel_cuda<<<numBlocks, blockSize>>>(
-                    pos_particles,
-                    radius_particles,
-					value_particles,
-                    num_particles,
-                    particle_fix_size,
-                    d_bbox_min_orig,
-                    bbox_size_orig,
-                    bbox_dim,
+                    pos_particles, //    const float* pos_particles,
+                    radius_particles, //    const float* radius_particles,
+					value_particles, //    const float* value_particles,
+                    num_particles, //    size_t num_particles,
+                    particle_fix_size, //    float particle_fix_size,
+                    d_bbox_min_orig, //    int* bbox_min_orig,
+                    bbox_size_orig,//    double bbox_size_orig,
+                    bbox_dim, //    int bbox_dim,
 
-                    dense_type,
-                    dense_norm,
-                    block_name_id,
-                    d_offset_position,
-                    filter_min,
-                    filter_max,
-                    d_bbox_sphere_pos,
-                    bbox_sphere_r,
-                    anim_type,
-                    frame_req,
-                    frame,
-                    use_simple_density,
-                    radius_particle_const,
+                    dense_type, //    common::SpaceData::DenseType dense_type,
+                    dense_norm, //    common::SpaceData::DenseNorm dense_norm,
+                    block_name_id, //    int block_name_id,
+                    d_offset_position, //    float* offset_position,
+                    filter_min, //    float filter_min,
+                    filter_max,//    float filter_max,
+                    d_bbox_sphere_pos, //    float* bbox_sphere_pos,
+                    bbox_sphere_r, //float bbox_sphere_r,
+                    anim_type, //    common::SpaceData::AnimType anim_type,
+                    frame_req, //    int frame_req,
+                    frame, //    int frame,
+                    use_simple_density, //    bool use_simple_density,
+                    radius_particle_const, //    double radius_particle_const,
 
-                    bbox_x_min_norm,
-                    bbox_x_max_norm,
-                    bbox_y_min_norm,
-                    bbox_y_max_norm,
-                    bbox_z_min_norm,
-                    bbox_z_max_norm,
-                    scale_space_diagonal,
+                    bbox_x_min_norm, //    double bbox_x_min_norm,
+                    bbox_x_max_norm,  //    double bbox_x_max_norm,
+                    bbox_y_min_norm,  //    double bbox_y_min_norm,
+                    bbox_y_max_norm, //    double bbox_y_max_norm,
+                    bbox_z_min_norm,  //    double bbox_z_min_norm,
+                    bbox_z_max_norm, //    double bbox_z_max_norm,
+                    scale_space_diagonal, //    double scale_space_diagonal,
 
-                    voxel_manager_gpu->d_data_density,
-                    voxel_manager_gpu->d_data_temp,
-                    voxel_manager_gpu->d_dims,
-                    voxel_manager_gpu->d_offset,
-                    voxel_manager_gpu->d_particle_count
-                    //d_particle_valid,
-                    //d_particle_values
+                    voxel_manager_gpu->d_data_density, //    float* grid_data_density,
+                    voxel_manager_gpu->d_data_temp, //    float* grid_data_temp,
+                    voxel_manager_gpu->d_offset, //    size_t* grid_offset,
+                    voxel_manager_gpu->d_dims, //size_t* grid_dims,
+                    voxel_manager_gpu->d_particle_count //    uint64_t* particle_count
                 );
                 //CUDA_CHECK_LAST_ERROR();
                 CUDA_SYNC_CHECK();

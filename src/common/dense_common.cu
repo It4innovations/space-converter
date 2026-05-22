@@ -183,12 +183,12 @@ namespace common {
 				// d_dims
 				if (d_dims == nullptr)
 					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_dims, 3 * sizeof(size_t)));
-				CUDA_CHECK_ERROR(cudaMemset(d_dims, 0, 3 * sizeof(size_t)));
+				CUDA_CHECK_ERROR(cudaMemcpy(d_dims, dims, 3 * sizeof(size_t), cudaMemcpyHostToDevice));
 
 				// d_offset
 				if (d_offset == nullptr)
 					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_offset, 3 * sizeof(size_t)));
-				CUDA_CHECK_ERROR(cudaMemset(d_offset, 0, 3 * sizeof(size_t)));
+				CUDA_CHECK_ERROR(cudaMemcpy(d_offset, offset, 3 * sizeof(size_t), cudaMemcpyHostToDevice));
 
 				// d_particle_count
 				if (d_particle_count == nullptr)
