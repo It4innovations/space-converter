@@ -125,10 +125,10 @@ namespace common {
             // Empty stub for CPU-only builds
         }
 
-        void CacheManager::sort_particles_by_radius_gpu() {
-            // Fallback to CPU sorting
-            sort_particles_by_radius_cpu();
-        }
+        //void CacheManager::sort_particles_by_radius_gpu() {
+        //    // Fallback to CPU sorting
+        //    sort_particles_by_radius_cpu();
+        //}
 
         void CacheManager::sort_particles_by_radius_gpu_inplace() {
             // Fallback to CPU sorting
