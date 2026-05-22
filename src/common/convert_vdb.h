@@ -134,38 +134,7 @@ namespace common {
 				VDBParticles& grid_dst,
 				VDBParticles& grid_recv
 			);
-
-			/**
-			 * @brief Fill voxels with particle contribution using advanced splatting
-			 * @param grid Dense grid to fill
-			 * @param pid Particle ID
-			 * @param value Particle value to splat
-			 * @param bbox_dim Bounding box dimension
-			 * @param bbox_min_orig Bounding box minimum coordinates
-			 * @param bbox_size_orig Original bounding box size
-			 * @param scale_space_diagonal Diagonal scaling factor
-			 * @param dense_type Type of density calculation
-			 * @param dense_norm Normalization type
-			 * @param particle_fix_size Fixed particle size multiplier
-			 * @param particle_type Type of particle
-			 * @param block_name_id Data block identifier
-			 * @param pos Particle position
-			 */
-			void fill_voxels(
-				common::vdb::VoxelDenseManager* grid,
-				size_t pid,
-				float value,
-				int bbox_dim,
-				int* bbox_min_orig,
-				double bbox_size_orig,
-				double scale_space_diagonal,
-				common::SpaceData::DenseType dense_type,
-				common::SpaceData::DenseNorm dense_norm,
-				float particle_fix_size,
-				int particle_type,
-				int block_name_id,
-				double *pos
-			);				
+				
 
 #ifdef WITH_NANOVDB
 			

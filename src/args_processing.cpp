@@ -285,6 +285,9 @@ namespace space_converter {
 				from_cl.use_gpu_cuda = true;
 			}
 #endif
+			else if (arg == "--sort-by-radius") {
+				from_cl.use_sort_by_radius = true;
+			}
 			else if (arg == "-h" || arg == "--help") {
 				// Display usage information
 				usage();

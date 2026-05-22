@@ -100,6 +100,8 @@ namespace space_converter {
 		bool use_gpu_cuda = false;
 #endif
 
+		bool use_sort_by_radius = false;
+
 		// === MPI Configuration ===
 		
 		/// Rank of the current process in MPI (default: 0 for single process)

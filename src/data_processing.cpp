@@ -286,6 +286,21 @@ namespace space_converter {
 			convert_vdb_base->cache_manager.radius_particle_const = atof(converter_radius_particle_const);
 		}
 
+		// Enable sorting by radius if specified via command-line argument
+		if (from_cl.use_sort_by_radius) {
+			// Sorting methods
+			//void sort_particles_by_radius_cpu();                        ///< Sort particle IDs by radius on CPU (ascending)
+			//void sort_particles_by_radius_gpu();                        ///< Sort particle IDs by radius on GPU (ascending)
+			//void sort_particles_by_radius_gpu_inplace();                ///< Sort particle IDs by radius on GPU using device pointers (no CPU<->GPU copy)
+
+			if (convert_vdb_base->cache_manager.use_gpu_cuda) {
+				convert_vdb_base->cache_manager.sort_particles_by_radius_gpu_inplace();
+			}
+			else {
+				convert_vdb_base->cache_manager.sort_particles_by_radius_cpu();
+			}			
+		}
+
 #ifdef WITH_MERIC
 		MERIC_MeasureStop("calculate_radius");
 #endif
