@@ -117,6 +117,7 @@ namespace common {
 			 */
 			void convert_to_sparse_grid_cpu(
 				const float* pos_particles,
+				const size_t* particle_ids,
 				const float* radius_particles,
 				const float* value_particles,
 				size_t num_particles,
@@ -169,14 +170,17 @@ namespace common {
 					auto& sparse_local_map = sparse_thread_maps[tid];
 					sparse_local_map.reserve((size_t)num_particles / (size_t)thread_count + 64);
 
-#pragma omp for reduction(min : min) reduction(max : max) reduction(+ : particles_count_temp)
+#pragma omp for reduction(min : min) reduction(max : max) reduction(+ : particles_count_temp) schedule(dynamic, 64) //TODO
 #else
 					{
 						// For non-OpenMP builds, use single thread map
 						auto& sparse_local_map = sparse_thread_maps[0];
 						sparse_local_map.reserve(num_particles);
 #endif
-						for (size_t cached_idx = 0; cached_idx < num_particles; cached_idx++) {
+						for (size_t ic = 0; ic < num_particles; ic++) {
+							// Cached particle index
+							size_t cached_idx = particle_ids[ic];
+
 							// Particle processing outputs
 							double Pos[3];
 							double px_norm, py_norm, pz_norm;
@@ -289,6 +293,7 @@ namespace common {
 		 */
 		void convert_to_dense_grid_cpu(
 			const float* pos_particles,
+			const size_t* particle_ids,
 			const float* radius_particles,
 			const float* value_particles,
 			size_t num_particles,
@@ -330,9 +335,12 @@ namespace common {
 			size_t particles_count_temp = 0;
 
 #ifdef WITH_OPENMP
-#pragma omp parallel for reduction(min : min) reduction(max : max) reduction(+ : particles_count_temp)
+#pragma omp parallel for reduction(min : min) reduction(max : max) reduction(+ : particles_count_temp) schedule(dynamic, 64) //TODO
 #endif
-			for (size_t cached_idx = 0; cached_idx < num_particles; cached_idx++) {
+			for (size_t ic = 0; ic < num_particles; ic++) {
+				// Cached particle index
+				size_t cached_idx = particle_ids[ic];
+
 				// Particle processing outputs
 				double Pos[3];
 				double px_norm, py_norm, pz_norm;
@@ -437,6 +445,7 @@ namespace common {
 		 */
 		void convert_to_raw_particles_cpu(
 			const float* pos_particles,
+			const size_t* particle_ids,
 			const float* radius_particles,
 			const float* value_particles,
 			size_t num_particles,
@@ -493,7 +502,10 @@ namespace common {
 
 			// Note: Raw particle storage cannot be easily parallelized due to push_back operations
 			// Consider using thread-local vectors and merging if performance is critical
-			for (size_t cached_idx = 0; cached_idx < num_particles; cached_idx++) {
+			for (size_t ic = 0; ic < num_particles; ic++) {
+				// Cached particle index
+				size_t cached_idx = particle_ids[ic];
+
 				// Particle processing outputs
 				double Pos[3];
 				double px_norm, py_norm, pz_norm;
@@ -648,6 +660,7 @@ namespace common {
 				// Sparse grid conversion using hash-based voxel accumulation
 				convert_to_sparse_grid_cpu(
 					pos_particles,
+					particle_ids,
 					radius_particles,
 					value_particles,
 					num_particles,
@@ -684,6 +697,7 @@ namespace common {
 				// Dense grid conversion using SPH kernel splatting
 				convert_to_dense_grid_cpu(
 					pos_particles,
+					particle_ids,
 					radius_particles,
 					value_particles,
 					num_particles,
@@ -724,6 +738,7 @@ namespace common {
 				// Raw particle storage without rasterization
 				convert_to_raw_particles_cpu(
 					pos_particles,
+					particle_ids,
 					radius_particles,
 					value_particles,
 					num_particles,

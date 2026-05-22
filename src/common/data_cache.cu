@@ -187,43 +187,9 @@ namespace common {
             CUDA_CHECK_LAST_ERROR();
         }
 
-        void CacheManager::sort_particles_by_radius_gpu() {
-            // Sort particle IDs by radius on GPU for each particle type using Thrust
-            for (size_t ptype = 0; ptype < radius_particles_per_ptype.size(); ++ptype) {
-                if (ptype >= particles_id_ordered_per_ptype.size()) {
-                    continue;
-                }
-
-                auto& radii = radius_particles_per_ptype[ptype];
-                auto& ids = particles_id_ordered_per_ptype[ptype];
-
-                if (radii.size() != ids.size() || radii.empty()) {
-                    continue;
-                }
-
-                size_t n = radii.size();
-
-                // Create device vectors from host data
-                thrust::device_vector<float> d_radii(radii.begin(), radii.end());
-                thrust::device_vector<size_t> d_ids(ids.begin(), ids.end());
-
-                // Sort by key: radii are keys, ids are values
-                // This sorts both arrays so that radii is in ascending order
-                // and ids are reordered accordingly
-                thrust::sort_by_key(d_radii.begin(), d_radii.end(), d_ids.begin());
-
-                // Copy sorted data back to host
-                thrust::copy(d_radii.begin(), d_radii.end(), radii.begin());
-                thrust::copy(d_ids.begin(), d_ids.end(), ids.begin());
-            }
-
-            // Check for CUDA errors
-            CUDA_CHECK_LAST_ERROR();
-        }
-
         void CacheManager::sort_particles_by_radius_gpu_inplace() {
-            // Sort particle IDs by radius directly on GPU using device pointers
-            // No CPU<->GPU transfers, operates on d_radius_particles_per_ptype and d_particles_id_ordered_per_ptype
+            // Sort particle IDs in-place by radius without modifying radii array
+            // Zero additional memory allocation - optimal performance
             
             for (size_t ptype = 0; ptype < d_radius_particles_per_ptype.size(); ++ptype) {
                 if (ptype >= d_particles_id_ordered_per_ptype.size()) {
@@ -248,17 +214,21 @@ namespace common {
                     continue;
                 }
 
-                // Wrap raw device pointers with thrust::device_ptr
+                // Wrap device pointers
                 thrust::device_ptr<float> d_radii_thrust(d_radii_ptr);
                 thrust::device_ptr<size_t> d_ids_thrust(d_ids_ptr);
 
-                // Sort by key: radii are keys, ids are values
-                // This sorts both arrays in-place on the GPU
-                thrust::sort_by_key(d_radii_thrust, d_radii_thrust + n, d_ids_thrust);
+                // Sort ids in-place based on radii values (radii array remains unchanged)
+                // d_ids_ptr already contains [0, 1, 2, ..., n-1]
+                thrust::sort(d_ids_thrust, d_ids_thrust + n,
+                    [d_radii_thrust] __device__ (size_t i, size_t j) {
+                        return d_radii_thrust[i] < d_radii_thrust[j];
+                    });
             }
 
             // Check for CUDA errors
-            CUDA_CHECK_LAST_ERROR();
+            //CUDA_CHECK_LAST_ERROR();
+            CUDA_SYNC_CHECK();
         }
     }
 }

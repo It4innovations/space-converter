@@ -201,6 +201,7 @@ namespace common {
              */
             __global__ void convert_to_sparse_grid_kernel_cuda(
                 const float* pos_particles,
+                const size_t* particle_ids,
                 const float* radius_particles,
                 const float* value_particles,
                 size_t num_particles,
@@ -231,9 +232,12 @@ namespace common {
                 float* voxel_values,       // Output: voxel values
                 uint64_t* particle_count   // Output: number of processed particles
             ) {
-                size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+                size_t idx_c = blockIdx.x * blockDim.x + threadIdx.x;
                 
-                if (idx >= num_particles) return;
+                if (idx_c >= num_particles) return;
+
+				// Cached particle ID for indexing
+				size_t idx = particle_ids[idx_c];
                                 
                 // Particle processing outputs
                 double Pos[3];
@@ -283,6 +287,7 @@ namespace common {
              */
             __global__ void convert_to_dense_grid_kernel_cuda(
                 const float* pos_particles,
+                const size_t* particle_ids,
                 const float* radius_particles,
 				const float* value_particles,
                 size_t num_particles,
@@ -320,9 +325,12 @@ namespace common {
 
                 uint64_t* particle_count  // Output: number of processed particles
             ) {
-                size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+                size_t idx_c = blockIdx.x * blockDim.x + threadIdx.x;
                 
-                if (idx >= num_particles) return;               
+                if (idx_c >= num_particles) return;
+
+                // Cached particle ID for indexing
+                size_t idx = particle_ids[idx_c];
                 
                 // Particle processing outputs
                 double Pos[3];
@@ -388,6 +396,7 @@ namespace common {
              */
             void convert_to_sparse_grid_gpu(
                 const float* pos_particles,
+                const size_t* particle_ids,
                 const float* radius_particles,
 				const float* value_particles,
                 size_t num_particles,
@@ -458,6 +467,7 @@ namespace common {
                 
                 convert_to_sparse_grid_kernel_cuda<<<numBlocks, blockSize>>>(
                     pos_particles,
+                    particle_ids,
                     radius_particles,
                     value_particles,
                     num_particles,
@@ -509,6 +519,7 @@ namespace common {
              */
             void convert_to_dense_grid_gpu(
                 const float* pos_particles,
+                const size_t* particle_ids,
                 const float* radius_particles,
 				const float* value_particles,
                 size_t num_particles,
@@ -602,6 +613,7 @@ namespace common {
 
                 convert_to_dense_grid_kernel_cuda<<<numBlocks, blockSize>>>(
                     pos_particles, //    const float* pos_particles,
+                    particle_ids, //const size_t* particle_ids
                     radius_particles, //    const float* radius_particles,
 					value_particles, //    const float* value_particles,
                     num_particles, //    size_t num_particles,
@@ -747,6 +759,7 @@ namespace common {
                     // Sparse grid conversion using GPU hash-based voxel accumulation                    
                     convert_to_sparse_grid_gpu(
                         pos_particles,
+                        particle_ids,
                         radius_particles,
 						value_particles,
                         num_particles,
@@ -782,6 +795,7 @@ namespace common {
                     // Dense grid conversion using GPU SPH kernel splatting                    
                     convert_to_dense_grid_gpu(
                         pos_particles,
+                        particle_ids,
                         radius_particles,
 						value_particles,
                         num_particles,

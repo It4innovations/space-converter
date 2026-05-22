@@ -210,7 +210,8 @@ namespace common {
 							//x + y * dims[0] + z * dims[0] * dims[1];
 							size_t gindex = osx + osy * dims[0] + osz * dims[0] * dims[1];
 
-							if (!near_zero(d)) {
+							if (!near_zero(d)) 
+							{
 #ifdef __CUDA_ARCH__
 								atomicAdd(data_density + gindex, d);
 #else
@@ -219,7 +220,8 @@ namespace common {
 #endif
 							}
 
-							if (!near_zero(n)) {
+							if (!near_zero(n)) 
+							{
 
 								if (data_temp != nullptr) {
 #ifdef __CUDA_ARCH__

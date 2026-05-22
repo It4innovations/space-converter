@@ -75,9 +75,11 @@ namespace common {
         }
 
         void CacheManager::sort_particles_by_radius_cpu() {
-#ifdef WITH_OPENMP
+
             // Sort particle IDs by radius for each particle type (OpenMP parallel version)
+#ifdef WITH_OPENMP
             #pragma omp parallel for schedule(dynamic)
+#endif
             for (int ptype = 0; ptype < static_cast<int>(radius_particles_per_ptype.size()); ++ptype) {
                 if (ptype >= static_cast<int>(particles_id_ordered_per_ptype.size())) {
                     continue;
@@ -106,53 +108,7 @@ namespace common {
                     sorted_ids[i] = ids[indices[i]];
                 }
                 ids = std::move(sorted_ids);
-
-                // Reorder radii array as well
-                std::vector<float> sorted_radii(radii.size());
-                for (size_t i = 0; i < indices.size(); ++i) {
-                    sorted_radii[i] = radii[indices[i]];
-                }
-                radii = std::move(sorted_radii);
             }
-#else
-            // Sort particle IDs by radius for each particle type (serial version)
-            for (size_t ptype = 0; ptype < radius_particles_per_ptype.size(); ++ptype) {
-                if (ptype >= particles_id_ordered_per_ptype.size()) {
-                    continue;
-                }
-
-                auto& radii = radius_particles_per_ptype[ptype];
-                auto& ids = particles_id_ordered_per_ptype[ptype];
-
-                if (radii.size() != ids.size() || radii.empty()) {
-                    continue;
-                }
-
-                // Create index array
-                std::vector<size_t> indices(ids.size());
-                std::iota(indices.begin(), indices.end(), 0);
-
-                // Sort indices by radius values (ascending)
-                std::sort(indices.begin(), indices.end(),
-                    [&radii](size_t i1, size_t i2) {
-                        return radii[i1] < radii[i2];
-                    });
-
-                // Reorder particle IDs according to sorted indices
-                std::vector<size_t> sorted_ids(ids.size());
-                for (size_t i = 0; i < indices.size(); ++i) {
-                    sorted_ids[i] = ids[indices[i]];
-                }
-                ids = std::move(sorted_ids);
-
-                // Reorder radii array as well
-                std::vector<float> sorted_radii(radii.size());
-                for (size_t i = 0; i < indices.size(); ++i) {
-                    sorted_radii[i] = radii[indices[i]];
-                }
-                radii = std::move(sorted_radii);
-            }
-#endif
         }
 
 #ifndef WITH_GPU_CUDA

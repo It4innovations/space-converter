@@ -74,7 +74,7 @@ namespace common {
 
             // Sorting methods
             void sort_particles_by_radius_cpu();                        ///< Sort particle IDs by radius on CPU (ascending)
-            void sort_particles_by_radius_gpu();                        ///< Sort particle IDs by radius on GPU (ascending)
+            //void sort_particles_by_radius_gpu();                        ///< Sort particle IDs by radius on GPU (ascending)
             void sort_particles_by_radius_gpu_inplace();                ///< Sort particle IDs by radius on GPU using device pointers (no CPU<->GPU copy)
         };
     }

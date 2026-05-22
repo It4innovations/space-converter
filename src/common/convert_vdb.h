@@ -272,12 +272,12 @@ namespace common {
 			 * @param v_min Output minimum value
 			 * @param v_max Output maximum value
 			 */
-			virtual void iolib_find_minmax(
-				int particle_type,
-				int block_nr,
-				float& v_min,
-				float& v_max
-			);
+			//virtual void iolib_find_minmax(
+			//	int particle_type,
+			//	int block_nr,
+			//	float& v_min,
+			//	float& v_max
+			//);
 
 			/**
 			 * @brief Get density value for particle

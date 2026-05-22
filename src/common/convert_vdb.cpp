@@ -857,33 +857,33 @@ namespace common {
 		 *
 		 * Scans all particles to determine value range for normalization.
 		 */
-		void ConvertVDBBase::iolib_find_minmax(
-			int particle_type,
-			int block_nr,
-			float& v_min,
-			float& v_max
-		)
-		{
-			size_t no_points = get_local_num_particles();
-
-			float min = FLT_MAX;
-			float max = -FLT_MAX;
-
-			// Parallel reduction to find min/max values
-#pragma omp parallel for reduction(min : min) reduction(max : max)
-			for (size_t i = 0; i < no_points; ++i) {
-				if (get_particle_type(i) != particle_type)
-					continue;
-
-				float v = get_particle_norm_value(block_nr, i);
-
-				if (v < min) min = v;
-				if (v > max) max = v;
-			}
-
-			v_min = min;
-			v_max = max;
-		}
+//		void ConvertVDBBase::iolib_find_minmax(
+//			int particle_type,
+//			int block_nr,
+//			float& v_min,
+//			float& v_max
+//		)
+//		{
+//			size_t no_points = get_local_num_particles();
+//
+//			float min = FLT_MAX;
+//			float max = -FLT_MAX;
+//
+//			// Parallel reduction to find min/max values
+//#pragma omp parallel for reduction(min : min) reduction(max : max)
+//			for (size_t i = 0; i < no_points; ++i) {
+//				if (get_particle_type(i) != particle_type)
+//					continue;
+//
+//				float v = get_particle_norm_value(block_nr, i);
+//
+//				if (v < min) min = v;
+//				if (v > max) max = v;
+//			}
+//
+//			v_min = min;
+//			v_max = max;
+//		}
 
 #ifdef WITH_NANOVDB
 
