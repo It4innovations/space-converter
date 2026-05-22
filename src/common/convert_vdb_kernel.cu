@@ -244,25 +244,52 @@ namespace common {
                 double px_norm, py_norm, pz_norm;
                 int px, py, pz;
                 float v_orig = 0.0f;
+
+                //    float filter_max,
+                //    const float* bbox_sphere_pos,
+                //    float bbox_sphere_r,
+                //    common::SpaceData::AnimType anim_type,
+                //    int frame_req,
+                //    int frame,
+                //    bool use_simple_density,
+                //    double radius_particle_const,
+
+                //    bool is_dense_grid,
+                //    // Output parameters
+                //    double* out_Pos,
+                //    double& out_px_norm,
+                //    double& out_py_norm,
+                //    double& out_pz_norm,
+                //    int& out_px,
+                //    int& out_py,
+                //    int& out_pz,
+                //    float& out_v_orig
                 
                 // Check if particle passes filters and compute voxel coordinates
                 bool should_process = process_particle(
-                    idx,
-                    pos_particles,
-                    radius_particles,
-					value_particles,
-                    offset_position,
-                    bbox_min_orig,
-                    bbox_size_orig,
-                    bbox_dim,
-                    scale_space_diagonal,
-                    particle_fix_size,
-                    bbox_x_min_norm, bbox_x_max_norm,
-                    bbox_y_min_norm, bbox_y_max_norm,
-                    bbox_z_min_norm, bbox_z_max_norm,
-                    filter_min, filter_max,
-                    bbox_sphere_pos, bbox_sphere_r,
-                    anim_type, frame_req, frame,
+                    idx, //size_t cached_idx,
+                    pos_particles, //    const float* pos_particles,
+                    radius_particles,//    const float* radius_particles,
+					value_particles,//    const float* value_particles,
+                    offset_position,//    const float* offset_position,
+                    bbox_min_orig,//    int* bbox_min_orig,
+                    bbox_size_orig,//    double bbox_size_orig,
+                    bbox_dim,//    int bbox_dim,
+                    scale_space_diagonal,//    double scale_space_diagonal,
+                    particle_fix_size,//    float particle_fix_size,
+                    bbox_x_min_norm,//    double bbox_x_min_norm,
+                    bbox_x_max_norm,//    double bbox_x_max_norm,
+                    bbox_y_min_norm,//    double bbox_y_min_norm,
+                    bbox_y_max_norm,//    double bbox_y_max_norm,
+                    bbox_z_min_norm, //    double bbox_z_min_norm,
+                    bbox_z_max_norm,//    double bbox_z_max_norm,
+                    filter_min,//    float filter_min,
+                    filter_max,
+                    bbox_sphere_pos,
+                    bbox_sphere_r,
+                    anim_type,
+                    frame_req,
+                    frame,
                     use_simple_density,
                     radius_particle_const,
                     false, // is_dense_grid = false for sparse
@@ -484,6 +511,7 @@ namespace common {
                     frame_req,
                     frame,
                     use_simple_density,
+                    radius_particle_const,
 
                     bbox_x_min_norm,
                     bbox_x_max_norm,
@@ -492,9 +520,9 @@ namespace common {
                     bbox_z_min_norm,
                     bbox_z_max_norm,
                     scale_space_diagonal,
-                    radius_particle_const,
 
-                    voxel_manager_gpu->d_keys, voxel_manager_gpu->d_vals,
+                    voxel_manager_gpu->d_keys, 
+                    voxel_manager_gpu->d_vals,
                     voxel_manager_gpu->d_particle_count
                     //d_particle_valid,
                     //d_particle_values
