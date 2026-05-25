@@ -39,6 +39,11 @@
  */
 
 #include <string.h>
+#ifdef _WIN32
+#include <winsock2.h>
+#else
+#include <arpa/inet.h>
+#endif
 #include "xdr.h"
 
 static bool_t xdrmem_getlong (XDR *, long *);

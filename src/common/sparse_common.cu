@@ -558,11 +558,25 @@ namespace common {
 			}
 
 			// ================================================================================
-			// GPU-side methods (no host memory transfers except for control)
+			// Overrides of base class methods - use CPU-side operations for host memory
+			// ================================================================================
+
+			// Override: serialize to host memory buffer (e.g., std::vector)
+			void VoxelGPUManagerSortReduce::serialize(uint8_t* h_data) {
+				serializeCPU(h_data);
+			}
+
+			// Override: deserialize from host memory buffer (e.g., std::vector)
+			void VoxelGPUManagerSortReduce::deserialize(uint8_t* h_data) {
+				deserializeCPU(h_data);
+			}
+
+			// ================================================================================
+			// GPU-side methods (device-to-device, not through base class interface)
 			// ================================================================================
 
 			// GPU-side serialization: allocate device memory and write serialized data
-			void VoxelGPUManagerSortReduce::serialize(uint8_t* d_data) {
+			void VoxelGPUManagerSortReduce::serializeGPU(uint8_t* d_data) {
 
 				uint8_t* ptr = d_data;				
 				CUDA_CHECK_ERROR(cudaMemcpy(ptr, &m_last_count, sizeof(int), cudaMemcpyHostToDevice));
@@ -574,7 +588,7 @@ namespace common {
 			}
 
 			// GPU-side deserialization: read from device memory
-			void VoxelGPUManagerSortReduce::deserialize(uint8_t* d_data) {
+			void VoxelGPUManagerSortReduce::deserializeGPU(uint8_t* d_data) {
 
 				if (d_data == nullptr) {
 					return; // Invalid data

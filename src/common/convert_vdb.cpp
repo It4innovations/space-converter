@@ -747,44 +747,6 @@ namespace common {
 					}
 				}
 			}
-
-			// TODO: VoxelSparseManager			
-//			else if (grid_dst.type == VDBParticleType::eNanoVDB && grid_recv.type == VDBParticleType::eVector) {
-//				// Deserialize and merge sparse NanoVDB grid
-//				auto acc_dst = grid_dst.nano_grid->getAccessor();
-//				auto* grid_src_float = (nanovdb::NanoGrid<float>*)grid_recv.vector_grid.data();
-//
-//				// Traverse NanoVDB sparse tree hierarchy ( Root -> Upper Internal -> Lower Internal -> Leaf )
-//				for (auto it2 = grid_src_float->tree().root().cbeginChild(); it2; ++it2) {
-//					// Iterate over upper internal nodes (level 2)
-//					for (auto it1 = it2->cbeginChild(); it1; ++it1) {
-//						// Iterate over lower internal nodes (level 1)
-//						for (auto it0 = it1->cbeginChild(); it0; ++it0) {
-//							// Iterate over active voxels in leaf nodes
-//							for (auto it = it0->cbeginValueOn(); it; ++it) {
-//								float v = *it;
-//
-//								nanovdb::Coord xyz = it.getCoord();
-//
-//								// Accumulate values if voxel exists in destination, otherwise set new value
-//								if (acc_dst.isValueOn(xyz)) {
-//									v += acc_dst.getValue(xyz);
-//								}
-//								acc_dst.setValue(xyz, v);
-//							}
-//						}
-//					}
-//				}
-//			}
-//#ifdef WITH_OPENVDB
-//			else if (grid_dst.type == VDBParticleType::eOpenVDB && grid_recv.type == VDBParticleType::eVector) {
-//				// Deserialize OpenVDB grid from vector
-//				auto grid_src_float = vector_to_openvdb(grid_recv.vector_grid);
-//
-//				// Use OpenVDB's optimized composite operation for summing grids
-//				openvdb::tools::compSum(*grid_dst.vdb_grid, *grid_src_float);
-//			}
-//#endif
 			else if ((grid_dst.type == VDBParticleType::eNanoVDB || grid_dst.type == VDBParticleType::eOpenVDB) && grid_recv.type == VDBParticleType::eVector) {
 				grid_dst.sparse_grid->merge(grid_recv.vector_grid.data());
 			}
@@ -851,39 +813,6 @@ namespace common {
 				}
 			}
 		}
-
-		/**
-		 * @brief Find min/max value range for a particle data block
-		 *
-		 * Scans all particles to determine value range for normalization.
-		 */
-//		void ConvertVDBBase::iolib_find_minmax(
-//			int particle_type,
-//			int block_nr,
-//			float& v_min,
-//			float& v_max
-//		)
-//		{
-//			size_t no_points = get_local_num_particles();
-//
-//			float min = FLT_MAX;
-//			float max = -FLT_MAX;
-//
-//			// Parallel reduction to find min/max values
-//#pragma omp parallel for reduction(min : min) reduction(max : max)
-//			for (size_t i = 0; i < no_points; ++i) {
-//				if (get_particle_type(i) != particle_type)
-//					continue;
-//
-//				float v = get_particle_norm_value(block_nr, i);
-//
-//				if (v < min) min = v;
-//				if (v > max) max = v;
-//			}
-//
-//			v_min = min;
-//			v_max = max;
-//		}
 
 #ifdef WITH_NANOVDB
 

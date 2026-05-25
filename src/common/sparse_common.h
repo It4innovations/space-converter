@@ -189,9 +189,10 @@ namespace common {
 
 				void merge(uint8_t* bin_data) override {
 					// Deserialize the incoming data into a temporary manager and then merge
+					// Note: bin_data is assumed to be host memory (from std::vector in MPI operations)
 					VoxelGPUManagerSortReduce temp_manager;
-					temp_manager.deserialize(bin_data);
-					this->merge(&temp_manager);
+					temp_manager.deserializeCPU(bin_data);
+					this->mergeCPU(&temp_manager);
 				}
 
 
@@ -218,6 +219,12 @@ namespace common {
 					temp_manager.deserializeCPU(bin_data);
 					this->mergeCPU(&temp_manager);
 				}
+
+				// GPU-side serialization: write to device memory (device-to-device)
+				void serializeGPU(uint8_t* d_data);
+
+				// GPU-side deserialization: read from device memory (device-to-device)
+				void deserializeGPU(uint8_t* d_data);
 
 				void get_keys_values_from_device(uint64_t* h_keys, float* h_vals);
 
