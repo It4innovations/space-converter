@@ -105,11 +105,7 @@ xdr_array (xdrs, addrp, sizep, maxsize, elsize, elproc)
 			    "xdr_array: out of memory\n");
 	    return FALSE;
 	  }
-#if defined(_WIN32) || defined(__APPLE__)
-    memset(target, 0, nodesize);
-#else
-	__bzero (target, nodesize);
-#endif
+  memset(target, 0, nodesize);
 	break;
 
       case XDR_FREE:
