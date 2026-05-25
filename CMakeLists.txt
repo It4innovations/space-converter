@@ -43,6 +43,7 @@ option(WITH_CUDAKDTREE "Enable cudaKDTree" OFF)
 option(WITH_NO_DATA_TEMP "Enable No Data Temp" OFF)
 
 option(WITH_GPU_CUDA "Enable GPU CUDA" OFF)
+option(WITH_CUDA_AWARE_MPI "Enable CUDA-aware MPI for RDMA GPU-direct transfers (requires UCX/RDMA-capable MPI)" OFF)
 
 option(WITH_MERIC  "Enable MERIC" OFF)
 ########################################################

@@ -779,13 +779,26 @@ namespace space_converter {
 
 							size_t ns = 0;
 							mpi_recv(&ns, sizeof(ns), MPI_BYTE, from_cl.world_rank + step, 0);
-							common::vdb::VDBParticles nanogrid_recv;
-							nanogrid_recv.type = common::vdb::VDBParticleType::eVector;
-							nanogrid_recv.vector_grid.resize(ns);
-
-							// TODO: GPU
-							mpi_recv(nanogrid_recv.vector_grid.data(), ns, MPI_BYTE, from_cl.world_rank + step, 0);
-							convert_vdb_base->merge_grid(grid_main_sum, nanogrid_recv);
+#if defined(WITH_GPU_CUDA) && defined(WITH_CUDA_AWARE_MPI)
+							if (auto* gpu_mgr = dynamic_cast<common::vdb::sparse::VoxelGPUManagerSortReduce*>(grid_main_sum.sparse_grid.get())) {
+								// RDMA path: receive directly into device buffer, merge on GPU
+								uint8_t* d_buf = nullptr;
+								cudaMalloc(&d_buf, ns);
+								mpi_recv(d_buf, ns, MPI_BYTE, from_cl.world_rank + step, 0);
+								common::vdb::sparse::VoxelGPUManagerSortReduce recv_mgr;
+								recv_mgr.deserializeGPU(d_buf);
+								cudaFree(d_buf);
+								gpu_mgr->merge(&recv_mgr);
+							}
+							else
+#endif
+							{
+								common::vdb::VDBParticles nanogrid_recv;
+								nanogrid_recv.type = common::vdb::VDBParticleType::eVector;
+								nanogrid_recv.vector_grid.resize(ns);
+								mpi_recv(nanogrid_recv.vector_grid.data(), ns, MPI_BYTE, from_cl.world_rank + step, 0);
+								convert_vdb_base->merge_grid(grid_main_sum, nanogrid_recv);
+							}
 						}
 					}
 					else if (from_cl.world_rank % (2 * step) == step) {
@@ -799,28 +812,26 @@ namespace space_converter {
 							// TODO: GPU
 							mpi_send(grid_handle_main.data(), ns, MPI_BYTE, from_cl.world_rank - step, 0);
 						}
-//						else if (from_cl.use_nanovdb) {
-////							nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_main = nanovdb::tools::createNanoGrid(*grid_main_sum.nano_grid);
-////							size_t ns = grid_handle_main.size();
-////							mpi_send(&ns, sizeof(ns), MPI_BYTE, from_cl.world_rank - step, 0);
-////							mpi_send(grid_handle_main.data(), ns, MPI_BYTE, from_cl.world_rank - step, 0);
-//						}
-//						else {
-//							std::vector<uint8_t> grid_handle_main;
-//#ifdef WITH_OPENVDB
-//							convert_vdb_base->openvdb_to_vector(grid_main_sum.vdb_grid, grid_handle_main);
-//#endif
-//							size_t ns = grid_handle_main.size();
-//							mpi_send(&ns, sizeof(ns), MPI_BYTE, from_cl.world_rank - step, 0);
-//							mpi_send(grid_handle_main.data(), ns, MPI_BYTE, from_cl.world_rank - step, 0);
-//						}
 						else {
 							// Sparse particle data
-							std::vector<uint8_t> grid_handle_main(grid_main_sum.sparse_grid->mem_size());
-							grid_main_sum.sparse_grid->serialize(grid_handle_main.data());
-							size_t ns = grid_handle_main.size();
+							size_t ns = grid_main_sum.sparse_grid->mem_size();
 							mpi_send(&ns, sizeof(ns), MPI_BYTE, from_cl.world_rank - step, 0);
-							mpi_send(grid_handle_main.data(), ns, MPI_BYTE, from_cl.world_rank - step, 0);
+#if defined(WITH_GPU_CUDA) && defined(WITH_CUDA_AWARE_MPI)
+							if (auto* gpu_mgr = dynamic_cast<common::vdb::sparse::VoxelGPUManagerSortReduce*>(grid_main_sum.sparse_grid.get())) {
+								// RDMA path: serialize directly into device buffer, send via GPU-direct
+								uint8_t* d_buf = nullptr;
+								cudaMalloc(&d_buf, ns);
+								gpu_mgr->serializeGPU(d_buf);
+								mpi_send(d_buf, ns, MPI_BYTE, from_cl.world_rank - step, 0);
+								cudaFree(d_buf);
+							}
+							else
+#endif
+							{
+								std::vector<uint8_t> grid_handle_main(ns);
+								grid_main_sum.sparse_grid->serialize(grid_handle_main.data());
+								mpi_send(grid_handle_main.data(), ns, MPI_BYTE, from_cl.world_rank - step, 0);
+							}
 						}
 
 						break; // This rank is done participating

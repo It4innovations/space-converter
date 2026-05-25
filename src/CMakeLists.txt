@@ -56,6 +56,10 @@ if(WITH_GPU_CUDA)
     add_definitions(-DWITH_GPU_CUDA)
 endif()
 
+if(WITH_CUDA_AWARE_MPI)
+    add_definitions(-DWITH_CUDA_AWARE_MPI)
+endif()
+
 if(WITH_OPENMP)
     add_definitions(-DWITH_OPENMP)
 endif()
