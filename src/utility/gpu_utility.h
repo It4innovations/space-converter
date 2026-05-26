@@ -72,7 +72,6 @@
         } \
     } while (0)
 
-
 /**
  * @brief Debug macro to copy GPU array to host and print first 10 values
  * @details Useful for logging/debugging GPU computations
@@ -96,9 +95,4 @@
 #define DEBUG_PRINT_GPU_ARRAY(gpu_ptr, size, label)
 #endif    
 
-
-#ifdef _WIN32
-#   define CUDA_MALLOC cudaMallocManaged
-#else
-#   define CUDA_MALLOC cudaMalloc
-#endif
+#define CUDA_MALLOC cudaMalloc //cudaMallocManaged

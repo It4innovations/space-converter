@@ -731,7 +731,7 @@ namespace space_converter {
 				}
 			}
 			else {
-#ifdef WITH_GPU_CUDA
+#if defined(WITH_GPU_CUDA) && defined(WITH_CUDA_AWARE_MPI)
 				if (grid_main_gpu && grid_main_gpu_sum) {
 					// Standard mode: sum all grids to rank 0
 					mpi_reduce(grid_main_gpu->d_data_density, grid_main_gpu_sum->d_data_density, grid_main.dense_grid->size());
@@ -747,11 +747,23 @@ namespace space_converter {
 				else
 #endif
 				{
+#if defined(WITH_GPU_CUDA)
+					if (grid_main_gpu && grid_main_gpu_sum) {
+						grid_main_gpu->from_device();
+						grid_main_gpu_sum->from_device();
+					}
+#endif
 					// Standard mode: sum all grids to rank 0
 					mpi_reduce(grid_main.dense_grid->data_density.data(), grid_main_sum.dense_grid->data_density.data(), grid_main.dense_grid->size());
 #ifndef WITH_NO_DATA_TEMP				
 					mpi_reduce(grid_main.dense_grid->data_temp.data(), grid_main_sum.dense_grid->data_temp.data(), grid_main.dense_grid->size());
-#endif				
+#endif		
+
+#if defined(WITH_GPU_CUDA)
+					if (grid_main_gpu_sum) {
+						grid_main_gpu_sum->to_device();
+					}
+#endif
 				}
 
 			}
