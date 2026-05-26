@@ -735,6 +735,11 @@ namespace space_converter {
 				if (grid_main_gpu && grid_main_gpu_sum) {
 					// Standard mode: sum all grids to rank 0
 					mpi_reduce(grid_main_gpu->d_data_density, grid_main_gpu_sum->d_data_density, grid_main.dense_grid->size());
+					
+					// Debug logging: print first 10 values from both arrays
+					DEBUG_PRINT_GPU_ARRAY(grid_main_gpu->d_data_density, grid_main.dense_grid->size(), "grid_main_gpu->d_data_density after mpi_reduce");
+					DEBUG_PRINT_GPU_ARRAY(grid_main_gpu_sum->d_data_density, grid_main.dense_grid->size(), "grid_main_gpu_sum->d_data_density after mpi_reduce");
+					
 #ifndef WITH_NO_DATA_TEMP				
 					mpi_reduce(grid_main_gpu->d_data_temp, grid_main_gpu_sum->d_data_temp, grid_main.dense_grid->size());
 #endif

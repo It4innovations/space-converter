@@ -73,6 +73,30 @@
     } while (0)
 
 
+/**
+ * @brief Debug macro to copy GPU array to host and print first 10 values
+ * @details Useful for logging/debugging GPU computations
+ * @param gpu_ptr Pointer to GPU memory
+ * @param size Total size of the array
+ * @param label Descriptive label for the log output
+ */
+#ifdef WITH_GPU_CUDA
+#define DEBUG_PRINT_GPU_ARRAY(gpu_ptr, size, label) \
+	{ \
+		size_t debug_count = std::min((size_t)10, (size_t)size); \
+		std::vector<float> host_debug_data(debug_count); \
+		CUDA_CHECK_ERROR(cudaMemcpy(host_debug_data.data(), gpu_ptr, sizeof(float) * debug_count, cudaMemcpyDeviceToHost)); \
+		printf("DEBUG [%s] rank %d: ", label, from_cl.world_rank); \
+		for (size_t i = 0; i < debug_count; i++) { \
+			printf("%.6f ", host_debug_data[i]); \
+		} \
+		printf("\n"); \
+	}
+#else
+#define DEBUG_PRINT_GPU_ARRAY(gpu_ptr, size, label)
+#endif    
+
+
 #ifdef _WIN32
 #   define CUDA_MALLOC cudaMallocManaged
 #else
