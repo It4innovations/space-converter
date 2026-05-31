@@ -328,6 +328,7 @@ namespace space_converter {
 // Accretion disk simulation
 //--data-type CHANGA_TIPSY --grid-dim 1000 --output-path e:\temp\changa\tmp\ --tipsy-file e:\temp\changa\tipsy\accretiondisklowresstd --output-path f:\temp\ --port 5000
 
+//--data-type CHANGA_TIPSY --tipsy-file e:\temp\21\LOW_512XLARGEMHDVERTDENSWend64FBSB64AB05.00995 --output-path e:\temp\21\ --grid-dim 100 --export-data 0 1 --bbox 452.542480 506.425049 478.175903 510.356018 564.238525 535.989380 --gpu-cuda --dense-type 6 # --cudakdtree --calc-radius-neigh 10 
 
 // === GADGET Format Examples ===
 
@@ -400,6 +401,7 @@ namespace space_converter {
 // GADGET_SIMPLE with CUDA KDTree
 //--data-type GADGET_SIMPLE --gadget-file e:\temp\gadget\very_small_example\snap_081 --output-path e:\temp\ --port 5000 --calc-radius-neigh 32 --cudakdtree
 
+//--data-type GADGET_SIMPLE --gadget-file e:\temp\gadget\very_small_example\snap_081 --output-path e:\temp\20_new\ --export-data 0 1 --dense-type 6 --gpu-cuda  --sort-by-radius --nanovdb
 
 // === HACC_GenericIO Format Examples ===
 

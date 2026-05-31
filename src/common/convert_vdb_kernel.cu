@@ -635,6 +635,9 @@ namespace common {
                 CUDA_CHECK_ERROR(cudaMemcpy(d_offset_position, offset_position, 3 * sizeof(float), cudaMemcpyHostToDevice));
                 CUDA_CHECK_ERROR(cudaMemcpy(d_bbox_sphere_pos, bbox_sphere_pos, 3 * sizeof(float), cudaMemcpyHostToDevice));
 
+                //sync d_offset
+                CUDA_CHECK_ERROR(cudaMemcpy(voxel_manager_gpu->d_offset, voxel_manager_gpu->offset, 3 * sizeof(size_t), cudaMemcpyHostToDevice));
+
                 // Launch kernel
                 int blockSize = 256;
                 int numBlocks = (num_particles + blockSize - 1) / blockSize;            
