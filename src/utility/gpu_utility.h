@@ -80,14 +80,17 @@
  * @param label Descriptive label for the log output
  */
 #ifdef WITH_GPU_CUDA
-#define DEBUG_PRINT_GPU_ARRAY(gpu_ptr, size, label) \
+#define DEBUG_PRINT_GPU_ARRAY(gpu_ptr, size, label, type) \
 	{ \
 		size_t debug_count = std::min((size_t)10, (size_t)size); \
-		std::vector<float> host_debug_data(debug_count); \
-		CUDA_CHECK_ERROR(cudaMemcpy(host_debug_data.data(), gpu_ptr, sizeof(float) * debug_count, cudaMemcpyDeviceToHost)); \
-		printf("DEBUG [%s] rank %d: ", label, from_cl.world_rank); \
-		for (size_t i = 0; i < debug_count; i++) { \
-			printf("%.6f ", host_debug_data[i]); \
+		std::vector<type> host_debug_data(size); \
+		CUDA_CHECK_ERROR(cudaMemcpy(host_debug_data.data(), gpu_ptr, sizeof(type) * size, cudaMemcpyDeviceToHost)); \
+		printf("DEBUG [%s], size: %zu, values: ", label, size); \
+        size_t c = 0; \
+		for (size_t i = 0; i < size; i++) { \
+            if (host_debug_data[i] == 0.0f) continue; \
+			printf("%zu: %.6f ", i, (float)host_debug_data[i]); \
+            if (++c >= debug_count) break; \
 		} \
 		printf("\n"); \
 	}

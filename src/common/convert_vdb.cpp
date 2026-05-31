@@ -59,6 +59,10 @@
 
 #include "utility/dense_utility.h"
 
+#ifdef WITH_GPU_CUDA
+#	include "utility/gpu_utility.h"
+#endif
+
 namespace common {
 	namespace vdb {
 
