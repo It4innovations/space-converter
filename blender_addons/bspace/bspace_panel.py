@@ -65,6 +65,12 @@ dense_type_items = [
     ("6", "WendlandC8", ""),
 ]
 
+particle_btype_items = [
+    #("0", "NONE", ""),
+    ("GN", "Geometry Nodes", ""),
+    ("PC", "Point Cloud", ""),
+]
+
 dense_norm_items = [    
     ("0", "NONE", ""),
     ("1", "Count", ""),
@@ -126,6 +132,18 @@ class BSPACE_PG_SETTINGS(bpy.types.PropertyGroup):
         items=dense_norm_items, 
         name="Dense Norm"
         )# type: ignore
+
+    particle_btype : bpy.props.EnumProperty(
+        items=particle_btype_items, 
+        name="Particle Type"
+        )# type: ignore
+
+    particle_radius : bpy.props.FloatProperty(
+        name="Particle Radius", 
+        default=1.0,
+        min=0.0,
+        max=1000.0
+        )# type: ignore        
 
     particle_fix_size: bpy.props.FloatProperty(
         name="Particle Size", 
@@ -332,7 +350,7 @@ def draw_callback_px():
         # Draw labels
         blf.position(font_id, x, y + height + blf_size / 2, 0)
         #blf.draw(font_id, "GASS - RHO")    
-        desc = obj_vdb['NAME'] #str(particle_type_items[int(obj_vdb['PARTICLE_TYPE'])][1]) + str(" - ") + str(block_name_items[int(obj_vdb['BLOCK_NAME'])][1])
+        desc = obj_vdb['NAME']
         blf.draw(font_id, desc)
 
 ########################### utils #############################
@@ -1387,7 +1405,7 @@ class BSPACE:
 
         return     
 
-    def extract_raw_part(self, context, file_data):
+    def extract_raw_part(self, context, file_data, min_value_reduced, max_value_reduced):
         import struct
         from io import BytesIO
 
@@ -1518,7 +1536,7 @@ class BSPACE:
 
                 return bcollection_main
             
-            def extract_GN(self, context):
+            def extract_GN(self, context, min_val_reduced, max_val_reduced):
                 self.deserialize_from_vector(file_data)    
 
                 collection = self.create_collection(context)
@@ -1548,8 +1566,131 @@ class BSPACE:
                 )
                 self.create_gnodes_instance(context, empty_obj, context.object)
 
+            def extract_PC(self, context, min_val_reduced, max_val_reduced):
+                self.deserialize_from_vector(file_data)    
+                
+                collection = self.create_collection(context)
+                
+                # Find position data to determine point count
+                position_data = None
+                for particle in self.data:
+                    if particle.name == "position":
+                        position_data = particle
+                        break
+                
+                if position_data is None:
+                    raise Exception("No position data found in particle data")
+                
+                count = int(len(position_data.values) / position_data.num_comp)
+                
+                # Create point cloud datablock
+                pc_name = "SPACE_pointcloud"
+                pc = bpy.data.pointclouds.new(pc_name)
+                
+                # Resize point cloud to have the correct number of points
+                pc.resize(count)
+                
+                # Set positions and other attributes
+                for particle in self.data:
+                    if particle.name == "position":
+                        # Set positions through the built-in "position" attribute
+                        pc.attributes["position"].data.foreach_set("vector", particle.values)
+                    else:
+                        # Create custom attributes
+                        if particle.num_comp == 1:
+                            attr = pc.attributes.new(
+                                name=particle.name,
+                                type="FLOAT",
+                                domain="POINT"
+                            )
+                            attr.data.foreach_set("value", particle.values)
+                        elif particle.num_comp == 3:
+                            attr = pc.attributes.new(
+                                name=particle.name,
+                                type="FLOAT_VECTOR",
+                                domain="POINT"
+                            )
+                            attr.data.foreach_set("vector", particle.values)
+                
+                # Add radius attribute if not present
+                if "radius" not in pc.attributes:
+                    radius_attr = pc.attributes.new(
+                        name="radius",
+                        type="FLOAT",
+                        domain="POINT"
+                    )
+                    radii = [context.scene.view_pg_bspace.particle_radius] * count
+                    radius_attr.data.foreach_set("value", radii)
+                
+                # Create object from point cloud
+                obj = bpy.data.objects.new(pc_name, pc)
+                collection.objects.link(obj)
+                context.view_layer.objects.active = obj
+                obj.select_set(True)
+                
+                # Create material with attribute nodes
+                mat = bpy.data.materials.new("Material_" + pc_name)
+                mat.use_nodes = True
+                
+                nodes = mat.node_tree.nodes
+                links = mat.node_tree.links
+                
+                # Get existing nodes
+                principled = nodes.get("Principled BSDF")
+                output = nodes.get("Material Output")
+                
+                # Create Attribute node for the first non-position attribute
+                attr_name = None
+                for particle in self.data:
+                    if particle.name != "position":
+                        attr_name = particle.name
+                        break
+                
+                if attr_name:
+                    attr_node = nodes.new(type="ShaderNodeAttribute")
+                    attr_node.attribute_name = attr_name
+                    attr_node.location = (-600, 100)
+                    
+                    # Create Map Range node for value remapping
+                    map_range_node = nodes.new(type='ShaderNodeMapRange')
+                    map_range_node.inputs['From Min'].default_value = min_val_reduced
+                    map_range_node.inputs['From Max'].default_value = max_val_reduced
+                    map_range_node.inputs['To Min'].default_value = 0.0
+                    map_range_node.inputs['To Max'].default_value = 1.0
+                    map_range_node.location = (-400, 100)
+                    
+                    # Create ColorRamp for better visualization (similar to VDB shader)
+                    # color_ramp_node = nodes.new(type='ShaderNodeValToRGB')
+                    # color_ramp_node.color_ramp.elements[0].color = (0, 0, 1, 1)  # Blue at position 0
+                    # color_ramp_node.color_ramp.elements[1].color = (1, 0, 0, 1)  # Red at position 1
+                    # color_ramp_node.color_ramp.elements.new(0.5)
+                    # color_ramp_node.color_ramp.elements[1].color = (0, 1, 0, 1)  # Green at position 0.5
+                    # color_ramp_node.location = (-200, 100)
+
+                    # Create a ColorRamp node
+                    color_ramp_node = nodes.new(type='ShaderNodeValToRGB')
+                    color_ramp_node.color_ramp.elements[0].color = (0, 0, 1, 0)  # Blue at position 0
+                    color_ramp_node.color_ramp.elements[1].color = (1, 0, 0, 1)  # Red at position 1
+                    color_ramp_node.color_ramp.elements.new(0.5)  # Add a new stop at 0.5
+                    color_ramp_node.color_ramp.elements[1].color = (0, 1, 0, 0.5)  # Change this new stop to Green                    
+                    color_ramp_node.location = (-200, 100)
+                    
+                    # Connect: Attribute -> Map Range -> ColorRamp -> Principled Base Color
+                    links.new(attr_node.outputs["Fac"], map_range_node.inputs["Value"])
+                    links.new(map_range_node.outputs["Result"], color_ramp_node.inputs["Fac"])
+                    links.new(color_ramp_node.outputs["Color"], principled.inputs["Base Color"])
+                    links.new(color_ramp_node.outputs["Color"], principled.inputs["Emission Color"])
+                    links.new(color_ramp_node.outputs["Alpha"], principled.inputs["Alpha"])
+                    links.new(color_ramp_node.outputs["Alpha"], principled.inputs["Emission Strength"])
+                                    
+                pc.materials.append(mat)
+
         rawParticles = RawParticles()
-        rawParticles.extract_GN(context)
+
+        if context.scene.view_pg_bspace.particle_btype == "PC":
+            rawParticles.extract_PC(context, min_value_reduced, max_value_reduced)
+        else:
+            rawParticles.extract_GN(context, min_value_reduced, max_value_reduced)
 
     def extract_data(self, context):
         if context.scene.bspace_list_types_index < 0 or context.scene.bspace_list_types_index > len(context.scene.bspace_list_types):
@@ -1681,7 +1822,7 @@ class BSPACE:
 
         ##########################processing
         if file_type == "RAW_PART":
-            self.extract_raw_part(context, file_data)
+            self.extract_raw_part(context, file_data, min_value_reduced, max_value_reduced)
             return
 
         from datetime import datetime
@@ -1938,7 +2079,6 @@ class BSPACE:
             item = context.scene.bspace_list_data.add()
             item.Id = len(context.scene.bspace_list_data)
 
-            #item.Name = str(particle_type_items[int(obj_vdb_new['PARTICLE_TYPE'])][1]) + str(" - ") + str(block_name_items[int(obj_vdb_new['BLOCK_NAME'])][1])
             item.Name = obj_vdb_new.name
             item.Obj = obj_vdb_new.name
 
@@ -2315,8 +2455,15 @@ class BSPACE_PT_extract(BSpacePanel, bpy.types.Panel):
 
         #col.prop(scene.view_pg_bspace, "value_convert")
         col.prop(scene.view_pg_bspace, "extracted_type")
-        col.prop(scene.view_pg_bspace, "dense_type")
-        col.prop(scene.view_pg_bspace, "dense_norm")
+
+        if context.scene.view_pg_bspace.extracted_type == '1': # DENSE
+            col.prop(scene.view_pg_bspace, "dense_type")
+            col.prop(scene.view_pg_bspace, "dense_norm")
+
+        if context.scene.view_pg_bspace.extracted_type == '2': # PARTICLE
+            col.prop(scene.view_pg_bspace, "particle_btype")
+            col.prop(scene.view_pg_bspace, "particle_radius")
+
         col.prop(scene.view_pg_bspace, "particle_fix_size", text="Radius factor")
         col.prop(scene.view_pg_bspace, "filter_min", text="Min. Value")
         col.prop(scene.view_pg_bspace, "filter_max", text="Max. Value")
