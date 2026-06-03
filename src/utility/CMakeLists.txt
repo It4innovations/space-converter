@@ -80,7 +80,11 @@ if(WITH_NANOVDB)
         nano2float3.cpp
     )
 
-    add_executable(nano2float3 ${SRC_NANOVDB})        
+    add_executable(nano2float3 ${SRC_NANOVDB})
+    target_link_libraries(
+        nano2float3 
+        $<IF:$<CONFIG:Debug>,${TBB_LIBRARIES_DEBUG},${TBB_LIBRARIES}>
+    )
     install (TARGETS nano2float3 DESTINATION bin)
 endif()
 ########################################################
