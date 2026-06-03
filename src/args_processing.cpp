@@ -243,6 +243,11 @@ namespace space_converter {
 				space_data.bbox_max[1] = std::stof(argv[++i]);
 				space_data.bbox_max[2] = std::stof(argv[++i]);
 			}
+#if 0 //TODO: Re-enable when normalization option is implemented			
+			else if (arg == "--no-norm-value") {
+				space_data.use_norm_value = false;
+			}
+#endif			
 			else if (arg == "--offset-position") {
 				// Apply position offset to all particles (translation)
 				space_data.offset_position[0] = std::stof(argv[++i]);

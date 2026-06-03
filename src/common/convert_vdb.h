@@ -113,6 +113,7 @@ namespace common {
 				float *bbox_sphere_pos,
 				float bbox_sphere_r,
 				bool use_simple_density,
+				bool use_norm_value,
 				float *offset_position
 			);
 

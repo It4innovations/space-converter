@@ -583,6 +583,7 @@ namespace space_converter {
 			space_data.bbox_sphere_pos,
 			space_data.bbox_sphere_r,
 			space_data.use_simple_density,
+			space_data.use_norm_value,
 			space_data.offset_position
 		);
 
@@ -805,6 +806,7 @@ namespace space_converter {
 // 				grid_main_sum.nano_grid = grid_main.nano_grid;
 			else if (grid_main_sum.type == common::vdb::VDBParticleType::eRawParticles)
 				grid_main_sum.raw_particles = grid_main.raw_particles;
+			}
 
 			// Perform logarithmic tree reduction for sparse grids
 			if (space_data.anim_type == common::SpaceData::AnimType::eNone || space_data.anim_type == common::SpaceData::AnimType::eAllMerge || space_data.anim_type == common::SpaceData::AnimType::eFrameExtract) {
@@ -993,7 +995,8 @@ namespace space_converter {
 					grid_main_final.vector_grid.resize(grid_handle_final.size());
 					memcpy(grid_main_final.vector_grid.data(), grid_handle_final.data(), grid_handle_final.size());
 
-					nanovdb::NanoGrid<float>* nanogrid = (nanovdb::NanoGrid<float>*) grid_handle_final.data();
+					if (grid_main_sum.nano_grid) {
+						nanovdb::NanoGrid<float>* nanogrid = (nanovdb::NanoGrid<float>*) grid_handle_final.data();
 
 					// Extract min/max from NanoVDB tree
 
@@ -1127,6 +1130,21 @@ namespace space_converter {
 				auto nanovdb_handleI = convert_vdb_base->sparse_to_nanovdb(grid_main_final.sparse_grid.get());
 
 				nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::tools::createNanoGrid(*nanovdb_handleI);
+
+				if (grid_main_final.nano_grid) {
+#if OPENVDB_VERSION == 11
+					grid_handle_final = nanovdb::createNanoGrid(*grid_main_final.nano_grid);
+#else
+					grid_handle_final = nanovdb::tools::createNanoGrid(*grid_main_final.nano_grid);
+#endif				
+				}
+				else if (grid_main_final.nano_grid3) {
+#if OPENVDB_VERSION == 11
+					grid_handle_final = nanovdb::createNanoGrid(*grid_main_final.nano_grid3);
+#else
+					grid_handle_final = nanovdb::tools::createNanoGrid(*grid_main_final.nano_grid3);
+#endif
+				}
 
 				nanovdb::io::writeGrid(space_data.full_filepath, grid_handle_final);
 				printf("finished: %s\n", full_filepath.c_str());

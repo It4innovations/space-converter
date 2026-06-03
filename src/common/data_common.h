@@ -278,6 +278,7 @@ namespace common {
 		float bbox_sphere_pos[3] = { 0.0f,0.0f,0.0f };  // Sphere center position
 		float bbox_sphere_r = 0.0f;             // Sphere radius
 		bool use_simple_density = false;        // Use simplified density calculation
+		bool use_norm_value = true;		// Use normalized values
 		float offset_position[3] = { 0.0f,0.0f,0.0f };  // Position offset
 	};
 
