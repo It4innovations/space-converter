@@ -49,9 +49,7 @@ namespace common {
 
 			// ── Host data ──────────────────────────────────────────────────────────
 			std::vector<float> data_density;   ///< Primary density/value data
-#ifndef WITH_NO_DATA_TEMP
-			std::vector<float> data_temp;      ///< Temporary accumulation buffer for normalisation
-#endif
+			std::vector<float> data_temp;      ///< Temporary accumulation buffer for normalisation (only allocated when needed)
 			size_t dims[3]   = { 0, 0, 0 };   ///< Grid dimensions [x, y, z]
 			size_t offset[3] = { 0, 0, 0 };   ///< Grid offset in global coordinate space
 
@@ -60,9 +58,7 @@ namespace common {
 			/** @brief Clear all grid data and reset dimensions. */
 			virtual void clear() {
 				data_density.clear();
-#ifndef WITH_NO_DATA_TEMP
 				data_temp.clear();
-#endif
 				memset(dims,   0, 3 * sizeof(size_t));
 				memset(offset, 0, 3 * sizeof(size_t));
 			}
@@ -72,15 +68,16 @@ namespace common {
 			 * @param x  Width  of the grid.
 			 * @param y  Height of the grid.
 			 * @param z  Depth  of the grid.
+			 * @param allocate_data_temp  If true, allocate data_temp buffer for normalization.
 			 */
-			virtual void create(size_t x, size_t y, size_t z) {
+			virtual void create(size_t x, size_t y, size_t z, bool allocate_data_temp = false) {
 				dims[0] = x;  dims[1] = y;  dims[2] = z;
 				data_density.resize(size());
 				memset(data_density.data(), 0, memsize());
-#ifndef WITH_NO_DATA_TEMP
-				data_temp.resize(size());
-				memset(data_temp.data(), 0, memsize());
-#endif
+				if (allocate_data_temp) {
+					data_temp.resize(size());
+					memset(data_temp.data(), 0, memsize());
+				}
 			}
 
 			// ── Dimension accessors ────────────────────────────────────────────────

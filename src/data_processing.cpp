@@ -715,7 +715,9 @@ namespace space_converter {
 			}
 
 			if (from_cl.world_rank == 0 || space_data.anim_type != common::SpaceData::AnimType::eNone) {
-				grid_main_sum.dense_grid->create(space_data.bbox_dim, space_data.bbox_dim, space_data.bbox_dim);
+				// Allocate data_temp only if normalization is needed
+				bool allocate_data_temp = (space_data.dense_norm != common::SpaceData::DenseNorm::eNone);
+				grid_main_sum.dense_grid->create(space_data.bbox_dim, space_data.bbox_dim, space_data.bbox_dim, allocate_data_temp);
 				memcpy(grid_main_sum.dense_grid->offset, grid_main.dense_grid->offset, sizeof(grid_main.dense_grid->offset));
 			}
 
@@ -729,9 +731,10 @@ namespace space_converter {
 				if (grid_main_gpu && grid_main_gpu_sum) {
 					// Animation mode: each rank keeps its own grid (no reduction)
 					CUDA_CHECK_ERROR(cudaMemcpy(grid_main_gpu_sum->d_data_density, grid_main_gpu->d_data_density, grid_main_gpu->memsize(), cudaMemcpyDeviceToDevice));
-#ifndef WITH_NO_DATA_TEMP				
-					CUDA_CHECK_ERROR(cudaMemcpy(grid_main_gpu_sum->d_data_temp, grid_main_gpu->d_data_temp, grid_main_gpu->memsize(), cudaMemcpyDeviceToDevice));
-#endif
+					// Copy temp buffer if both grids have it allocated
+					if (grid_main_gpu->d_data_temp != nullptr && grid_main_gpu_sum->d_data_temp != nullptr) {
+						CUDA_CHECK_ERROR(cudaMemcpy(grid_main_gpu_sum->d_data_temp, grid_main_gpu->d_data_temp, grid_main_gpu->memsize(), cudaMemcpyDeviceToDevice));
+					}
 
 				}
 				else 
@@ -739,9 +742,10 @@ namespace space_converter {
 				{
 					// Animation mode: each rank keeps its own grid (no reduction)
 					memcpy(grid_main_sum.dense_grid->data_density.data(), grid_main.dense_grid->data_density.data(), grid_main.dense_grid->memsize());
-#ifndef WITH_NO_DATA_TEMP				
-					memcpy(grid_main_sum.dense_grid->data_temp.data(), grid_main.dense_grid->data_temp.data(), grid_main.dense_grid->memsize());
-#endif				
+					// Copy temp buffer if both grids have it allocated
+					if (!grid_main.dense_grid->data_temp.empty() && !grid_main_sum.dense_grid->data_temp.empty()) {
+						memcpy(grid_main_sum.dense_grid->data_temp.data(), grid_main.dense_grid->data_temp.data(), grid_main.dense_grid->memsize());
+					}
 				}
 			}
 			else {
@@ -754,9 +758,10 @@ namespace space_converter {
 					DEBUG_PRINT_GPU_ARRAY(grid_main_gpu->d_data_density, grid_main.dense_grid->size(), "grid_main_gpu->d_data_density after mpi_reduce");
 					DEBUG_PRINT_GPU_ARRAY(grid_main_gpu_sum->d_data_density, grid_main.dense_grid->size(), "grid_main_gpu_sum->d_data_density after mpi_reduce");
 					
-#ifndef WITH_NO_DATA_TEMP				
-					mpi_reduce(grid_main_gpu->d_data_temp, grid_main_gpu_sum->d_data_temp, grid_main.dense_grid->size());
-#endif
+					// Reduce temp buffer if both grids have it allocated
+					if (grid_main_gpu->d_data_temp != nullptr && grid_main_gpu_sum->d_data_temp != nullptr) {
+						mpi_reduce(grid_main_gpu->d_data_temp, grid_main_gpu_sum->d_data_temp, grid_main.dense_grid->size());
+					}
 				}
 				else
 #endif
@@ -769,9 +774,10 @@ namespace space_converter {
 #endif
 					// Standard mode: sum all grids to rank 0
 					mpi_reduce(grid_main.dense_grid->data_density.data(), grid_main_sum.dense_grid->data_density.data(), grid_main.dense_grid->size());
-#ifndef WITH_NO_DATA_TEMP				
-					mpi_reduce(grid_main.dense_grid->data_temp.data(), grid_main_sum.dense_grid->data_temp.data(), grid_main.dense_grid->size());
-#endif		
+					// Reduce temp buffer if both grids have it allocated
+					if (!grid_main.dense_grid->data_temp.empty() && !grid_main_sum.dense_grid->data_temp.empty()) {
+						mpi_reduce(grid_main.dense_grid->data_temp.data(), grid_main_sum.dense_grid->data_temp.data(), grid_main.dense_grid->size());
+					}		
 
 #if defined(WITH_GPU_CUDA)
 					if (grid_main_gpu_sum) {

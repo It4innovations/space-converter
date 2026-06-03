@@ -149,22 +149,20 @@ namespace common {
 			__host__ void VoxelGPUDenseManager::clear() {
 				free_device();
 				data_density.clear();
-#ifndef WITH_NO_DATA_TEMP
 				data_temp.clear();
-#endif
 				memset(dims, 0, 3 * sizeof(size_t));
 				memset(offset, 0, 3 * sizeof(size_t));
 			}
 
-			__host__ void VoxelGPUDenseManager::create(size_t x, size_t y, size_t z) {
+			__host__ void VoxelGPUDenseManager::create(size_t x, size_t y, size_t z, bool allocate_data_temp) {
 				dims[0] = x;  dims[1] = y;  dims[2] = z;
 
 //				data_density.resize(size());
 //				memset(data_density.data(), 0, memsize());
-//#ifndef WITH_NO_DATA_TEMP
-//				data_temp.resize(size());
-//				memset(data_temp.data(), 0, memsize());
-//#endif
+//				if (allocate_data_temp) {
+//					data_temp.resize(size());
+//					memset(data_temp.data(), 0, memsize());
+//				}
 
 				// d_data_density
 				if (d_data_density == nullptr)
@@ -172,13 +170,13 @@ namespace common {
 
 				CUDA_CHECK_ERROR(cudaMemset(d_data_density, 0, memsize()));
 
-#ifndef WITH_NO_DATA_TEMP
-				// d_data_temp
-				if (d_data_temp == nullptr)
-					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_data_temp, memsize()));
+				// d_data_temp (only allocate if normalization is needed)
+				if (allocate_data_temp) {
+					if (d_data_temp == nullptr)
+						CUDA_CHECK_ERROR(CUDA_MALLOC(&d_data_temp, memsize()));
 
-				CUDA_CHECK_ERROR(cudaMemset(d_data_temp, 0, memsize()));
-#endif
+					CUDA_CHECK_ERROR(cudaMemset(d_data_temp, 0, memsize()));
+				}
 
 				// d_dims
 				if (d_dims == nullptr)
@@ -212,13 +210,11 @@ namespace common {
 				CUDA_CHECK_ERROR(cudaMemcpy(d_data_density, data_density.data(), memsize(),
 					cudaMemcpyHostToDevice));
 
-#ifndef WITH_NO_DATA_TEMP
-				// d_data_temp
-				//if (d_data_temp == nullptr)
-				//	CUDA_CHECK_ERROR(CUDA_MALLOC(&d_data_temp, memsize()));
-				CUDA_CHECK_ERROR(cudaMemcpy(d_data_temp, data_temp.data(), memsize(),
-					cudaMemcpyHostToDevice));
-#endif
+				// d_data_temp (only if allocated)
+				if (d_data_temp != nullptr && !data_temp.empty()) {
+					CUDA_CHECK_ERROR(cudaMemcpy(d_data_temp, data_temp.data(), memsize(),
+						cudaMemcpyHostToDevice));
+				}
 
 				// d_dims
 				//if (d_dims == nullptr)
@@ -249,20 +245,17 @@ namespace common {
 						cudaMemcpyDeviceToHost));
 				}
 
-#ifndef WITH_NO_DATA_TEMP
+				// d_data_temp (only if allocated)
 				if (d_data_temp != nullptr) {
 					if (data_temp.size() != n) data_temp.resize(n);
 					CUDA_CHECK_ERROR(cudaMemcpy(data_temp.data(), d_data_temp, memsize(),
 						cudaMemcpyDeviceToHost));
 				}
-#endif
 			}
 
 			__host__ void VoxelGPUDenseManager::free_device() {
 				if (d_data_density) { cudaFree(d_data_density); d_data_density = nullptr; }
-#ifndef WITH_NO_DATA_TEMP
 				if (d_data_temp) { cudaFree(d_data_temp);    d_data_temp = nullptr; }
-#endif
 				if (d_dims) { cudaFree(d_dims);         d_dims = nullptr; }
 				if (d_offset) { cudaFree(d_offset);       d_offset = nullptr; }
 				if (d_particle_count) { cudaFree(d_particle_count); d_particle_count = nullptr; }

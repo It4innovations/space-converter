@@ -744,9 +744,10 @@ namespace common {
 						for (int x = 0; x < grid_dst.dense_grid->dims[0]; x++) {
 							size_t index = grid_dst.dense_grid->get_index(x, y, z);
 							grid_dst.dense_grid->data_density[index] += grid_recv.dense_grid->data_density[index];
-#ifndef WITH_NO_DATA_TEMP							
-							grid_dst.dense_grid->data_temp[index] += grid_recv.dense_grid->data_temp[index];
-#endif							
+							// Merge temp buffer if both grids have it allocated
+							if (!grid_dst.dense_grid->data_temp.empty() && !grid_recv.dense_grid->data_temp.empty()) {
+								grid_dst.dense_grid->data_temp[index] += grid_recv.dense_grid->data_temp[index];
+							}
 						}
 					}
 				}
@@ -844,40 +845,40 @@ namespace common {
 			}
 #endif
 			// Normalize density values using temp buffer if available
-#ifndef WITH_NO_DATA_TEMP
+			if (!dense_manager->data_temp.empty()) {
 #pragma omp parallel for
-			for (int z = 0; z < dense_manager->z(); z++) {
-				for (int y = 0; y < dense_manager->y(); y++) {
-					for (int x = 0; x < dense_manager->x(); x++) {
+				for (int z = 0; z < dense_manager->z(); z++) {
+					for (int y = 0; y < dense_manager->y(); y++) {
+						for (int x = 0; x < dense_manager->x(); x++) {
 
-						// Get raw density and temp values from dense grid
-						size_t index = dense_manager->get_index(x, y, z);
-						float density = dense_manager->data_density[index];
+							// Get raw density and temp values from dense grid
+							size_t index = dense_manager->get_index(x, y, z);
+							float density = dense_manager->data_density[index];
 
-						float temp = 0.0f;
-						temp = dense_manager->data_temp[index];
+							float temp = 0.0f;
+							temp = dense_manager->data_temp[index];
 
-						// Apply normalization: divide accumulated density by accumulated weights (temp buffer)
-						// This computes the weighted average for SPH-like density estimation
-						if (dense_norm != common::SpaceData::DenseNorm::eNone) {
-							density = density / temp;
-						}
+							// Apply normalization: divide accumulated density by accumulated weights (temp buffer)
+							// This computes the weighted average for SPH-like density estimation
+							if (dense_norm != common::SpaceData::DenseNorm::eNone) {
+								density = density / temp;
+							}
 
-						// If the value is non-zero, set it in the grid
-						if (!std::isnan(density)) {
-							//accessor.setValue(openvdb::Coord(x + dense_manager->offset[0], y + dense_manager->offset[1], z + dense_manager->offset[2]), density);							
-							//if (dense_type == common::SpaceData::DenseType::eType2)
-							//	dense_manager->data_density[index] = std::log10(density);
-							//else
-							dense_manager->data_density[index] = density;
-						}
-						else {
-							dense_manager->data_density[index] = 0.0f;
+							// If the value is non-zero, set it in the grid
+							if (!std::isnan(density)) {
+								//accessor.setValue(openvdb::Coord(x + dense_manager->offset[0], y + dense_manager->offset[1], z + dense_manager->offset[2]), density);							
+								//if (dense_type == common::SpaceData::DenseType::eType2)
+								//	dense_manager->data_density[index] = std::log10(density);
+								//else
+								dense_manager->data_density[index] = density;
+							}
+							else {
+								dense_manager->data_density[index] = 0.0f;
+							}
 						}
 					}
 				}
 			}
-#endif
 
 			/**
 			 * @brief Copy normalized dense data to sparse NanoVDB grid
@@ -1039,40 +1040,40 @@ namespace common {
 #endif
 
 			// Normalize density values using temp buffer if available
-#ifndef WITH_NO_DATA_TEMP
+			if (!dense_manager->data_temp.empty()) {
 #pragma omp parallel for
-			for (int z = 0; z < dense_manager->z(); z++) {
-				for (int y = 0; y < dense_manager->y(); y++) {
-					for (int x = 0; x < dense_manager->x(); x++) {
+				for (int z = 0; z < dense_manager->z(); z++) {
+					for (int y = 0; y < dense_manager->y(); y++) {
+						for (int x = 0; x < dense_manager->x(); x++) {
 
-						// Get raw density and temp values from dense grid
-						size_t index = dense_manager->get_index(x, y, z);
-						float density = dense_manager->data_density[index];
+							// Get raw density and temp values from dense grid
+							size_t index = dense_manager->get_index(x, y, z);
+							float density = dense_manager->data_density[index];
 
-						float temp = 0.0f;
-						temp = dense_manager->data_temp[index];
+							float temp = 0.0f;
+							temp = dense_manager->data_temp[index];
 
-						// Apply normalization: divide accumulated density by accumulated weights (temp buffer)
-						// This computes the weighted average for SPH-like density estimation
-						if (dense_norm != common::SpaceData::DenseNorm::eNone) {
-							density = density / temp;
-						}
+							// Apply normalization: divide accumulated density by accumulated weights (temp buffer)
+							// This computes the weighted average for SPH-like density estimation
+							if (dense_norm != common::SpaceData::DenseNorm::eNone) {
+								density = density / temp;
+							}
 
-						// If the value is non-zero, set it in the grid
-						if (!std::isnan(density)) {
-							//accessor.setValue(openvdb::Coord(x + dense_manager->offset[0], y + dense_manager->offset[1], z + dense_manager->offset[2]), density);							
-							//if (dense_type == common::SpaceData::DenseType::eType2)
-							//	dense_manager->data_density[index] = std::log10(density);
-							//else
-							dense_manager->data_density[index] = density;
-						}
-						else {
-							dense_manager->data_density[index] = 0.0f;
+							// If the value is non-zero, set it in the grid
+							if (!std::isnan(density)) {
+								//accessor.setValue(openvdb::Coord(x + dense_manager->offset[0], y + dense_manager->offset[1], z + dense_manager->offset[2]), density);							
+								//if (dense_type == common::SpaceData::DenseType::eType2)
+								//	dense_manager->data_density[index] = std::log10(density);
+								//else
+								dense_manager->data_density[index] = density;
+							}
+							else {
+								dense_manager->data_density[index] = 0.0f;
+							}
 						}
 					}
 				}
 			}
-#endif
 
 			// Use OpenVDB's optimized dense-to-sparse conversion
 			// This efficiently identifies non-zero regions and builds the sparse tree

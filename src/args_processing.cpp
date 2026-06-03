@@ -34,7 +34,7 @@ namespace space_converter {
 		// === General Options ===
 		std::cout << "options:" << std::endl;
 		std::cout << "\t--grid-dim X" << std::endl;
-		std::cout << "\t--output-path X" << std::endl;
+		std::cout << "\t-o, --output-path X" << std::endl;
 		std::cout << "\t--server X" << std::endl;
 		std::cout << "\t--port X" << std::endl;
 		std::cout << "\t--info" << std::endl;
@@ -47,6 +47,7 @@ namespace space_converter {
 		// std::cout << "\t--rawpart2vdb" << std::endl;
 		std::cout << "\t--export-data TYPE DATASET" << std::endl;
 		std::cout << "\t--dense-type X" << std::endl;
+		std::cout << "\t--dense-norm X" << std::endl;
 		std::cout << "\t--bbox-sphere x y z r" << std::endl;
 		std::cout << "\t--simple-density" << std::endl;
 		std::cout << "\t--offset-position X Y Z" << std::endl;
@@ -69,12 +70,13 @@ namespace space_converter {
 	
 		// === Advanced Options ===
 		std::cout << "\t--sort-by-radius                   : Sort particles by radius" << std::endl;
-		std::cout << "\t--sort-by-non-overlap              : Sort particles spatially to avoid atomic operations" << std::endl;		std::cout << "\t--bbox x1 y1 z1 x2 y2 z2           : Define axis-aligned bounding box" << std::endl;
-		std::cout << "\t--save-mpi-rank                    : Save MPI rank information                    : Save MPI rank information" << std::endl;
-
+		std::cout << "\t--sort-by-non-overlap              : Sort particles spatially to avoid atomic operations" << std::endl;
+		std::cout << "\t--bbox x1 y1 z1 x2 y2 z2           : Define axis-aligned bounding box" << std::endl;
+		std::cout << "\t--save-mpi-rank                    : Save MPI rank information" << std::endl;
 #ifdef WITH_GPU_CUDA
 		std::cout << "\t--gpu-cuda                         : Enable GPU acceleration for CUDA-based computations" << std::endl;
-#endif		
+#endif
+		std::cout << "\t-h, --help                         : Display usage information" << std::endl;
 
 		// === Format-Specific Arguments ===
 		std::cout << "\nGADGET args:" << std::endl;

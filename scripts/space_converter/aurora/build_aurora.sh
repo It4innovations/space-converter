@@ -66,7 +66,7 @@ make_d="${make_d} -DWITH_CUDAKDTREE=OFF"
 
 make_d="${make_d} -DWITH_NANOFLANN=ON"
 make_d="${make_d} -DWITH_HACC=ON"
-make_d="${make_d} -DWITH_NO_DATA_TEMP=OFF"
+
 
 #make_d="${make_d} -DCMAKE_BUILD_TYPE=Debug"
 make_d="${make_d} -DCMAKE_BUILD_TYPE=RelWithDebInfo"

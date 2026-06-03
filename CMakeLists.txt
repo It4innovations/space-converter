@@ -40,7 +40,6 @@ option(GADGET_READ_ID64  "Enable reading of 64 bit ID" OFF)
 
 option(WITH_NANOFLANN  "Enable NANOFLANN" OFF)
 option(WITH_CUDAKDTREE "Enable cudaKDTree" OFF)
-option(WITH_NO_DATA_TEMP "Enable No Data Temp" OFF)
 
 option(WITH_GPU_CUDA "Enable GPU CUDA" OFF)
 option(WITH_CUDA_AWARE_MPI "Enable CUDA-aware MPI for RDMA GPU-direct transfers (requires UCX/RDMA-capable MPI)" OFF)

@@ -96,9 +96,7 @@ if(WITH_NANOFLANN)
     add_definitions(-DWITH_NANOFLANN)
 endif()
 
-if(WITH_NO_DATA_TEMP)
-    add_definitions(-DWITH_NO_DATA_TEMP)
-endif()
+
 
 if(WITH_CUDAKDTREE)
     add_definitions(-DWITH_CUDAKDTREE)

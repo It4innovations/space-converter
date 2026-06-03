@@ -43,8 +43,9 @@ namespace common {
 				/**
 				 * @brief Allocate and zero-initialise host grid buffers.
 				 * @param x Width   @param y Height   @param z Depth
+				 * @param allocate_data_temp  If true, allocate data_temp buffer for normalization.
 				 */
-				void create(size_t x, size_t y, size_t z) override;
+				void create(size_t x, size_t y, size_t z, bool allocate_data_temp = false) override;
 			};
 
 #ifdef WITH_GPU_CUDA
@@ -59,9 +60,7 @@ namespace common {
 			public:
 				// ── Device (GPU) data ─────────────────────────────────────────────
 				float* d_data_density = nullptr;  ///< Device pointer to density data
-#ifndef WITH_NO_DATA_TEMP
-				float* d_data_temp = nullptr;  ///< Device pointer to temp accumulation buffer
-#endif
+				float* d_data_temp = nullptr;  ///< Device pointer to temp accumulation buffer (only allocated when needed)
 				size_t* d_dims = nullptr;  ///< Device pointer to grid dimensions
 				size_t* d_offset = nullptr;  ///< Device pointer to grid offset
 
@@ -78,8 +77,9 @@ namespace common {
 				/**
 				 * @brief Allocate/zero-initialise host grid buffers.
 				 * @param x Width   @param y Height   @param z Depth
+				 * @param allocate_data_temp  If true, allocate data_temp buffer for normalization.
 				 */
-				void create(size_t x, size_t y, size_t z) override;
+				void create(size_t x, size_t y, size_t z, bool allocate_data_temp = false) override;
 
 				// ── GPU memory management ─────────────────────────────────────────
 

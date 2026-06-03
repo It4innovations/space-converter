@@ -29,22 +29,20 @@ namespace common {
 
 			void VoxelCPUDenseManager::clear() {
 				data_density.clear();
-#ifndef WITH_NO_DATA_TEMP
 				data_temp.clear();
-#endif
 				memset(dims, 0, 3 * sizeof(size_t));
 				memset(offset, 0, 3 * sizeof(size_t));
 			}
 
-			void VoxelCPUDenseManager::create(size_t x, size_t y, size_t z) {
+			void VoxelCPUDenseManager::create(size_t x, size_t y, size_t z, bool allocate_data_temp) {
 				dims[0] = x;  dims[1] = y;  dims[2] = z;
 
 				data_density.resize(size());
 				memset(data_density.data(), 0, memsize());
-#ifndef WITH_NO_DATA_TEMP
-				data_temp.resize(size());
-				memset(data_temp.data(), 0, memsize());
-#endif
+				if (allocate_data_temp) {
+					data_temp.resize(size());
+					memset(data_temp.data(), 0, memsize());
+				}
 			}
 
 		} // dense
