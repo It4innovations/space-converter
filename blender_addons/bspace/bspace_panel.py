@@ -1539,7 +1539,8 @@ class BSPACE:
             def extract_GN(self, context, min_val_reduced, max_val_reduced):
                 self.deserialize_from_vector(file_data)    
 
-                collection = self.create_collection(context)
+                # Use active collection instead of creating new one
+                collection = bpy.context.view_layer.active_layer_collection.collection
                 empty_obj = self.create_empty_bobj(context, collection, "SPACE")
                 count = int(len(self.data[0].values) / self.data[0].num_comp)
                 self.add_verts_to_mesh(context, empty_obj, count)
@@ -1569,7 +1570,8 @@ class BSPACE:
             def extract_PC(self, context, min_val_reduced, max_val_reduced):
                 self.deserialize_from_vector(file_data)    
                 
-                collection = self.create_collection(context)
+                # Use active collection instead of creating new one
+                collection = bpy.context.view_layer.active_layer_collection.collection
                 
                 # Find position data to determine point count
                 position_data = None
@@ -1675,12 +1677,19 @@ class BSPACE:
                     color_ramp_node.color_ramp.elements[1].color = (0, 1, 0, 0.5)  # Change this new stop to Green                    
                     color_ramp_node.location = (-200, 100)
                     
+                    # Create a Math node for alpha multiplier
+                    math_alpha_node = nodes.new(type='ShaderNodeMath')
+                    math_alpha_node.operation = 'MULTIPLY'
+                    math_alpha_node.inputs[1].default_value = 0.1
+                    math_alpha_node.location = (0, 0)
+                    
                     # Connect: Attribute -> Map Range -> ColorRamp -> Principled Base Color
                     links.new(attr_node.outputs["Fac"], map_range_node.inputs["Value"])
                     links.new(map_range_node.outputs["Result"], color_ramp_node.inputs["Fac"])
                     links.new(color_ramp_node.outputs["Color"], principled.inputs["Base Color"])
                     links.new(color_ramp_node.outputs["Color"], principled.inputs["Emission Color"])
-                    links.new(color_ramp_node.outputs["Alpha"], principled.inputs["Alpha"])
+                    links.new(color_ramp_node.outputs["Alpha"], math_alpha_node.inputs[0])
+                    links.new(math_alpha_node.outputs["Value"], principled.inputs["Alpha"])
                     links.new(color_ramp_node.outputs["Alpha"], principled.inputs["Emission Strength"])
                                     
                 pc.materials.append(mat)
@@ -1823,7 +1832,7 @@ class BSPACE:
         ##########################processing
         if file_type == "RAW_PART":
             self.extract_raw_part(context, file_data, min_value_reduced, max_value_reduced)
-            return
+            # Continue to set properties on obj_vdb_new like VDB objects
 
         from datetime import datetime
         dt = datetime.now().isoformat('-').replace(':', '').replace('.', '')
@@ -1836,160 +1845,165 @@ class BSPACE:
 
         pref = bspace_pref.preferences()
 
-        if not file_data is None:
-            filename = pref.local_temp_dir_path + "/" + fvdb + ".vdb"
-            if file_type == "OPENVDB":
-                with open(filename, 'wb') as f:
-                    f.write(file_data)
-
-            elif file_type == "NANOVDB":
-                filename_nvdb = pref.local_temp_dir_path + "/" + fvdb + ".nvdb"
-                with open(filename_nvdb, 'wb') as f:
-                    f.write(file_data)
-                
-                if len(pref.nvdb_converter_path) > 0:
-                    cmd = [
-                        pref.nvdb_converter_path,
-                        filename_nvdb,
-                        filename
-                    ]
-
-                    import subprocess
-                    process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-                    stdout, stderr = process.communicate()
-
-                    if process.returncode != 0:
-                        if stdout:
-                            print(str(stdout.decode()))
-                        if stderr:
-                            print(str(stderr.decode()))        
-
-                        raise Exception("nanovdb command failed: %s" % cmd)
-            elif file_type == "PATH":
-                filename = file_data.decode()
-                if context.scene.view_pg_bspace.replace_path_enabled:
-                    filename = filename.replace(context.scene.view_pg_bspace.replace_path_orig, context.scene.view_pg_bspace.replace_path_new)
-
-            # hide all vdbs
-            try:
-                for ob in bpy.data.objects:
-                    if 'BSPACE' in ob:
-                        ob.hide_render = True
-                        ob.hide_set(True)
-            except:
-                # ignore
-                pass
-
-            # TODO: handle particle extraction
-            if context.scene.view_pg_bspace.extracted_type == '2': # PARTICLE
-                #filename = file_data.decode()
-                # Handle particle extraction
-                #for f in range(context.scene.view_pg_bspace.anim_start, context.scene.view_pg_bspace.anim_end + 1):
-                ##self.extract_raw_part(context, file_data) # filename.replace("00000", f"{f:05d}").decode()
-                raise Exception("Particle extraction not implemented yet")
-            else:
-                # import vdb
-                bpy.ops.object.volume_import(filepath=filename, align='WORLD', location=(0, 0, 0), scale=(1, 1, 1))
+        if file_type == "RAW_PART":
+            raw_obj = bpy.context.view_layer.objects.active
+            raw_obj.name = fvdb
+            pass
         else:
-            if self.get_bbox_name() in bpy.data.objects:
-                obj_cube = bpy.data.objects[self.get_bbox_name()]
+            if not file_data is None:
+                filename = pref.local_temp_dir_path + "/" + fvdb + ".vdb"
+                if file_type == "OPENVDB":
+                    with open(filename, 'wb') as f:
+                        f.write(file_data)
 
-                if obj_cube.type == 'EMPTY':
-                    # If the object is linked to a collection, unlink it first
-                    for collection in obj_cube.users_collection:
-                        collection.objects.unlink(obj_cube)
+                elif file_type == "NANOVDB":
+                    filename_nvdb = pref.local_temp_dir_path + "/" + fvdb + ".nvdb"
+                    with open(filename_nvdb, 'wb') as f:
+                        f.write(file_data)
+                    
+                    if len(pref.nvdb_converter_path) > 0:
+                        cmd = [
+                            pref.nvdb_converter_path,
+                            filename_nvdb,
+                            filename
+                        ]
 
-                    # Delete the object
-                    bpy.data.objects.remove(obj_cube)
+                        import subprocess
+                        process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+                        stdout, stderr = process.communicate()
 
-                    #################### Create a new empty object
-                    #bpy.ops.object.empty_add(type='CUBE')
-                    # Define the vertices for the cube            
-                    v = context.scene.view_pg_bspace.bbox_size
-                    vertices = [
-                        (-v/2.0, -v/2.0, -v/2.0),
-                        (v/2.0, -v/2.0, -v/2.0),
-                        (v/2.0, v/2.0, -v/2.0),
-                        (-v/2.0, v/2.0, -v/2.0),
-                        (-v/2.0, -v/2.0, v/2.0),
-                        (v/2.0, -v/2.0, v/2.0),
-                        (v/2.0, v/2.0, v/2.0),
-                        (-v/2.0, v/2.0, v/2.0)
-                    ]
+                        if process.returncode != 0:
+                            if stdout:
+                                print(str(stdout.decode()))
+                            if stderr:
+                                print(str(stderr.decode()))        
 
-                    # Define the edges for the cube
-                    #edges = []
-                    edges = [
-                        (0, 1),
-                        (1, 2),
-                        (2, 3),
-                        (3, 0),
-                        (4, 5),
-                        (5, 6),
-                        (6, 7),
-                        (7, 4),
-                        (0, 4),
-                        (1, 5),
-                        (2, 6),
-                        (3, 7)
-                    ]
-                    faces = []
+                            raise Exception("nanovdb command failed: %s" % cmd)
+                elif file_type == "PATH":
+                    filename = file_data.decode()
+                    if context.scene.view_pg_bspace.replace_path_enabled:
+                        filename = filename.replace(context.scene.view_pg_bspace.replace_path_orig, context.scene.view_pg_bspace.replace_path_new)
 
-                    # Create the new mesh and object
-                    mesh = bpy.data.meshes.new(self.get_bbox_name())
-                    mesh.from_pydata(vertices, edges, faces)
-                    mesh.update()
+                # hide all vdbs
+                try:
+                    for ob in bpy.data.objects:
+                        if 'BSPACE' in ob:
+                            ob.hide_render = True
+                            ob.hide_set(True)
+                except:
+                    # ignore
+                    pass
 
-                    # if hasattr(bpy.types.Scene, 'haystack_scene'):
-                    #     context.scene.haystack_scene.create_bbox(context)
+                # TODO: handle particle extraction
+                if context.scene.view_pg_bspace.extracted_type == '2': # PARTICLE
+                    #filename = file_data.decode()
+                    # Handle particle extraction
+                    #for f in range(context.scene.view_pg_bspace.anim_start, context.scene.view_pg_bspace.anim_end + 1):
+                    ##self.extract_raw_part(context, file_data) # filename.replace("00000", f"{f:05d}").decode()
+                    raise Exception("Particle extraction not implemented yet")
+                else:
+                    # import vdb
+                    bpy.ops.object.volume_import(filepath=filename, align='WORLD', location=(0, 0, 0), scale=(1, 1, 1))
+            else:
+                if self.get_bbox_name() in bpy.data.objects:
+                    obj_cube = bpy.data.objects[self.get_bbox_name()]
 
-                    obj_cube = bpy.data.objects.new(self.get_bbox_name(), mesh)
+                    if obj_cube.type == 'EMPTY':
+                        # If the object is linked to a collection, unlink it first
+                        for collection in obj_cube.users_collection:
+                            collection.objects.unlink(obj_cube)
 
-                    bbox_size = context.scene.view_pg_bspace.bbox_size
-                    bbox_size_half = bbox_size / 2.0
+                        # Delete the object
+                        bpy.data.objects.remove(obj_cube)
 
-                    #obj_cube.empty_display_size = bbox_size_half
-                    obj_cube.scale=(bbox_size_half, bbox_size_half, bbox_size_half)
-                    obj_cube.location=(bbox_size_half, bbox_size_half, bbox_size_half)                    
+                        #################### Create a new empty object
+                        #bpy.ops.object.empty_add(type='CUBE')
+                        # Define the vertices for the cube            
+                        v = context.scene.view_pg_bspace.bbox_size
+                        vertices = [
+                            (-v/2.0, -v/2.0, -v/2.0),
+                            (v/2.0, -v/2.0, -v/2.0),
+                            (v/2.0, v/2.0, -v/2.0),
+                            (-v/2.0, v/2.0, -v/2.0),
+                            (-v/2.0, -v/2.0, v/2.0),
+                            (v/2.0, -v/2.0, v/2.0),
+                            (v/2.0, v/2.0, v/2.0),
+                            (-v/2.0, v/2.0, v/2.0)
+                        ]
 
-                    # Add the object into the scene
-                    #scene = bpy.context.scene
-                    #scene.collection.objects.link(obj_cube)
-                    # Get the active collection
-                    active_collection = bpy.context.view_layer.active_layer_collection.collection
+                        # Define the edges for the cube
+                        #edges = []
+                        edges = [
+                            (0, 1),
+                            (1, 2),
+                            (2, 3),
+                            (3, 0),
+                            (4, 5),
+                            (5, 6),
+                            (6, 7),
+                            (7, 4),
+                            (0, 4),
+                            (1, 5),
+                            (2, 6),
+                            (3, 7)
+                        ]
+                        faces = []
 
-                    # Add the object into the active collection
-                    active_collection.objects.link(obj_cube)
+                        # Create the new mesh and object
+                        mesh = bpy.data.meshes.new(self.get_bbox_name())
+                        mesh.from_pydata(vertices, edges, faces)
+                        mesh.update()
 
-                    # # Set the origin to the center of the cube
-                    # v = context.scene.view_pg_bspace.bbox_size
-                    # origin_location = (v/2, v/2, v/2)
+                        # if hasattr(bpy.types.Scene, 'haystack_scene'):
+                        #     context.scene.haystack_scene.create_bbox(context)
 
-                    # # Store the current cursor location
-                    # saved_cursor_location = context.scene.cursor.location.copy()
+                        obj_cube = bpy.data.objects.new(self.get_bbox_name(), mesh)
 
-                    # # Move cursor to the desired origin position
-                    # context.scene.cursor.location = origin_location
+                        bbox_size = context.scene.view_pg_bspace.bbox_size
+                        bbox_size_half = bbox_size / 2.0
 
-                    # # Set origin to cursor position
-                    # context.view_layer.objects.active = obj_cube
-                    # bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+                        #obj_cube.empty_display_size = bbox_size_half
+                        obj_cube.scale=(bbox_size_half, bbox_size_half, bbox_size_half)
+                        obj_cube.location=(bbox_size_half, bbox_size_half, bbox_size_half)                    
 
-                    # # Restore cursor position
-                    # context.scene.cursor.location = saved_cursor_location                    
+                        # Add the object into the scene
+                        #scene = bpy.context.scene
+                        #scene.collection.objects.link(obj_cube)
+                        # Get the active collection
+                        active_collection = bpy.context.view_layer.active_layer_collection.collection
 
-                    obj_cube['MIN_VALUE'] = 0.0
-                    obj_cube['MAX_VALUE'] = 1.0
-                    self.set_vdb_shader(context, obj_cube)
+                        # Add the object into the active collection
+                        active_collection.objects.link(obj_cube)
 
-                    try:
-                        context.scene.cyclesphi.server_settings.mat_volume = obj_cube.data.materials[0]
-                    except:
-                        pass     
+                        # # Set the origin to the center of the cube
+                        # v = context.scene.view_pg_bspace.bbox_size
+                        # origin_location = (v/2, v/2, v/2)
 
-                # Optionally set the object as active and select it
-                bpy.context.view_layer.objects.active = obj_cube
-                #obj_cube.select_set(True)                
+                        # # Store the current cursor location
+                        # saved_cursor_location = context.scene.cursor.location.copy()
+
+                        # # Move cursor to the desired origin position
+                        # context.scene.cursor.location = origin_location
+
+                        # # Set origin to cursor position
+                        # context.view_layer.objects.active = obj_cube
+                        # bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+
+                        # # Restore cursor position
+                        # context.scene.cursor.location = saved_cursor_location                    
+
+                        obj_cube['MIN_VALUE'] = 0.0
+                        obj_cube['MAX_VALUE'] = 1.0
+                        self.set_vdb_shader(context, obj_cube)
+
+                        try:
+                            context.scene.cyclesphi.server_settings.mat_volume = obj_cube.data.materials[0]
+                        except:
+                            pass     
+
+                    # Optionally set the object as active and select it
+                    bpy.context.view_layer.objects.active = obj_cube
+                    #obj_cube.select_set(True)                
 
         #set view
         # if grid_dim == context.scene.view_pg_bspace.grid_dim:
@@ -2013,7 +2027,7 @@ class BSPACE:
         #obj_vdb_new.matrix_world = context.scene.view_pg_bspace.box_object_select.matrix_world
         #obj_vdb_new.select_set(False)
 
-        if not file_data is None:
+        if not file_data is None and file_type != "RAW_PART":
             obj_vdb_new.data.render.clipping = 0
             obj_vdb_new.data.render.precision = 'FULL'
 
@@ -2062,17 +2076,19 @@ class BSPACE:
         #bpy.context.view_layer.objects.active = context.scene.view_pg_bspace.box_object_select
 
         #set new shader
-        if not file_data is None or len(obj_vdb_new.data.materials) == 0:
+        if file_type != "RAW_PART" and (not file_data is None or len(obj_vdb_new.data.materials) == 0):
             self.set_vdb_shader(context, obj_vdb_new)
 
-        mat_node_tree = obj_vdb_new.data.materials[0].node_tree
+        # Update shader nodes for all object types
+        if len(obj_vdb_new.data.materials) > 0:
+            mat_node_tree = obj_vdb_new.data.materials[0].node_tree
 
-        if "Map Range" in mat_node_tree.nodes:
-            mat_node_tree.nodes["Map Range"].inputs['From Min'].default_value = obj_vdb_new['MIN_VALUE_REDUCED']
-            mat_node_tree.nodes["Map Range"].inputs['From Max'].default_value = obj_vdb_new['MAX_VALUE_REDUCED']
+            if "Map Range" in mat_node_tree.nodes:
+                mat_node_tree.nodes["Map Range"].inputs['From Min'].default_value = obj_vdb_new['MIN_VALUE_REDUCED']
+                mat_node_tree.nodes["Map Range"].inputs['From Max'].default_value = obj_vdb_new['MAX_VALUE_REDUCED']
 
-        if "Math" in mat_node_tree.nodes:
-            mat_node_tree.nodes["Math"].inputs[1].default_value = context.scene.view_pg_bspace.density
+            if "Math" in mat_node_tree.nodes:
+                mat_node_tree.nodes["Math"].inputs[1].default_value = context.scene.view_pg_bspace.density
 
         # add to list
         if not file_data is None:
