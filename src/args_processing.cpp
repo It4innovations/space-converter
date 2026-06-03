@@ -68,7 +68,8 @@ namespace space_converter {
 #endif
 	
 		// === Advanced Options ===
-		std::cout << "\t--bbox x1 y1 z1 x2 y2 z2           : Define axis-aligned bounding box" << std::endl;
+		std::cout << "\t--sort-by-radius                   : Sort particles by radius" << std::endl;
+		std::cout << "\t--sort-by-non-overlap              : Sort particles spatially to avoid atomic operations" << std::endl;		std::cout << "\t--bbox x1 y1 z1 x2 y2 z2           : Define axis-aligned bounding box" << std::endl;
 		std::cout << "\t--save-mpi-rank                    : Save MPI rank information                    : Save MPI rank information" << std::endl;
 
 #ifdef WITH_GPU_CUDA
@@ -288,6 +289,9 @@ namespace space_converter {
 			else if (arg == "--sort-by-radius") {
 				from_cl.use_sort_by_radius = true;
 			}
+			else if (arg == "--sort-by-non-overlap") {
+				from_cl.use_sort_by_non_overlap = true;
+				}
 			else if (arg == "-h" || arg == "--help") {
 				// Display usage information
 				usage();

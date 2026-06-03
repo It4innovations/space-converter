@@ -77,6 +77,8 @@ namespace common {
             void sort_particles_by_radius_cpu();                        ///< Sort particle IDs by radius on CPU (ascending)
             //void sort_particles_by_radius_gpu();                        ///< Sort particle IDs by radius on GPU (ascending)
             void sort_particles_by_radius_gpu_inplace();                ///< Sort particle IDs by radius on GPU using device pointers (no CPU<->GPU copy)
+            void sort_particles_by_nonoverlap_gpu_inplace();            ///< Sort particle IDs spatially using Morton codes to avoid overlap (GPU)
+            void sort_particles_by_nonoverlap_cpu();                    ///< Sort particle IDs spatially using Morton codes to avoid overlap (CPU)
         };
     }
 

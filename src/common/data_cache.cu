@@ -230,5 +230,108 @@ namespace common {
             //CUDA_CHECK_LAST_ERROR();
             CUDA_SYNC_CHECK();
         }
+
+        // Device function to compute Morton code (Z-order curve) for 3D position
+        __device__ inline uint64_t compute_morton_code_3d_gpu(float x, float y, float z, float min_coord, float max_coord) {
+            // Normalize coordinates to [0, 1] range
+            float range = max_coord - min_coord;
+            if (range <= 0.0f) range = 1.0f;
+            
+            float nx = (x - min_coord) / range;
+            float ny = (y - min_coord) / range;
+            float nz = (z - min_coord) / range;
+            
+            // Clamp to [0, 1]
+            nx = fmaxf(0.0f, fminf(1.0f, nx));
+            ny = fmaxf(0.0f, fminf(1.0f, ny));
+            nz = fmaxf(0.0f, fminf(1.0f, nz));
+            
+            // Convert to 21-bit integers (total 63 bits for Morton code)
+            uint64_t ix = static_cast<uint64_t>(nx * ((1 << 21) - 1));
+            uint64_t iy = static_cast<uint64_t>(ny * ((1 << 21) - 1));
+            uint64_t iz = static_cast<uint64_t>(nz * ((1 << 21) - 1));
+            
+            // Interleave bits
+            uint64_t morton = 0;
+            for (int i = 0; i < 21; ++i) {
+                morton |= ((ix & (1ULL << i)) << (2 * i));
+                morton |= ((iy & (1ULL << i)) << (2 * i + 1));
+                morton |= ((iz & (1ULL << i)) << (2 * i + 2));
+            }
+            
+            return morton;
+        }
+
+        void CacheManager::sort_particles_by_nonoverlap_gpu_inplace() {
+            // Sort particles using Morton codes (Z-order curve) to ensure spatial coherence
+            // This minimizes overlapping voxel regions, reducing/eliminating atomic operations
+            
+            for (size_t ptype = 0; ptype < d_pos_particles_per_ptype.size(); ++ptype) {
+                if (ptype >= d_particles_id_ordered_per_ptype.size()) {
+                    continue;
+                }
+
+                float* d_pos_ptr = d_pos_particles_per_ptype[ptype];
+                size_t* d_ids_ptr = d_particles_id_ordered_per_ptype[ptype];
+
+                if (d_pos_ptr == nullptr || d_ids_ptr == nullptr) {
+                    continue;
+                }
+
+                // Get the size from the CPU vectors
+                if (ptype >= pos_particles_per_ptype.size() || 
+                    ptype >= particles_id_ordered_per_ptype.size()) {
+                    continue;
+                }
+
+                size_t n_particles = particles_id_ordered_per_ptype[ptype].size();
+                if (n_particles == 0 || pos_particles_per_ptype[ptype].size() < n_particles * 3) {
+                    continue;
+                }
+
+                // Find bounding box on CPU (or use pre-computed values)
+                const auto& positions = pos_particles_per_ptype[ptype];
+                const auto& ids = particles_id_ordered_per_ptype[ptype];
+                
+                float min_coord = std::numeric_limits<float>::max();
+                float max_coord = std::numeric_limits<float>::lowest();
+                
+                for (size_t i = 0; i < n_particles; ++i) {
+                    size_t idx = ids[i] * 3;
+                    for (int dim = 0; dim < 3; ++dim) {
+                        float coord = positions[idx + dim];
+                        min_coord = std::min(min_coord, coord);
+                        max_coord = std::max(max_coord, coord);
+                    }
+                }
+
+                // Wrap device pointers
+                thrust::device_ptr<float> d_pos_thrust(d_pos_ptr);
+                thrust::device_ptr<size_t> d_ids_thrust(d_ids_ptr);
+
+                // Sort ids by Morton codes computed from positions
+                thrust::sort(d_ids_thrust, d_ids_thrust + n_particles,
+                    [d_pos_thrust, min_coord, max_coord] __device__ (size_t i, size_t j) {
+                        // Get positions for particle i
+                        float xi = d_pos_thrust[i * 3 + 0];
+                        float yi = d_pos_thrust[i * 3 + 1];
+                        float zi = d_pos_thrust[i * 3 + 2];
+                        
+                        // Get positions for particle j
+                        float xj = d_pos_thrust[j * 3 + 0];
+                        float yj = d_pos_thrust[j * 3 + 1];
+                        float zj = d_pos_thrust[j * 3 + 2];
+                        
+                        // Compute Morton codes
+                        uint64_t morton_i = compute_morton_code_3d_gpu(xi, yi, zi, min_coord, max_coord);
+                        uint64_t morton_j = compute_morton_code_3d_gpu(xj, yj, zj, min_coord, max_coord);
+                        
+                        return morton_i < morton_j;
+                    });
+            }
+
+            // Check for CUDA errors
+            CUDA_SYNC_CHECK();
+        }
     }
 }

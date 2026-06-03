@@ -101,6 +101,7 @@ namespace space_converter {
 #endif
 
 		bool use_sort_by_radius = false;
+		bool use_sort_by_non_overlap = false;
 
 		// === MPI Configuration ===
 		
