@@ -168,7 +168,7 @@ namespace ipic3d {
         }
 
         int get_particle_rho_blocknr() {
-            return -1; // No density block
+            return 0; // No density block
         }
 
         std::string get_dataset_name(int blocknr) {

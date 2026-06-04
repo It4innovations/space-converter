@@ -102,10 +102,16 @@ namespace plutovtk {
 			vtk_grid->GetDimensions(grid_dims);
 			
 			// Calculate number of cells (dimensions - 1 for cells)
+			//int cell_dims[3] = {
+			//	grid_dims[0] - 1,
+			//	grid_dims[1] - 1,
+			//	grid_dims[2] - 1
+			//};
+
 			int cell_dims[3] = {
-				grid_dims[0] - 1,
-				grid_dims[1] - 1,
-				grid_dims[2] - 1
+				grid_dims[0],
+				grid_dims[1],
+				grid_dims[2]
 			};
 			
 			total_cells = (int64_t)cell_dims[0] * cell_dims[1] * cell_dims[2];
@@ -253,10 +259,15 @@ namespace plutovtk {
 
 		void get_particle_position(uint64_t id, double* pos) {
 			// Convert linear cell ID to (i, j, k) indices
+			//int cell_dims[3] = {
+			//	grid_dims[0] - 1,
+			//	grid_dims[1] - 1,
+			//	grid_dims[2] - 1
+			//};
 			int cell_dims[3] = {
-				grid_dims[0] - 1,
-				grid_dims[1] - 1,
-				grid_dims[2] - 1
+				grid_dims[0],
+				grid_dims[1],
+				grid_dims[2]
 			};
 			
 			int k = id / (cell_dims[0] * cell_dims[1]);
@@ -264,10 +275,10 @@ namespace plutovtk {
 			int i = id % cell_dims[0];
 			
 			// Get cell center position
-			if (i < x_coords.size() - 1 && j < y_coords.size() - 1 && k < z_coords.size() - 1) {
-				pos[0] = (x_coords[i] + x_coords[i + 1]) * 0.5;
-				pos[1] = (y_coords[j] + y_coords[j + 1]) * 0.5;
-				pos[2] = (z_coords[k] + z_coords[k + 1]) * 0.5;
+			if (i < x_coords.size() /* - 1*/ && j < y_coords.size() /* - 1 */ && k < z_coords.size() /* - 1 */) {
+				pos[0] = x_coords[i]; // (x_coords[i] + x_coords[i + 1]) * 0.5;
+				pos[1] = y_coords[j]; // (y_coords[j] + y_coords[j + 1]) * 0.5;
+				pos[2] = z_coords[k]; // (z_coords[k] + z_coords[k + 1]) * 0.5;
 			}
 			else {
 				pos[0] = pos[1] = pos[2] = 0.0;
@@ -307,7 +318,7 @@ namespace plutovtk {
 
 		int get_particle_rho_blocknr() {
 			// First scalar field is rho
-			return PlutoVTKBlockType::BTMax;
+			return 0;// PlutoVTKBlockType::BTMax;
 		}
 
 		void get_types_and_blocks(std::vector<int>& types_and_blocks) {

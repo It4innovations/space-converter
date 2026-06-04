@@ -175,7 +175,7 @@ namespace space_converter {
 		}
 #endif
 		else {
-			throw std::runtime_error("Unknown data type [GADGET, CHANGA_TIPSY, CHANGA_NCHILADA, HACC_GENERICIO, HACC_BIN, IPIC3D_HDF5, PLUTO_VTK, IPIC3D_HDF5");
+			throw std::runtime_error("Unknown data type [GADGET, CHANGA_TIPSY, CHANGA_NCHILADA, HACC_GENERICIO, HACC_BIN, IPIC3D_HDF5, PLUTO_VTK]");
 		}
 
 		// Other params

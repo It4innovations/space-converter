@@ -176,13 +176,14 @@ namespace ipic3d {
                 if (types_and_blocks[ipic3d::IPIC3DParticleType::PTMax * bnr + t] == 0)
                     continue;
 
-                std::string type_name = get_type_name(t);
-                std::string block_name = get_dataset_name(bnr);
+                //std::string type_name = get_type_name(t);
+                //std::string block_name = get_dataset_name(bnr);
 
-                if (particle_data_types.length() > 0)
-                    particle_data_types += ",";
+                //if (particle_data_types.length() > 0)
+                //    particle_data_types += ",";
 
-                particle_data_types += type_name + "_" + block_name;
+                //particle_data_types += type_name + "_" + block_name;
+                particle_data_types = particle_data_types + get_type_name(t) + ";" + std::to_string(t) + ";" + get_dataset_name(bnr) + ";" + std::to_string(bnr) + "\n";
             }
         }
 

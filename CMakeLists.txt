@@ -91,6 +91,7 @@ if(WITH_VTK)
     find_package(VTK REQUIRED COMPONENTS
         CommonCore
         CommonDataModel
+        IOLegacy
         IOXML
         IOParallelXML
     )
