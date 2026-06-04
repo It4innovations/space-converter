@@ -218,12 +218,18 @@ namespace common {
                 thrust::device_ptr<float> d_radii_thrust(d_radii_ptr);
                 thrust::device_ptr<size_t> d_ids_thrust(d_ids_ptr);
 
-                // Sort ids in-place based on radii values (radii array remains unchanged)
-                // d_ids_ptr already contains [0, 1, 2, ..., n-1]
-                thrust::sort(d_ids_thrust, d_ids_thrust + n,
-                    [d_radii_thrust] __device__ (size_t i, size_t j) {
-                        return d_radii_thrust[i] < d_radii_thrust[j];
-                    });
+                //// Sort ids in-place based on radii values (radii array remains unchanged)
+                //// d_ids_ptr already contains [0, 1, 2, ..., n-1]
+                //thrust::sort(d_ids_thrust, d_ids_thrust + n,
+                //    [d_radii_thrust] __device__ (size_t i, size_t j) {
+                //        return d_radii_thrust[i] < d_radii_thrust[j];
+                //    });
+
+                // Sort ids by radius: use sort_by_key with a temporary copy of radii as keys.
+                // The IDs contain global particle indices, not local 0..n-1 indices, so they
+                // cannot be used to index into d_radii_thrust directly.
+                thrust::device_vector<float> radii_copy(d_radii_thrust, d_radii_thrust + n);
+                thrust::sort_by_key(radii_copy.begin(), radii_copy.end(), d_ids_thrust);
             }
 
             // Check for CUDA errors
