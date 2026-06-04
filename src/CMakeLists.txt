@@ -92,6 +92,14 @@ if(WITH_HACC)
     add_definitions(-DWITH_HACC)
 endif()
 
+if(WITH_IPIC3D)
+    add_definitions(-DWITH_IPIC3D)
+endif()
+
+if(WITH_PLUTO)
+    add_definitions(-DWITH_PLUTO)
+endif()
+
 if(WITH_NANOFLANN)
     add_definitions(-DWITH_NANOFLANN)
 endif()
@@ -128,6 +136,14 @@ if(WITH_HACC)
     add_subdirectory(hacc)
 endif()
 
+if(WITH_IPIC3D)
+    add_subdirectory(ipic3d)
+endif()
+
+if(WITH_PLUTO)
+    add_subdirectory(pluto)
+endif()
+
 ########################################################
 add_executable(space_converter ${SRC})
 target_link_libraries(
@@ -156,8 +172,16 @@ if(NOT WIN32 AND NOT APPLE)
     target_link_libraries(space_converter stdc++fs)
 endif()
 
+if(WITH_IPIC3D)
+    target_link_libraries(space_converter ipic3d_hdf5_converter)
+endif()
+
 if(WITH_HACC)
     target_link_libraries(space_converter hacc_genericio_converter haccbin_converter)
+endif()
+
+if(WITH_PLUTO)
+    target_link_libraries(space_converter pluto_vtk_converter)
 endif()
 
 if(WITH_CUDAKDTREE)

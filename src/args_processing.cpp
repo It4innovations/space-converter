@@ -29,7 +29,7 @@ namespace space_converter {
 	 */
 	void usage()
 	{
-		std::cout << "./space_converter --data-type [GADGET, GADGET_SIMPLE, CHANGA_TIPSY, CHANGA_NCHILADA, HACC_GENERICIO, HACC_BIN] <options> <args>" << std::endl;
+		std::cout << "./space_converter --data-type [GADGET, GADGET_SIMPLE, CHANGA_TIPSY, CHANGA_NCHILADA, HACC_GENERICIO, HACC_BIN, IPIC3D_HDF5, PLUTO_VTK] <options> <args>" << std::endl;
 
 		// === General Options ===
 		std::cout << "options:" << std::endl;
@@ -103,6 +103,15 @@ namespace space_converter {
 
 		std::cout << "\nHACC_BIN args:" << std::endl;
 		std::cout << "\t--haccbin-file X            : HACC binary format file path" << std::endl;
+
+		std::cout << "\nIPIC3D_HDF5 args:" << std::endl;
+		std::cout << "\t--hdf5-file X               : iPIC3D HDF5 format file path" << std::endl;
+		std::cout << "\t--species-id X              : Species ID (0-3) to load" << std::endl;
+		std::cout << "\t--cycle-id X                : Cycle/timestep ID to load" << std::endl;
+
+		std::cout << "\nPLUTO_VTK args:" << std::endl;
+		std::cout << "\t--vtk-file X                : PLUTO VTK rectilinear grid file path" << std::endl;
+		std::cout << "\t--scalar-names [names...]   : Scalar field names to load (optional)" << std::endl;
 
 		exit(0);
 	}
@@ -431,3 +440,15 @@ namespace space_converter {
 
 // HACC binary format with info
 //--data-type HACC_BIN --haccbin-file e:\temp\hacc\Full.cosmo.0 --grid-dim 1000 --output-path f:\temp\ --info
+
+
+// === IPIC3D_HDF5 Format Examples ===
+
+// iPIC3D HDF5 format with species 0, cycle 0
+//--data-type IPIC3D_HDF5 --hdf5-file /path/to/restart0.hdf --species-id 0 --cycle-id 0 --grid-dim 1000 --output-path /temp/ --info
+
+// iPIC3D HDF5 format with species 1, cycle 299
+//--data-type IPIC3D_HDF5 --hdf5-file /path/to/restart0.hdf --species-id 1 --cycle-id 299 --grid-dim 1000 --output-path /temp/ --port 5000
+
+// iPIC3D HDF5 animation sequence (cycling through timesteps)
+//--data-type IPIC3D_HDF5 --hdf5-file /path/to/restart0.hdf --species-id 0 --cycle-id 0 --grid-dim 1000 --output-path /temp/ --anim 0 299 10

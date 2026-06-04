@@ -36,6 +36,14 @@
 #	include "hacc/hacc_genericio_convert_vdb.h"
 #endif
 
+#ifdef WITH_IPIC3D
+#	include "ipic3d/ipic3d_hdf5_convert_vdb.h"
+#endif
+
+#ifdef WITH_PLUTO
+#	include "pluto/pluto_vtk_convert_vdb.h"
+#endif
+
 #ifdef WITH_OPENMP
 #	include <omp.h>
 #endif
@@ -125,6 +133,8 @@ namespace space_converter {
 	 *   - HACC_GENERICIO: HACC GenericIO format (if compiled with support)
 	 *   - HDF5: HDF5 format (if compiled with support)
 	 *   - HACC_BIN: HACC binary format
+	 *   - IPIC3D_HDF5: iPIC3D HDF5 format (if compiled with support)
+	 *   - PLUTO_VTK: PLUTO VTK rectilinear grid format (if compiled with support)
 	 */
 	common::vdb::ConvertVDBBase* init_converter(int argc, char** argv, space_converter::FromCL& from_cl, common::SpaceData& space_data)
 	{
@@ -153,9 +163,19 @@ namespace space_converter {
 		else if (from_cl.data_type == "HACC_BIN") {
 			convert_vdb_base = new haccbin::ConvertVDBHACCBin();
 		}
+#endif
+#ifdef WITH_IPIC3D
+		else if (from_cl.data_type == "IPIC3D_HDF5") {
+			convert_vdb_base = new ipic3d::ConvertVDBIPIC3DHDF5();
+		}
 #endif		
+#ifdef WITH_PLUTO
+		else if (from_cl.data_type == "PLUTO_VTK") {
+			convert_vdb_base = new plutovtk::ConvertVDBPlutoVTK();
+		}
+#endif
 		else {
-			throw std::runtime_error("Unknown data type [GADGET, CHANGA_TIPSY, CHANGA_NCHILADA, HACC_GENERICIO, HACC_BIN]): " + from_cl.data_type);
+			throw std::runtime_error("Unknown data type [GADGET, CHANGA_TIPSY, CHANGA_NCHILADA, HACC_GENERICIO, HACC_BIN, IPIC3D_HDF5, PLUTO_VTK, IPIC3D_HDF5");
 		}
 
 		// Other params

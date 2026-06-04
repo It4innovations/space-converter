@@ -32,6 +32,8 @@ option(WITH_OPENVDB  "Enable OPENVDB" ON)
 
 option(WITH_HDF5  "Enable HDF5" OFF)
 option(WITH_HACC  "Enable HACC" OFF)
+option(WITH_IPIC3D  "Enable IPIC3D" OFF)
+option(WITH_PLUTO  "Enable PLUTO" OFF)
 option(WITH_VTK   "Enable VTK" OFF)
 
 option(GADGET_MAX_HSML  "Enable loading of limited values from gadget files" OFF)
@@ -147,6 +149,24 @@ if(WITH_HACC)
     # Set zlib and zstd include directories for SZ library
     set(ZLIB_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/submodules/c-blosc/internal-complibs/zlib-1.3.1")
     set(ZSTD_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/submodules/c-blosc/internal-complibs/zstd-1.5.6")
+endif()
+
+if(WITH_IPIC3D)
+    # IPIC3D requires HDF5
+    set(WITH_HDF5 ON)
+endif()
+
+if(WITH_PLUTO)
+    # PLUTO requires VTK
+    set(WITH_VTK ON)
+endif()
+
+if(WITH_HDF5)
+    find_package(HDF5 REQUIRED COMPONENTS C)
+    if(HDF5_FOUND)
+        set(HDF5_INCLUDE_DIRS ${HDF5_INCLUDE_DIRS})
+        set(HDF5_LIBRARIES ${HDF5_LIBRARIES})
+    endif()
 endif()
 
 ########################################################
