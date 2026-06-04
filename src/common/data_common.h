@@ -233,7 +233,8 @@ namespace common {
 		float max_value_reduced = 1.0f;  // Reduced maximum after MPI reduction
 
 		// ========== Particle Parameters ==========
-		float particle_fix_size = 0.0f;  // Fixed particle radius (0.0 = use smoothing length)
+		float particle_radius_multiplier = 0.0f;  // Multiplier for particle radius
+		double particle_radius_const = 0.0; // Fixed particle radius (0.0 = use smoothing length)
 		float filter_min = -FLT_MAX;     // Minimum filter threshold
 		float filter_max = FLT_MAX;      // Maximum filter threshold
 

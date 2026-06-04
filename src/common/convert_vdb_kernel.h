@@ -58,13 +58,13 @@ namespace common {
 					int* bbox_min_orig,
 					double bbox_size_orig,
 					double scale_space_diagonal,
-					float particle_fix_size,
+					float particle_radius_multiplier,
 					//int particle_type,
 					const float* radius_particles,
-					double radius_particle_const
+					double particle_radius_const
 				) {
-				if (radius_particle_const > 0.0) {
-					return radius_particle_const;
+				if (particle_radius_const > 0.0) {
+					return particle_radius_const;
 				}
 
 				// Conversion factor from world space to voxel space
@@ -82,8 +82,8 @@ namespace common {
 					radius = radius_particles[pid];
 				}
 
-				if (particle_fix_size != 0.0f) {
-					radius *= particle_fix_size;
+				if (particle_radius_multiplier != 0.0f) {
+					radius *= particle_radius_multiplier;
 				}
 
 				// Convert radius to voxel units
@@ -111,9 +111,9 @@ namespace common {
 					double scale_space_diagonal,
 					common::SpaceData::DenseType dense_type,
 					common::SpaceData::DenseNorm dense_norm,
-					float particle_fix_size,
+					float particle_radius_multiplier,
 					const float* radius_particles,
-					double radius_particle_const,
+					double particle_radius_const,
 					int block_name_id,
 					double* pos
 				) {
@@ -131,9 +131,9 @@ namespace common {
 					bbox_min_orig,
 					bbox_size_orig,
 					scale_space_diagonal,
-					particle_fix_size,
+					particle_radius_multiplier,
 					radius_particles,
-					radius_particle_const
+					particle_radius_const
 				);
 
 				int iradiusx = static_cast<int>(hsml);
@@ -257,7 +257,7 @@ namespace common {
 					double bbox_size_orig,
 					int bbox_dim,
 					double scale_space_diagonal,
-					float particle_fix_size,
+					float particle_radius_multiplier,
 					double bbox_x_min_norm,
 					double bbox_x_max_norm,
 					double bbox_y_min_norm,
@@ -272,7 +272,7 @@ namespace common {
 					int frame_req,
 					int frame,
 					bool use_simple_density,
-					double radius_particle_const,
+					double particle_radius_const,
 
 					bool is_dense_grid,
 					// Output parameters
@@ -318,9 +318,9 @@ namespace common {
 						bbox_min_orig,
 						bbox_size_orig,
 						scale_space_diagonal,
-						particle_fix_size,
+						particle_radius_multiplier,
 						radius_particles,
-						radius_particle_const
+						particle_radius_const
 					);
 
 					if (out_px_norm + radiusxyz_max < bbox_x_min_norm || out_px_norm - radiusxyz_max > bbox_x_max_norm)
@@ -410,7 +410,7 @@ namespace common {
 			//	const float* pos_particles,
 			//	const float* radius_particles,
 			//	size_t num_particles,
-			//	float particle_fix_size,
+			//	float particle_radius_multiplier,
 			//	int* bbox_min_orig,
 			//	double bbox_size_orig,
 			//	int bbox_dim,
@@ -439,7 +439,7 @@ namespace common {
 			//	const float* pos_particles,
 			//	const float* radius_particles,
 			//	size_t num_particles,
-			//	float particle_fix_size,
+			//	float particle_radius_multiplier,
 			//	int* bbox_min_orig,
 			//	double bbox_size_orig,
 			//	int bbox_dim,
@@ -474,7 +474,7 @@ namespace common {
 				const float* radius_particles,
 				const float* value_particles,
 				size_t num_particles,
-				float particle_fix_size,
+				float particle_radius_multiplier,
 				std::string grid_name,
 				float grid_transform,
 				float* bbox_min,
@@ -505,7 +505,7 @@ namespace common {
 				float* bbox_sphere_pos,
 				float bbox_sphere_r,
 				bool use_simple_density,
-				double radius_particle_const,
+				double particle_radius_const,
 
 				double bbox_x_min_norm,
 				double bbox_x_max_norm,
@@ -541,7 +541,7 @@ namespace common {
 				const float* radius_particles,
 				const float* value_particles,
 				size_t num_particles,
-				float particle_fix_size,
+				float particle_radius_multiplier,
 				std::string grid_name,
 				float grid_transform,
 				float* bbox_min,
@@ -572,7 +572,7 @@ namespace common {
 				float* bbox_sphere_pos,
 				float bbox_sphere_r,
 				bool use_simple_density,
-				double radius_particle_const,
+				double particle_radius_const,
 
 				double bbox_x_min_norm,
 				double bbox_x_max_norm,

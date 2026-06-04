@@ -437,7 +437,7 @@ namespace space_converter {
 				tcp_connection.recv_data_data((char*)&space_data.dense_type, sizeof(int));
 				tcp_connection.recv_data_data((char*)&space_data.dense_norm, sizeof(int));
 				tcp_connection.recv_data_data((char*)&space_data.object_size, sizeof(float));
-				tcp_connection.recv_data_data((char*)&space_data.particle_fix_size, sizeof(float));
+				tcp_connection.recv_data_data((char*)&space_data.particle_radius_multiplier, sizeof(float));
 				
 				// Receive filtering parameters
 				tcp_connection.recv_data_data((char*)&space_data.filter_min, sizeof(float));

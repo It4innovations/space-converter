@@ -61,7 +61,7 @@ namespace common {
             float* d_values_particles;                    ///< GPU particle values for extracted type (e.g., density, temperature)
 
             // Others
-            double radius_particle_const = 0.0; ///< Constant particle radius value
+            double particle_radius_const = 0.0; ///< Constant particle radius value
 
             /// Flag to enable GPU acceleration for CUDA-based computations
             bool use_gpu_cuda = false;

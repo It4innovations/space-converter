@@ -71,7 +71,7 @@ namespace common {
 			 * specified grid type. Handles filtering, normalization, and spatial indexing.
 			 * 
 			 * @param particle_type Type of particles to convert
-			 * @param particle_fix_size Fixed particle size multiplier
+			 * @param particle_radius_multiplier Fixed particle size multiplier
 			 * @param grid_name Name for the output grid
 			 * @param grid_transform Grid transformation scale
 			 * @param bbox_min Bounding box minimum coordinates
@@ -82,7 +82,7 @@ namespace common {
 			 */
 			void convert_iolib_to_grid(
 				int particle_type,
-				float particle_fix_size,
+				float particle_radius_multiplier,
 				std::string grid_name,
 				float grid_transform,
 				float* bbox_min,
@@ -237,7 +237,7 @@ namespace common {
 			 * @param bbox_min_orig Original bounding box minimum
 			 * @param bbox_size_orig Original bounding box size
 			 * @param scale_space_diagonal Diagonal scaling factor
-			 * @param particle_fix_size Fixed size multiplier
+			 * @param particle_radius_multiplier Fixed size multiplier
 			 * @param particle_type Type of particle
 			 * @return Particle radius in grid coordinates
 			 */
@@ -247,7 +247,7 @@ namespace common {
 				int* bbox_min_orig,
 				double bbox_size_orig,
 				double scale_space_diagonal,
-				float particle_fix_size,
+				float particle_radius_multiplier,
 				int particle_type
 			);
 

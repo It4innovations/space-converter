@@ -254,6 +254,10 @@ namespace space_converter {
 				space_data.offset_position[1] = std::stof(argv[++i]);
 				space_data.offset_position[2] = std::stof(argv[++i]);
 			}
+			else if (arg == "--radius-const") {
+				// Set constant particle radius
+				space_data.particle_radius_const = std::stod(argv[++i]);
+			}
 			// === Neighbor Search Configuration ===
 #if defined(WITH_CUDAKDTREE) || defined(WITH_NANOFLANN)
 			else if (arg == "--calc-radius-neigh") {

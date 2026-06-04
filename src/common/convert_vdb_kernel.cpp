@@ -97,7 +97,7 @@ namespace common {
 			 * @param pos_particles Particle positions (interleaved xyz)
 			 * @param radius_particles Per-particle radii (can be nullptr)
 			 * @param num_particles Total number of particles to process
-			 * @param particle_fix_size Multiplier for particle radius
+			 * @param particle_radius_multiplier Multiplier for particle radius
 			 * @param bbox_min_orig Bounding box minimum corner
 			 * @param bbox_size_orig Bounding box size
 			 * @param bbox_dim Grid resolution
@@ -121,7 +121,7 @@ namespace common {
 				const float* radius_particles,
 				const float* value_particles,
 				size_t num_particles,
-				float particle_fix_size,
+				float particle_radius_multiplier,
 				int* bbox_min_orig,
 				double bbox_size_orig,
 				int bbox_dim,
@@ -134,7 +134,7 @@ namespace common {
 				int frame_req,
 				int frame,
 				bool use_simple_density,
-				double radius_particle_const,
+				double particle_radius_const,
 
 				double bbox_x_min_norm,
 				double bbox_x_max_norm,
@@ -198,7 +198,7 @@ namespace common {
 								bbox_size_orig,
 								bbox_dim,
 								scale_space_diagonal,
-								particle_fix_size,
+								particle_radius_multiplier,
 								bbox_x_min_norm, bbox_x_max_norm,
 								bbox_y_min_norm, bbox_y_max_norm,
 								bbox_z_min_norm, bbox_z_max_norm,
@@ -206,7 +206,7 @@ namespace common {
 								bbox_sphere_pos, bbox_sphere_r,
 								anim_type, frame_req, frame,
 								use_simple_density,
-								radius_particle_const,
+								particle_radius_const,
 
 								false, // is_dense_grid = false for sparse
 								// Outputs
@@ -269,7 +269,7 @@ namespace common {
 		 * @param pos_particles Particle positions (interleaved xyz)
 		 * @param radius_particles Per-particle radii (can be nullptr)
 		 * @param num_particles Total number of particles to process
-		 * @param particle_fix_size Multiplier for particle radius
+		 * @param particle_radius_multiplier Multiplier for particle radius
 		 * @param bbox_min_orig Bounding box minimum corner
 		 * @param bbox_size_orig Bounding box size
 		 * @param bbox_dim Grid resolution
@@ -297,7 +297,7 @@ namespace common {
 			const float* radius_particles,
 			const float* value_particles,
 			size_t num_particles,
-			float particle_fix_size,
+			float particle_radius_multiplier,
 			int* bbox_min_orig,
 			double bbox_size_orig,
 			int bbox_dim,
@@ -314,7 +314,7 @@ namespace common {
 			int frame_req,
 			int frame,
 			bool use_simple_density,
-			double radius_particle_const,
+			double particle_radius_const,
 
 			double bbox_x_min_norm,
 			double bbox_x_max_norm,
@@ -358,7 +358,7 @@ namespace common {
 					bbox_size_orig,
 					bbox_dim,
 					scale_space_diagonal,
-					particle_fix_size,
+					particle_radius_multiplier,
 					bbox_x_min_norm, bbox_x_max_norm,
 					bbox_y_min_norm, bbox_y_max_norm,
 					bbox_z_min_norm, bbox_z_max_norm,
@@ -366,7 +366,7 @@ namespace common {
 					bbox_sphere_pos, bbox_sphere_r,
 					anim_type, frame_req, frame,
 					use_simple_density,
-					radius_particle_const, 
+					particle_radius_const, 
 
 					true, // is_dense_grid = true for dense
 					// Outputs
@@ -400,9 +400,9 @@ namespace common {
 					scale_space_diagonal,
 					dense_type,
 					dense_norm,
-					particle_fix_size,
+					particle_radius_multiplier,
 					radius_particles,
-					radius_particle_const,
+					particle_radius_const,
 					block_name_id,
 					Pos
 				);
@@ -423,7 +423,7 @@ namespace common {
 		 * @param pos_particles Particle positions (interleaved xyz)
 		 * @param radius_particles Per-particle radii (can be nullptr)
 		 * @param num_particles Total number of particles to process
-		 * @param particle_fix_size Multiplier for particle radius
+		 * @param particle_radius_multiplier Multiplier for particle radius
 		 * @param bbox_min_orig Bounding box minimum corner
 		 * @param bbox_size_orig Bounding box size
 		 * @param bbox_dim Grid resolution
@@ -449,7 +449,7 @@ namespace common {
 			const float* radius_particles,
 			const float* value_particles,
 			size_t num_particles,
-			float particle_fix_size,
+			float particle_radius_multiplier,
 			int* bbox_min_orig,
 			double bbox_size_orig,
 			int bbox_dim,
@@ -464,7 +464,7 @@ namespace common {
 			int frame_req,
 			int frame,
 			bool use_simple_density,
-			double radius_particle_const,
+			double particle_radius_const,
 
 			double bbox_x_min_norm,
 			double bbox_x_max_norm,
@@ -523,7 +523,7 @@ namespace common {
 					bbox_size_orig,
 					bbox_dim,
 					scale_space_diagonal,
-					particle_fix_size,
+					particle_radius_multiplier,
 					bbox_x_min_norm, bbox_x_max_norm,
 					bbox_y_min_norm, bbox_y_max_norm,
 					bbox_z_min_norm, bbox_z_max_norm,
@@ -531,7 +531,7 @@ namespace common {
 					bbox_sphere_pos, bbox_sphere_r,
 					anim_type, frame_req, frame,
 					use_simple_density,
-					radius_particle_const,
+					particle_radius_const,
 
 					false, // is_dense_grid = false for raw
 					// Outputs
@@ -568,15 +568,25 @@ namespace common {
 				raw_values.values.push_back(v_orig);
 
 				// Compute and store particle radius
+				//double pr = get_particle_radius(
+				//	cached_idx,
+				//	bbox_dim,
+				//	bbox_min_orig,
+				//	bbox_size_orig,
+				//	scale_space_diagonal,
+				//	particle_radius_multiplier,
+				//	radius_particles,
+				//	particle_radius_const
+				//);
 				double pr = get_particle_radius(
 					cached_idx,
-					bbox_dim,
+					1,
 					bbox_min_orig,
 					bbox_size_orig,
-					scale_space_diagonal,
-					particle_fix_size,
+					1.0/object_size,
+					particle_radius_multiplier,
 					radius_particles,
-					radius_particle_const
+					particle_radius_const
 				);
 				raw_radius.values.push_back(pr);
 
@@ -612,7 +622,7 @@ namespace common {
 			const float* radius_particles,
 			const float* value_particles,
 			size_t num_particles,
-			float particle_fix_size,
+			float particle_radius_multiplier,
 			std::string grid_name,
 			float grid_transform,
 			float* bbox_min,
@@ -643,7 +653,7 @@ namespace common {
 			float* bbox_sphere_pos,
 			float bbox_sphere_r,
 			bool use_simple_density,
-			double radius_particle_const,
+			double particle_radius_const,
 
 			double bbox_x_min_norm,
 			double bbox_x_max_norm,
@@ -664,7 +674,7 @@ namespace common {
 					radius_particles,
 					value_particles,
 					num_particles,
-					particle_fix_size,
+					particle_radius_multiplier,
 					bbox_min_orig,
 					bbox_size_orig,
 					bbox_dim,
@@ -677,7 +687,7 @@ namespace common {
 					frame_req,
 					frame,
 					use_simple_density,
-					radius_particle_const,
+					particle_radius_const,
 
 					bbox_x_min_norm,
 					bbox_x_max_norm,
@@ -701,7 +711,7 @@ namespace common {
 					radius_particles,
 					value_particles,
 					num_particles,
-					particle_fix_size,
+					particle_radius_multiplier,
 					bbox_min_orig,
 					bbox_size_orig,
 					bbox_dim,
@@ -718,7 +728,7 @@ namespace common {
 					frame_req,
 					frame,
 					use_simple_density,
-					radius_particle_const,
+					particle_radius_const,
 
 					bbox_x_min_norm,
 					bbox_x_max_norm,
@@ -742,7 +752,7 @@ namespace common {
 					radius_particles,
 					value_particles,
 					num_particles,
-					particle_fix_size,
+					particle_radius_multiplier,
 					bbox_min_orig,
 					bbox_size_orig,
 					bbox_dim,
@@ -757,7 +767,7 @@ namespace common {
 					frame_req,
 					frame,
 					use_simple_density,
-					radius_particle_const,
+					particle_radius_const,
 
 					bbox_x_min_norm,
 					bbox_x_max_norm,

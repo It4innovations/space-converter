@@ -473,7 +473,7 @@ namespace common {
 		 */
 		void ConvertVDBBase::convert_iolib_to_grid(
 			int particle_type,
-			float particle_fix_size,
+			float particle_radius_multiplier,
 			std::string grid_name,
 			//int* grid_dims,
 			float grid_transform,
@@ -617,7 +617,7 @@ namespace common {
 					d_radius_particles,
 					d_value_particles,
 					num_particles,
-					particle_fix_size,
+					particle_radius_multiplier,
 					grid_name,
 					grid_transform,
 					bbox_min,
@@ -648,7 +648,7 @@ namespace common {
 					bbox_sphere_pos,
 					bbox_sphere_r,
 					use_simple_density,
-					cache_manager.radius_particle_const,
+					cache_manager.particle_radius_const,
 
 					bbox_x_min_norm,
 					bbox_x_max_norm,
@@ -674,7 +674,7 @@ namespace common {
 					radius_particles,
 					value_particles,
 					num_particles,
-					particle_fix_size,
+					particle_radius_multiplier,
 					grid_name,
 					grid_transform,
 					bbox_min,
@@ -705,7 +705,7 @@ namespace common {
 					bbox_sphere_pos,
 					bbox_sphere_r,
 					use_simple_density,
-					cache_manager.radius_particle_const,
+					cache_manager.particle_radius_const,
 
 					bbox_x_min_norm,
 					bbox_x_max_norm,
@@ -1284,11 +1284,11 @@ namespace common {
 			int* bbox_min_orig,
 			double bbox_size_orig,
 			double scale_space_diagonal,
-			float particle_fix_size,
+			float particle_radius_multiplier,
 			int particle_type
 		) {
-			if (cache_manager.radius_particle_const > 0.0) {
-				return cache_manager.radius_particle_const;
+			if (cache_manager.particle_radius_const > 0.0) {
+				return cache_manager.particle_radius_const;
 			}
 
 			// Conversion factor from world space to voxel space
@@ -1306,8 +1306,8 @@ namespace common {
 				radius = cache_manager.radius_particles_per_ptype[particle_type][pid - cache_manager.particles_ptype_offset[particle_type]];
 			}
 
-			if (particle_fix_size != 0.0f) {
-				radius *= particle_fix_size;
+			if (particle_radius_multiplier != 0.0f) {
+				radius *= particle_radius_multiplier;
 			}
 
 			// Convert radius to voxel units

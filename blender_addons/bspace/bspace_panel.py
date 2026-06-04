@@ -138,15 +138,15 @@ class BSPACE_PG_SETTINGS(bpy.types.PropertyGroup):
         name="Particle Type"
         )# type: ignore
 
-    particle_radius : bpy.props.FloatProperty(
-        name="Particle Radius", 
-        default=1.0,
-        min=0.0,
-        max=1000.0
-        )# type: ignore        
+    # particle_radius : bpy.props.FloatProperty(
+    #     name="Particle Radius", 
+    #     default=1.0,
+    #     min=0.0,
+    #     max=1000.0
+    #     )# type: ignore        
 
-    particle_fix_size: bpy.props.FloatProperty(
-        name="Particle Size", 
+    particle_radius_multiplier: bpy.props.FloatProperty(
+        name="Particle Size Multiplier", 
         min=0.0,
         max=100000.0,
         default=0.0
@@ -1405,7 +1405,7 @@ class BSPACE:
 
         return     
 
-    def extract_raw_part(self, context, file_data, min_value_reduced, max_value_reduced):
+    def extract_raw_part(self, context, file_data):
         import struct
         from io import BytesIO
 
@@ -1444,24 +1444,35 @@ class BSPACE:
                     # Read the values
                     particle.values = list(struct.unpack(f'{values_size}f', stream.read(values_size * 4)))
 
-            def create_gnodes_instance(self, context, obj, instance_object):
+            def create_gnodes_instance(self, context, obj): #, instance_object
                 # pass
                 context.view_layer.objects.active = obj
                 bpy.ops.node.new_geometry_nodes_modifier()
 
-                obj.modifiers[0].name = instance_object.name
+                obj.modifiers[0].name = obj.name
                 node_group = obj.modifiers[0].node_group
-                node_group.name = instance_object.name
+                node_group.name = obj.name
 
                 # bpy.ops.node.add_node(type="GeometryNodeObjectInfo", use_transform=True)
-                node_object_info = node_group.nodes.new('GeometryNodeObjectInfo')
-                node_object_info.location = (-400, 600)
-                node_object_info.inputs[0].default_value = instance_object
-                node_object_info.inputs[1].default_value = True
+                # node_object_info = node_group.nodes.new('GeometryNodeObjectInfo')
+                # node_object_info.location = (-400, 600)
+                # node_object_info.inputs[0].default_value = instance_object
+                # node_object_info.inputs[1].default_value = True
+                uv_sphere = node_group.nodes.new("GeometryNodeMeshUVSphere")
+                uv_sphere.location = (-400, 600)
                 
                 # bpy.ops.node.add_node(type="GeometryNodeInstanceOnPoints", use_transform=True)
-                node_instance = node_group.nodes.new('GeometryNodeInstanceOnPoints')
-                node_instance.location = (-50, 100)
+                instance_on_points = node_group.nodes.new('GeometryNodeInstanceOnPoints')
+                instance_on_points.location = (-50, 100)
+
+                set_material = node_group.nodes.new("GeometryNodeSetMaterial")
+                set_material.location = (200, 20)
+                set_material.inputs["Material"].default_value = obj.data.materials[0]
+
+                realize_instances = node_group.nodes.new("GeometryNodeRealizeInstances")
+                realize_instances.location = (430, 20)
+
+                attr_nodes = {}              
 
                 for p in range(len(self.data)):
                     particle = self.data[p]
@@ -1471,12 +1482,14 @@ class BSPACE:
 
                     # bpy.ops.node.add_node(type="GeometryNodeInputNamedAttribute", use_transform=True)
                     node_in_val = node_group.nodes.new('GeometryNodeInputNamedAttribute')
-                                        
+                    attr_nodes[particle.name] = node_in_val
+
                     if particle.num_comp == 1:
                         node_in_val.data_type = 'FLOAT'
                     elif particle.num_comp == 3:
                         node_in_val.data_type = 'FLOAT_VECTOR'
 
+                    node_in_val.name = particle.name
                     node_in_val.inputs[0].default_value = particle.name
                     node_in_val.location = (-400, 200 * (p + 1))
 
@@ -1485,16 +1498,29 @@ class BSPACE:
 
                 node_group.links.clear()
 
-                node_group.links.new(
-                    node_in.outputs['Geometry'], node_instance.inputs['Points'])
                 # node_group.links.new(
-                #     node_in_val.outputs['Attribute'], node_instance.inputs['Rotation'])
+                #     node_in.outputs['Geometry'], node_instance.inputs['Points'])
+                # # node_group.links.new(
+                # #     node_in_val.outputs['Attribute'], node_instance.inputs['Rotation'])
 
-                node_group.links.new(
-                    node_object_info.outputs['Geometry'], node_instance.inputs['Instance'])
+                # node_group.links.new(
+                #     node_object_info.outputs['Geometry'], node_instance.inputs['Instance'])
 
-                node_group.links.new(
-                    node_instance.outputs['Instances'], node_out.inputs['Geometry'])          
+                # node_group.links.new(
+                #     node_instance.outputs['Instances'], node_out.inputs['Geometry'])
+
+                # ------------------------------------------------------------
+                # Links
+                # ------------------------------------------------------------
+                node_group.links.new(node_in.outputs["Geometry"], instance_on_points.inputs["Points"])
+                node_group.links.new(uv_sphere.outputs["Mesh"], instance_on_points.inputs["Instance"])
+
+                if "radius" in attr_nodes:
+                    node_group.links.new(attr_nodes["radius"].outputs["Attribute"], instance_on_points.inputs["Scale"])
+
+                node_group.links.new(instance_on_points.outputs["Instances"], set_material.inputs["Geometry"])
+                node_group.links.new(set_material.outputs["Geometry"], realize_instances.inputs["Geometry"])
+                node_group.links.new(realize_instances.outputs["Geometry"], node_out.inputs["Geometry"])                
 
             def add_verts_to_mesh(self, context, empty_obj, count):
                 context.view_layer.objects.active = empty_obj
@@ -1529,14 +1555,14 @@ class BSPACE:
 
                 return obj
 
-            def create_collection(self, context):
-                # Collection
-                bcollection_main = bpy.data.collections.new('SPACE')
-                context.scene.collection.children.link(bcollection_main)          
+            # def create_collection(self, context):
+            #     # Collection
+            #     bcollection_main = bpy.data.collections.new('SPACE')
+            #     context.scene.collection.children.link(bcollection_main)          
 
-                return bcollection_main
+            #     return bcollection_main
             
-            def extract_GN(self, context, min_val_reduced, max_val_reduced):
+            def extract_GN(self, context):
                 self.deserialize_from_vector(file_data)    
 
                 # Use active collection instead of creating new one
@@ -1559,15 +1585,19 @@ class BSPACE:
                                     empty_obj.data.attributes[particle.name].data[id].vector[j] = particle.values[id * 3 + j]
 
                 # Add a UV sphere to the scene
-                bpy.ops.mesh.primitive_uv_sphere_add(
-                    radius=0.1,             # Radius of the sphere
-                    location=(0, 0, 0),     # Location of the sphere
-                    segments=32,            # Number of segments (horizontal slices)
-                    ring_count=16           # Number of rings (vertical slices)
-                )
-                self.create_gnodes_instance(context, empty_obj, context.object)
+                # bpy.ops.mesh.primitive_uv_sphere_add(
+                #     radius=0.1,             # Radius of the sphere
+                #     location=(0, 0, 0),     # Location of the sphere
+                #     segments=32,            # Number of segments (horizontal slices)
+                #     ring_count=16           # Number of rings (vertical slices)
+                # )
 
-            def extract_PC(self, context, min_val_reduced, max_val_reduced):
+                self.create_material(context, empty_obj)
+                self.create_gnodes_instance(context, empty_obj) #, context.object
+
+                return empty_obj
+
+            def extract_PC(self, context):
                 self.deserialize_from_vector(file_data)    
                 
                 # Use active collection instead of creating new one
@@ -1615,23 +1645,28 @@ class BSPACE:
                             attr.data.foreach_set("vector", particle.values)
                 
                 # Add radius attribute if not present
-                if "radius" not in pc.attributes:
-                    radius_attr = pc.attributes.new(
-                        name="radius",
-                        type="FLOAT",
-                        domain="POINT"
-                    )
-                    radii = [context.scene.view_pg_bspace.particle_radius] * count
-                    radius_attr.data.foreach_set("value", radii)
+                # if "radius" not in pc.attributes:
+                #     radius_attr = pc.attributes.new(
+                #         name="radius",
+                #         type="FLOAT",
+                #         domain="POINT"
+                #     )
+                #     radii = [context.scene.view_pg_bspace.particle_radius] * count
+                #     radius_attr.data.foreach_set("value", radii)
                 
                 # Create object from point cloud
                 obj = bpy.data.objects.new(pc_name, pc)
                 collection.objects.link(obj)
                 context.view_layer.objects.active = obj
                 obj.select_set(True)
+
+                self.create_material(context, obj)
+
+                return obj
                 
+            def create_material(self, context, obj):
                 # Create material with attribute nodes
-                mat = bpy.data.materials.new("Material_" + pc_name)
+                mat = bpy.data.materials.new("Material_" + obj.name)
                 mat.use_nodes = True
                 
                 nodes = mat.node_tree.nodes
@@ -1655,8 +1690,8 @@ class BSPACE:
                     
                     # Create Map Range node for value remapping
                     map_range_node = nodes.new(type='ShaderNodeMapRange')
-                    map_range_node.inputs['From Min'].default_value = min_val_reduced
-                    map_range_node.inputs['From Max'].default_value = max_val_reduced
+                    map_range_node.inputs['From Min'].default_value = 0.0 #min_val_reduced
+                    map_range_node.inputs['From Max'].default_value = 1.0 #max_val_reduced
                     map_range_node.inputs['To Min'].default_value = 0.0
                     map_range_node.inputs['To Max'].default_value = 1.0
                     map_range_node.location = (-400, 100)
@@ -1692,14 +1727,14 @@ class BSPACE:
                     links.new(math_alpha_node.outputs["Value"], principled.inputs["Alpha"])
                     links.new(color_ramp_node.outputs["Alpha"], principled.inputs["Emission Strength"])
                                     
-                pc.materials.append(mat)
+                obj.data.materials.append(mat)
 
         rawParticles = RawParticles()
 
         if context.scene.view_pg_bspace.particle_btype == "PC":
-            rawParticles.extract_PC(context, min_value_reduced, max_value_reduced)
+            return rawParticles.extract_PC(context)
         else:
-            rawParticles.extract_GN(context, min_value_reduced, max_value_reduced)
+            return rawParticles.extract_GN(context)
 
     def extract_data(self, context):
         if context.scene.bspace_list_types_index < 0 or context.scene.bspace_list_types_index > len(context.scene.bspace_list_types):
@@ -1777,8 +1812,8 @@ class BSPACE:
         bobject_size= self.float_to_bytes(float(bbox_size))
         self.tcp_send(context, bobject_size)
 
-        #tcp::recv_data((char*)&particle_fix_size, sizeof(int));        
-        bparticle_fix_size= self.float_to_bytes(float(context.scene.view_pg_bspace.particle_fix_size))        
+        #tcp::recv_data((char*)&particle_radius_multiplier, sizeof(int));        
+        bparticle_fix_size= self.float_to_bytes(float(context.scene.view_pg_bspace.particle_radius_multiplier))        
         self.tcp_send(context, bparticle_fix_size)
 
         #tcp::recv_data((char*)&filter_min, sizeof(float));        
@@ -1830,10 +1865,6 @@ class BSPACE:
         self.tcp_send(context, bmessage_type)   
 
         ##########################processing
-        if file_type == "RAW_PART":
-            self.extract_raw_part(context, file_data, min_value_reduced, max_value_reduced)
-            # Continue to set properties on obj_vdb_new like VDB objects
-
         from datetime import datetime
         dt = datetime.now().isoformat('-').replace(':', '').replace('.', '')
         fvdb = "out_%s" % dt[0:19]
@@ -1845,165 +1876,157 @@ class BSPACE:
 
         pref = bspace_pref.preferences()
 
-        if file_type == "RAW_PART":
-            raw_obj = bpy.context.view_layer.objects.active
-            raw_obj.name = fvdb
-            pass
+        if not file_data is None:
+            filename = pref.local_temp_dir_path + "/" + fvdb + ".vdb"
+            if file_type == "OPENVDB":
+                with open(filename, 'wb') as f:
+                    f.write(file_data)
+
+            elif file_type == "NANOVDB":
+                filename_nvdb = pref.local_temp_dir_path + "/" + fvdb + ".nvdb"
+                with open(filename_nvdb, 'wb') as f:
+                    f.write(file_data)
+                
+                if len(pref.nvdb_converter_path) > 0:
+                    cmd = [
+                        pref.nvdb_converter_path,
+                        filename_nvdb,
+                        filename
+                    ]
+
+                    import subprocess
+                    process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+                    stdout, stderr = process.communicate()
+
+                    if process.returncode != 0:
+                        if stdout:
+                            print(str(stdout.decode()))
+                        if stderr:
+                            print(str(stderr.decode()))        
+
+                        raise Exception("nanovdb command failed: %s" % cmd)
+            elif file_type == "PATH":
+                filename = file_data.decode()
+                if context.scene.view_pg_bspace.replace_path_enabled:
+                    filename = filename.replace(context.scene.view_pg_bspace.replace_path_orig, context.scene.view_pg_bspace.replace_path_new)
+
+            elif file_type == "RAW_PART":
+                raw_obj = self.extract_raw_part(context, file_data)
+                raw_obj.name = fvdb                   
+
+            # hide all vdbs
+            try:
+                for ob in bpy.data.objects:
+                    if 'BSPACE' in ob:
+                        ob.hide_render = True
+                        ob.hide_set(True)
+            except:
+                # ignore
+                pass
+
+            if file_type != "RAW_PART":
+                # import vdb
+                bpy.ops.object.volume_import(filepath=filename, align='WORLD', location=(0, 0, 0), scale=(1, 1, 1))
         else:
-            if not file_data is None:
-                filename = pref.local_temp_dir_path + "/" + fvdb + ".vdb"
-                if file_type == "OPENVDB":
-                    with open(filename, 'wb') as f:
-                        f.write(file_data)
+            if self.get_bbox_name() in bpy.data.objects:
+                obj_cube = bpy.data.objects[self.get_bbox_name()]
 
-                elif file_type == "NANOVDB":
-                    filename_nvdb = pref.local_temp_dir_path + "/" + fvdb + ".nvdb"
-                    with open(filename_nvdb, 'wb') as f:
-                        f.write(file_data)
-                    
-                    if len(pref.nvdb_converter_path) > 0:
-                        cmd = [
-                            pref.nvdb_converter_path,
-                            filename_nvdb,
-                            filename
-                        ]
+                if obj_cube.type == 'EMPTY':
+                    # If the object is linked to a collection, unlink it first
+                    for collection in obj_cube.users_collection:
+                        collection.objects.unlink(obj_cube)
 
-                        import subprocess
-                        process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-                        stdout, stderr = process.communicate()
+                    # Delete the object
+                    bpy.data.objects.remove(obj_cube)
 
-                        if process.returncode != 0:
-                            if stdout:
-                                print(str(stdout.decode()))
-                            if stderr:
-                                print(str(stderr.decode()))        
+                    #################### Create a new empty object
+                    #bpy.ops.object.empty_add(type='CUBE')
+                    # Define the vertices for the cube            
+                    v = context.scene.view_pg_bspace.bbox_size
+                    vertices = [
+                        (-v/2.0, -v/2.0, -v/2.0),
+                        (v/2.0, -v/2.0, -v/2.0),
+                        (v/2.0, v/2.0, -v/2.0),
+                        (-v/2.0, v/2.0, -v/2.0),
+                        (-v/2.0, -v/2.0, v/2.0),
+                        (v/2.0, -v/2.0, v/2.0),
+                        (v/2.0, v/2.0, v/2.0),
+                        (-v/2.0, v/2.0, v/2.0)
+                    ]
 
-                            raise Exception("nanovdb command failed: %s" % cmd)
-                elif file_type == "PATH":
-                    filename = file_data.decode()
-                    if context.scene.view_pg_bspace.replace_path_enabled:
-                        filename = filename.replace(context.scene.view_pg_bspace.replace_path_orig, context.scene.view_pg_bspace.replace_path_new)
+                    # Define the edges for the cube
+                    #edges = []
+                    edges = [
+                        (0, 1),
+                        (1, 2),
+                        (2, 3),
+                        (3, 0),
+                        (4, 5),
+                        (5, 6),
+                        (6, 7),
+                        (7, 4),
+                        (0, 4),
+                        (1, 5),
+                        (2, 6),
+                        (3, 7)
+                    ]
+                    faces = []
 
-                # hide all vdbs
-                try:
-                    for ob in bpy.data.objects:
-                        if 'BSPACE' in ob:
-                            ob.hide_render = True
-                            ob.hide_set(True)
-                except:
-                    # ignore
-                    pass
+                    # Create the new mesh and object
+                    mesh = bpy.data.meshes.new(self.get_bbox_name())
+                    mesh.from_pydata(vertices, edges, faces)
+                    mesh.update()
 
-                # TODO: handle particle extraction
-                if context.scene.view_pg_bspace.extracted_type == '2': # PARTICLE
-                    #filename = file_data.decode()
-                    # Handle particle extraction
-                    #for f in range(context.scene.view_pg_bspace.anim_start, context.scene.view_pg_bspace.anim_end + 1):
-                    ##self.extract_raw_part(context, file_data) # filename.replace("00000", f"{f:05d}").decode()
-                    raise Exception("Particle extraction not implemented yet")
-                else:
-                    # import vdb
-                    bpy.ops.object.volume_import(filepath=filename, align='WORLD', location=(0, 0, 0), scale=(1, 1, 1))
-            else:
-                if self.get_bbox_name() in bpy.data.objects:
-                    obj_cube = bpy.data.objects[self.get_bbox_name()]
+                    # if hasattr(bpy.types.Scene, 'haystack_scene'):
+                    #     context.scene.haystack_scene.create_bbox(context)
 
-                    if obj_cube.type == 'EMPTY':
-                        # If the object is linked to a collection, unlink it first
-                        for collection in obj_cube.users_collection:
-                            collection.objects.unlink(obj_cube)
+                    obj_cube = bpy.data.objects.new(self.get_bbox_name(), mesh)
 
-                        # Delete the object
-                        bpy.data.objects.remove(obj_cube)
+                    bbox_size = context.scene.view_pg_bspace.bbox_size
+                    bbox_size_half = bbox_size / 2.0
 
-                        #################### Create a new empty object
-                        #bpy.ops.object.empty_add(type='CUBE')
-                        # Define the vertices for the cube            
-                        v = context.scene.view_pg_bspace.bbox_size
-                        vertices = [
-                            (-v/2.0, -v/2.0, -v/2.0),
-                            (v/2.0, -v/2.0, -v/2.0),
-                            (v/2.0, v/2.0, -v/2.0),
-                            (-v/2.0, v/2.0, -v/2.0),
-                            (-v/2.0, -v/2.0, v/2.0),
-                            (v/2.0, -v/2.0, v/2.0),
-                            (v/2.0, v/2.0, v/2.0),
-                            (-v/2.0, v/2.0, v/2.0)
-                        ]
+                    #obj_cube.empty_display_size = bbox_size_half
+                    obj_cube.scale=(bbox_size_half, bbox_size_half, bbox_size_half)
+                    obj_cube.location=(bbox_size_half, bbox_size_half, bbox_size_half)                    
 
-                        # Define the edges for the cube
-                        #edges = []
-                        edges = [
-                            (0, 1),
-                            (1, 2),
-                            (2, 3),
-                            (3, 0),
-                            (4, 5),
-                            (5, 6),
-                            (6, 7),
-                            (7, 4),
-                            (0, 4),
-                            (1, 5),
-                            (2, 6),
-                            (3, 7)
-                        ]
-                        faces = []
+                    # Add the object into the scene
+                    #scene = bpy.context.scene
+                    #scene.collection.objects.link(obj_cube)
+                    # Get the active collection
+                    active_collection = bpy.context.view_layer.active_layer_collection.collection
 
-                        # Create the new mesh and object
-                        mesh = bpy.data.meshes.new(self.get_bbox_name())
-                        mesh.from_pydata(vertices, edges, faces)
-                        mesh.update()
+                    # Add the object into the active collection
+                    active_collection.objects.link(obj_cube)
 
-                        # if hasattr(bpy.types.Scene, 'haystack_scene'):
-                        #     context.scene.haystack_scene.create_bbox(context)
+                    # # Set the origin to the center of the cube
+                    # v = context.scene.view_pg_bspace.bbox_size
+                    # origin_location = (v/2, v/2, v/2)
 
-                        obj_cube = bpy.data.objects.new(self.get_bbox_name(), mesh)
+                    # # Store the current cursor location
+                    # saved_cursor_location = context.scene.cursor.location.copy()
 
-                        bbox_size = context.scene.view_pg_bspace.bbox_size
-                        bbox_size_half = bbox_size / 2.0
+                    # # Move cursor to the desired origin position
+                    # context.scene.cursor.location = origin_location
 
-                        #obj_cube.empty_display_size = bbox_size_half
-                        obj_cube.scale=(bbox_size_half, bbox_size_half, bbox_size_half)
-                        obj_cube.location=(bbox_size_half, bbox_size_half, bbox_size_half)                    
+                    # # Set origin to cursor position
+                    # context.view_layer.objects.active = obj_cube
+                    # bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
 
-                        # Add the object into the scene
-                        #scene = bpy.context.scene
-                        #scene.collection.objects.link(obj_cube)
-                        # Get the active collection
-                        active_collection = bpy.context.view_layer.active_layer_collection.collection
+                    # # Restore cursor position
+                    # context.scene.cursor.location = saved_cursor_location                    
 
-                        # Add the object into the active collection
-                        active_collection.objects.link(obj_cube)
+                    obj_cube['MIN_VALUE'] = 0.0
+                    obj_cube['MAX_VALUE'] = 1.0
+                    self.set_vdb_shader(context, obj_cube)
 
-                        # # Set the origin to the center of the cube
-                        # v = context.scene.view_pg_bspace.bbox_size
-                        # origin_location = (v/2, v/2, v/2)
+                    try:
+                        context.scene.cyclesphi.server_settings.mat_volume = obj_cube.data.materials[0]
+                    except:
+                        pass     
 
-                        # # Store the current cursor location
-                        # saved_cursor_location = context.scene.cursor.location.copy()
-
-                        # # Move cursor to the desired origin position
-                        # context.scene.cursor.location = origin_location
-
-                        # # Set origin to cursor position
-                        # context.view_layer.objects.active = obj_cube
-                        # bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
-
-                        # # Restore cursor position
-                        # context.scene.cursor.location = saved_cursor_location                    
-
-                        obj_cube['MIN_VALUE'] = 0.0
-                        obj_cube['MAX_VALUE'] = 1.0
-                        self.set_vdb_shader(context, obj_cube)
-
-                        try:
-                            context.scene.cyclesphi.server_settings.mat_volume = obj_cube.data.materials[0]
-                        except:
-                            pass     
-
-                    # Optionally set the object as active and select it
-                    bpy.context.view_layer.objects.active = obj_cube
-                    #obj_cube.select_set(True)                
+                # Optionally set the object as active and select it
+                bpy.context.view_layer.objects.active = obj_cube
+                #obj_cube.select_set(True)                
 
         #set view
         # if grid_dim == context.scene.view_pg_bspace.grid_dim:
@@ -2058,7 +2081,7 @@ class BSPACE:
         obj_vdb_new['BBOX_MIN'] = bbox_min
         obj_vdb_new['BBOX_MAX'] = bbox_max
         #obj_vdb_new['OBJECT_SIZE'] = context.scene.view_pg_bspace.bbox_size
-        obj_vdb_new['PARTICLE_SIZE'] = context.scene.view_pg_bspace.particle_fix_size
+        obj_vdb_new['PARTICLE_RADIUS_MULTIPLIER'] = context.scene.view_pg_bspace.particle_radius_multiplier
         obj_vdb_new['FILTER_MIN'] = context.scene.view_pg_bspace.filter_min
         obj_vdb_new['FILTER_MAX'] = context.scene.view_pg_bspace.filter_max
 
@@ -2478,9 +2501,9 @@ class BSPACE_PT_extract(BSpacePanel, bpy.types.Panel):
 
         if context.scene.view_pg_bspace.extracted_type == '2': # PARTICLE
             col.prop(scene.view_pg_bspace, "particle_btype")
-            col.prop(scene.view_pg_bspace, "particle_radius")
+            # col.prop(scene.view_pg_bspace, "particle_radius")
 
-        col.prop(scene.view_pg_bspace, "particle_fix_size", text="Radius factor")
+        col.prop(scene.view_pg_bspace, "particle_radius_multiplier", text="Radius Multiplier")
         col.prop(scene.view_pg_bspace, "filter_min", text="Min. Value")
         col.prop(scene.view_pg_bspace, "filter_max", text="Max. Value")
         col.prop(scene.view_pg_bspace, "density", text="Mat. Density")

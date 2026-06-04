@@ -38,7 +38,7 @@ namespace common {
             // and will be automatically initialized as empty
             
             // Initialize scalar values
-            radius_particle_const = 0.0;
+            particle_radius_const = 0.0;
             use_gpu_cuda = false;
         }
 
@@ -72,7 +72,7 @@ namespace common {
             d_mass_particles_per_ptype.clear();
             
             // Reset scalar values
-            radius_particle_const = 0.0;
+            particle_radius_const = 0.0;
         }
 
         void CacheManager::sort_particles_by_radius_cpu() {

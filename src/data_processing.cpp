@@ -281,10 +281,11 @@ namespace space_converter {
 		}
 
 		// Override with constant radius if specified via environment variable
-		const char* converter_radius_particle_const = getenv("CONVERTER_RADIUS_PARTICLE_CONST");
-		if (converter_radius_particle_const) {
-			convert_vdb_base->cache_manager.radius_particle_const = atof(converter_radius_particle_const);
-		}
+		//const char* converter_radius_particle_const = getenv("CONVERTER_RADIUS_PARTICLE_CONST");
+		//if (converter_radius_particle_const) {
+		//	convert_vdb_base->cache_manager.particle_radius_const = atof(converter_radius_particle_const);
+		//}
+		convert_vdb_base->cache_manager.particle_radius_const = space_data.particle_radius_const;
 
 		// Enable sorting by radius if specified via command-line argument
 		if (from_cl.use_sort_by_radius) {
@@ -552,7 +553,7 @@ namespace space_converter {
 		// Convert particles to grid using specified parameters
 		convert_vdb_base->convert_iolib_to_grid(
 			space_data.particle_type,
-			space_data.particle_fix_size,
+			space_data.particle_radius_multiplier,
 			"density",
 			space_data.grid_transform,
 			space_data.bbox_min,
