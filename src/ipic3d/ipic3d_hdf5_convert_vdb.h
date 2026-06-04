@@ -108,6 +108,14 @@ namespace ipic3d {
         // @param types_and_blocks: A vector containing types and block information.
         // @return A string with all particle data types.
         std::string get_particle_data_type_names(std::vector<int>& types_and_blocks) override;
+
+        // Get the number of particle types.
+        // @return The number of particle types.
+        int get_num_types() override;
+
+        // Get the number of data blocks.
+        // @return The number of data blocks.
+        int get_num_blocks() override;
     };
 
 } // namespace ipic3d

@@ -189,4 +189,14 @@ namespace ipic3d {
         return particle_data_types;
     }
 
+    int ConvertVDBIPIC3DHDF5::get_num_types() {
+        return ipic3d::IPIC3DParticleType::PTMax;
+    }
+
+    int ConvertVDBIPIC3DHDF5::get_num_blocks() {
+        std::vector<int> types_and_blocks;
+        ipic3d::io::get_types_and_blocks(types_and_blocks);
+        return types_and_blocks.size() / ipic3d::IPIC3DParticleType::PTMax;
+    }
+
 } // namespace ipic3d
