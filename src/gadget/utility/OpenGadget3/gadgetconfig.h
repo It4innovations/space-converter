@@ -58,6 +58,14 @@
 #define WINDS
 #endif
 
+#ifndef LMB_CR_PROTONS
+#define LMB_CR_PROTONS 12
+#endif
+
+#ifndef LMB_CR_ELECTRONS
+#define LMB_CR_ELECTRONS 20
+#endif
+
 //#define GL_CR_DUST
 
 //#define VERBOSE 3
