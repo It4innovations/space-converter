@@ -3079,7 +3079,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
       break;
     case IO_LMBCR_pNORM:
     case IO_LMBCR_pSLOPE:
-#ifndef LMB_CR_PROTONS
+#if 0 //ndef LMB_CR_PROTONS
       if(mode)
 	bytes_per_blockelement = sizeof(MyInputFloat);
       else
@@ -3095,7 +3095,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
 
     case IO_LMBCR_eNORM:
     case IO_LMBCR_eSLOPE:
-#ifndef LMB_CR_ELECTRONS
+#if 0 //ndef LMB_CR_ELECTRONS
       if(mode)
 	bytes_per_blockelement = sizeof(MyInputFloat);
       else
@@ -3132,7 +3132,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
       break;
 
     case IO_FB_M_H:
-#ifdef GM_MUPPI
+#ifdef GADGET3_IO_LIB //def GM_MUPPI
       if(mode)
 	bytes_per_blockelement = sizeof(MyInputFloat);
       else
@@ -3143,7 +3143,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
       break;
 
     case IO_FB_M_C:
-#ifdef GM_MUPPI
+#ifdef GADGET3_IO_LIB //def GM_MUPPI
       if(mode)
 	bytes_per_blockelement = sizeof(MyInputFloat);
       else
@@ -3154,7 +3154,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
       break;
 
     case IO_FB_M_MO:
-#if defined (GM_MUPPI) && defined(MV_OUTPUT_MMOL)
+#ifdef GADGET3_IO_LIB // defined (GM_MUPPI) && defined(MV_OUTPUT_MMOL)
       if(mode)
 	bytes_per_blockelement = sizeof(MyInputFloat);
       else
@@ -3165,7 +3165,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
       break;
 
     case IO_FB_E_H:
-#ifdef GM_MUPPI
+#ifdef GADGET3_IO_LIB //def GM_MUPPI
       if(mode)
 	bytes_per_blockelement = sizeof(MyInputFloat);
       else
@@ -3176,7 +3176,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
       break;
 
     case IO_FB_M_SF:
-#ifdef GM_MUPPI
+#ifdef GADGET3_IO_LIB //def GM_MUPPI
       if(mode)
 	bytes_per_blockelement = sizeof(MyInputFloat);
       else
@@ -3187,7 +3187,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
       break;
 
     case IO_FB_MF:
-#ifdef GM_MUPPI
+#ifdef GADGET3_IO_LIB //def GM_MUPPI
       bytes_per_blockelement = sizeof(int);
 #else
       bytes_per_blockelement = 0;
@@ -3195,7 +3195,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
       break;
 
     case IO_FB_NMF:
-#ifdef GM_MUPPI
+#ifdef GADGET3_IO_LIB //def GM_MUPPI
       bytes_per_blockelement = sizeof(int);
 #else
       bytes_per_blockelement = 0;
@@ -3203,7 +3203,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
       break;
 
     case IO_FB_EOUT:
-#ifdef GM_MUPPI
+#ifdef GADGET3_IO_LIB //def GM_MUPPI
       if(mode)
 	bytes_per_blockelement = sizeof(MyInputFloat);
       else
@@ -3214,7 +3214,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
       break;
 
     case IO_FB_EREC:
-#ifdef GM_MUPPI
+#ifdef GADGET3_IO_LIB //def GM_MUPPI
       if(mode)
 	bytes_per_blockelement = sizeof(MyInputFloat);
       else
@@ -3229,7 +3229,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
     case IO_FB_TDYN:
     case IO_FB_TCOOL:
     case IO_FB_TSTARTMP:
-#ifdef GM_MUPPI
+#ifdef GADGET3_IO_LIB //def GM_MUPPI
       if(mode)
 	bytes_per_blockelement = sizeof(MyInputFloat);
       else
@@ -3239,7 +3239,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
 #endif
       break;
     case IO_FB_EKINREC:
-#ifdef GM_MUPPI
+#ifdef GADGET3_IO_LIB //def GM_MUPPI
       if(mode)
 	bytes_per_blockelement = 3 * sizeof(MyInputFloat);
       else
@@ -3250,7 +3250,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
       break;
 
     case IO_FB_GRADRHO:
-#if defined(GM_MUPPI) && defined(GM_GRADRHO_OUT)
+#ifdef GADGET3_IO_LIB // defined(GM_MUPPI) && defined(GM_GRADRHO_OUT)
       if(mode)
 	bytes_per_blockelement = 3 * sizeof(MyInputFloat);
       else
@@ -3310,7 +3310,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
       break;
 
     case IO_Zs:
-#ifdef LT_STELLAREVOLUTION
+#ifdef GADGET3_IO_LIB //def LT_STELLAREVOLUTION
       if(mode)
 	bytes_per_blockelement = LT_NMetP * sizeof(MyInputFloat);
       else
@@ -3323,7 +3323,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
     case IO_ContribII:
     case IO_ContribIa:
     case IO_ContribAGB:
-#ifdef LT_TRACK_CONTRIBUTES
+#ifdef GADGET3_IO_LIB //def LT_TRACK_CONTRIBUTES
       if(mode)
 	bytes_per_blockelement = LT_NMetP * sizeof(MyInputFloat);
       else
@@ -3334,7 +3334,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
       break;
 
     case IO_allZSMOOTH:
-#ifdef LT_SMOOTH_ALLMETALS
+#ifdef GADGET3_IO_LIB //def LT_SMOOTH_ALLMETALS
       if(mode)
 	bytes_per_blockelement = LT_NMetP * sizeof(MyInputFloat);
       else
@@ -3346,7 +3346,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
 
     case IO_ZAGE:
     case IO_ZAGE_LLV:
-#if defined(LT_ZAGE) || defined(LT_ZAGE_LLV)
+#ifdef GADGET3_IO_LIB // defined(LT_ZAGE) || defined(LT_ZAGE_LLV)
       if(mode)
 	bytes_per_blockelement = sizeof(MyInputFloat);
       else
@@ -3365,7 +3365,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
       break;
 
     case IO_GRADENERGY:
-#if defined(CONDUCTION_INCLUDEMAGNETIC) || defined(AA_OUTPUT_GRADS)
+#ifdef GADGET3_IO_LIB // defined(CONDUCTION_INCLUDEMAGNETIC) || defined(AA_OUTPUT_GRADS)
       if(mode)
 	bytes_per_blockelement = 3 * sizeof(MyInputFloat);
       else
@@ -3376,7 +3376,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
       break;
 
     case IO_GRADPRESSURE:
-#ifdef AA_OUTPUT_GRADS
+#ifdef GADGET3_IO_LIB //def AA_OUTPUT_GRADS
       if(mode)
 	bytes_per_blockelement = 3 * sizeof(MyInputFloat);
       else
@@ -3389,7 +3389,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
     case IO_MFM_GRADIENTS_VX:
     case IO_MFM_GRADIENTS_RHO:
     case IO_MFM_GRADIENTS_U:
-#if GADGET_HYDRO == HYDRO_MFM
+#ifdef GADGET3_IO_LIB // GADGET_HYDRO == HYDRO_MFM
       if(mode)
 	bytes_per_blockelement = NUMDIMS * sizeof(MyInputFloat);
       else
@@ -3400,7 +3400,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
       break;
 
     case IO_MFM_GRADIENTS_VY:
-#if GADGET_HYDRO == HYDRO_MFM && NUMDIMS > 1
+#ifdef GADGET3_IO_LIB // GADGET_HYDRO == HYDRO_MFM && NUMDIMS > 1
       if(mode)
 	bytes_per_blockelement = NUMDIMS * sizeof(MyInputFloat);
       else
@@ -3412,7 +3412,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
 
 
     case IO_MFM_GRADIENTS_VZ:
-#if GADGET_HYDRO == HYDRO_MFM && NUMDIMS == 3
+#ifdef GADGET3_IO_LIB // GADGET_HYDRO == HYDRO_MFM && NUMDIMS == 3
       if(mode)
 	bytes_per_blockelement = NUMDIMS * sizeof(MyInputFloat);
       else
@@ -3423,7 +3423,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
       break;
 
     case IO_DUSTL:
-#if defined(LT_STELLAREVOLUTION) && defined(GL_CR_DUST)
+#ifdef GADGET3_IO_LIB // defined(LT_STELLAREVOLUTION) && defined(GL_CR_DUST)
       if(mode)
 	bytes_per_blockelement = LT_NMetP * sizeof(MyInputFloat);
       else
@@ -3433,7 +3433,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
 #endif
       break;
     case IO_DUSTS:
-#if defined(LT_STELLAREVOLUTION) && defined(GL_CR_DUST)
+#ifdef GADGET3_IO_LIB // defined(LT_STELLAREVOLUTION) && defined(GL_CR_DUST)
       if(mode)
 	bytes_per_blockelement = LT_NMetP * sizeof(MyInputFloat);
       else
@@ -3641,14 +3641,14 @@ int get_values_per_blockelement(enum iofields blocknr)
 
     case IO_LMBCR_pNORM:
     case IO_LMBCR_pSLOPE:
-#ifdef LMB_CR_PROTONS
+#ifdef GADGET3_IO_LIB //def LMB_CR_PROTONS
       values = LMB_CR_PROTONS;
 #endif
       break;
 
     case IO_LMBCR_eSLOPE:
     case IO_LMBCR_eNORM:
-#ifdef LMB_CR_ELECTRONS
+#ifdef GADGET3_IO_LIB //def LMB_CR_ELECTRONS
       values = LMB_CR_ELECTRONS;
 #endif
       break;
@@ -3670,7 +3670,7 @@ int get_values_per_blockelement(enum iofields blocknr)
       break;
 
     case IO_Zs:
-#ifdef LT_STELLAREVOLUTION
+#ifdef GADGET3_IO_LIB //def LT_STELLAREVOLUTION
       values = LT_NMetP;
 #else
       values = 0;
@@ -3680,7 +3680,7 @@ int get_values_per_blockelement(enum iofields blocknr)
     case IO_ContribII:
     case IO_ContribIa:
     case IO_ContribAGB:
-#ifdef LT_TRACK_CONTRIBUTES
+#ifdef GADGET3_IO_LIB //def LT_TRACK_CONTRIBUTES
       values = LT_NMetP;
 #else
       values = 0;
@@ -3688,7 +3688,7 @@ int get_values_per_blockelement(enum iofields blocknr)
       break;
 
     case IO_allZSMOOTH:
-#ifdef LT_SMOOTH_ALLMETALS
+#ifdef GADGET3_IO_LIB //def LT_SMOOTH_ALLMETALS
       values = LT_NMetP;
 #else
       values = 0;
@@ -3728,7 +3728,7 @@ int get_values_per_blockelement(enum iofields blocknr)
     case IO_FB_TDYN:
     case IO_FB_EREC:
     case IO_FB_TSTARTMP:
-#ifdef GM_MUPPI
+#ifdef GADGET3_IO_LIB //def GM_MUPPI
       values = 1;
 #else
       values = 0;
@@ -3736,7 +3736,7 @@ int get_values_per_blockelement(enum iofields blocknr)
       break;
 
     case IO_FB_M_MO:
-#ifdef MV_OUTPUT_MMOL
+#ifdef GADGET3_IO_LIB //def MV_OUTPUT_MMOL
       values = 1;
 #else
       values = 0;
@@ -3744,14 +3744,14 @@ int get_values_per_blockelement(enum iofields blocknr)
       break;
 
     case IO_FB_GRADRHO:
-#if defined(GM_MUPPI) && defined(GM_GRADRHO_OUT)
+#ifdef GADGET3_IO_LIB //defined(GM_MUPPI) && defined(GM_GRADRHO_OUT)
       values = 3;
 #else
       values = 0;
 #endif
       break;
     case IO_FB_EKINREC:
-#ifdef GM_MUPPI
+#ifdef GADGET3_IO_LIB //def GM_MUPPI
       values = 3;
 #else
       values = 0;
@@ -3760,7 +3760,7 @@ int get_values_per_blockelement(enum iofields blocknr)
 
 
     case IO_GRADENERGY:
-#if defined(CONDUCTION_INCLUDEMAGNETIC) || defined(AA_OUTPUT_GRADS)
+#ifdef GADGET3_IO_LIB //defined(CONDUCTION_INCLUDEMAGNETIC) || defined(AA_OUTPUT_GRADS)
       values = 3;
 #else
       values = 0;
@@ -3768,7 +3768,7 @@ int get_values_per_blockelement(enum iofields blocknr)
       break;
 
     case IO_GRADPRESSURE:
-#ifdef AA_OUTPUT_GRADS
+#ifdef GADGET3_IO_LIB //def AA_OUTPUT_GRADS
       values = 3;
 #else
       values = 0;
@@ -3803,14 +3803,14 @@ int get_values_per_blockelement(enum iofields blocknr)
       break;
 
     case IO_DUSTL:
-#if defined(LT_STELLAREVOLUTION) && defined(GL_CR_DUST)
+#ifdef GADGET3_IO_LIB //defined(LT_STELLAREVOLUTION) && defined(GL_CR_DUST)
       values = LT_NMetP;
 #else
       values = 0;
 #endif
       break;
     case IO_DUSTS:
-#if defined(LT_STELLAREVOLUTION) && defined(GL_CR_DUST)
+#ifdef GADGET3_IO_LIB //defined(LT_STELLAREVOLUTION) && defined(GL_CR_DUST)
       values = LT_NMetP;
 #else
       values = 0;
@@ -4027,7 +4027,7 @@ int get_particles_in_block(enum iofields blocknr, int *typelist)
 
     case IO_AGE:
       for(i = 0; i < 6; i++)
-#ifdef BLACK_HOLES
+#ifdef GADGET3_IO_LIB //def BLACK_HOLES
 	if(i != 4 && i != 5)
 	  typelist[i] = 0;
       return nstars + header.npart[5];
@@ -4043,12 +4043,12 @@ int get_particles_in_block(enum iofields blocknr, int *typelist)
       nngb = ngas;
       for(i = 1; i < 4; i++)
 	typelist[i] = 0;
-#ifdef LT_STELLAREVOLUTION
+#ifdef GADGET3_IO_LIB //def LT_STELLAREVOLUTION
       nngb += header.npart[4];
 #else
       typelist[4] = 0;
 #endif
-#ifdef BLACK_HOLES
+#ifdef GADGET3_IO_LIB //def BLACK_HOLES
       nngb += header.npart[5];
 #else
       typelist[5] = 0;
@@ -4261,7 +4261,7 @@ int blockpresent(enum iofields blocknr)
     case IO_NH:
       if(All.CoolingOn == 0)
 	{
-#if defined (CHEMISTRY) || defined (UM_CHEMISTRY)
+#ifdef GADGET3_IO_LIB //defined (CHEMISTRY) || defined (UM_CHEMISTRY)
 	  return 1;
 #else
 	  return 0;
@@ -4276,7 +4276,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_RAD_ACCEL:
-#ifdef RT_OUTPUT_RAD_ACCEL
+#ifdef GADGET3_IO_LIB //def RT_OUTPUT_RAD_ACCEL
       return 3;
 #else
       return 0;
@@ -4284,7 +4284,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_HSMS:
-#if defined(SUBFIND)
+#ifdef GADGET3_IO_LIB //defined(SUBFIND)
       return 1;
 #else
       return 0;
@@ -4292,7 +4292,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_ACRS:
-#ifdef LT_STELLAREVOLUTION
+#ifdef GADGET3_IO_LIB //def LT_STELLAREVOLUTION
       return 1;
 #else
       return 0;
@@ -4306,15 +4306,15 @@ int blockpresent(enum iofields blocknr)
 	return 0;
       else
 	{
-#ifdef SFR
+#ifdef GADGET3_IO_LIB //def SFR
 	  if(blocknr == IO_SFR)
 	    return 1;
 #endif
-#ifdef STELLARAGE
+#ifdef GADGET3_IO_LIB //def STELLARAGE
 	  if(blocknr == IO_AGE)
 	    return 1;
 #endif
-#ifdef METALS
+#ifdef GADGET3_IO_LIB //def METALS
 	  if(blocknr == IO_Z)
 	    return 1;
 #endif
@@ -4323,7 +4323,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_DELAYTIME:
-#ifdef WINDS
+#ifdef GADGET3_IO_LIB //def WINDS
       return 1;
 #else
       return 0;
@@ -4337,7 +4337,7 @@ int blockpresent(enum iofields blocknr)
 
     case IO_HeI:
     case IO_HeII:
-#if defined (CHEMISTRY) || defined (UM_CHEMISTRY)
+#ifdef GADGET3_IO_LIB //defined (CHEMISTRY) || defined (UM_CHEMISTRY)
       return 1;
 #else
       return 0;
@@ -4346,7 +4346,7 @@ int blockpresent(enum iofields blocknr)
 
     case IO_HII:
     case IO_HeIII:
-#if defined (CHEMISTRY) || defined (UM_CHEMISTRY)
+#ifdef GADGET3_IO_LIB //defined (CHEMISTRY) || defined (UM_CHEMISTRY)
       return 1;
 #else
       return 0;
@@ -4358,7 +4358,7 @@ int blockpresent(enum iofields blocknr)
     case IO_H2I:
     case IO_H2II:
     case IO_HM:
-#if defined (CHEMISTRY) || defined (UM_CHEMISTRY)
+#ifdef GADGET3_IO_LIB //defined (CHEMISTRY) || defined (UM_CHEMISTRY)
       return 1;
 #else
       return 0;
@@ -4369,7 +4369,7 @@ int blockpresent(enum iofields blocknr)
     case IO_DI:
     case IO_DII:
     case IO_HeHII:
-#if defined (UM_CHEMISTRY)
+#ifdef GADGET3_IO_LIB //defined (UM_CHEMISTRY)
       return 1;
 #else
       return 0;
@@ -4377,7 +4377,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_POT:
-#if defined(OUTPUTPOTENTIAL) || defined(SUBFIND_RESHUFFLE_AND_POTENTIAL)
+#ifdef GADGET3_IO_LIB //defined(OUTPUTPOTENTIAL) || defined(SUBFIND_RESHUFFLE_AND_POTENTIAL)
       return 1;
 #else
       return 0;
@@ -4385,7 +4385,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_IPOT:
-#if defined(KD_USE_IPOT_FOR_BH_MERGER)
+#ifdef GADGET3_IO_LIB //defined(KD_USE_IPOT_FOR_BH_MERGER)
       return 1;
 #else
       return 0;
@@ -4393,7 +4393,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_PHIDOT:
-#ifdef PHIDOT
+#ifdef GADGET3_IO_LIB //def PHIDOT
       return 1;
 #else
       return 0;
@@ -4401,7 +4401,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_ACCEL:
-#ifdef OUTPUTACCELERATION
+#ifdef GADGET3_IO_LIB //def OUTPUTACCELERATION
       return 1;
 #else
       return 0;
@@ -4410,7 +4410,7 @@ int blockpresent(enum iofields blocknr)
 
 
     case IO_DTENTR:
-#ifdef OUTPUTCHANGEOFENTROPY
+#ifdef GADGET3_IO_LIB //def OUTPUTCHANGEOFENTROPY
       return 1;
 #else
       return 0;
@@ -4418,7 +4418,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_STRESSDIAG:
-#ifdef OUTPUTSTRESS
+#ifdef GADGET3_IO_LIB //def OUTPUTSTRESS
       return 1;
 #else
       return 0;
@@ -4426,7 +4426,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_STRESSOFFDIAG:
-#ifdef OUTPUTSTRESS
+#ifdef GADGET3_IO_LIB //def OUTPUTSTRESS
       return 1;
 #else
       return 0;
@@ -4434,7 +4434,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_STRESSBULK:
-#ifdef OUTPUTBULKSTRESS
+#ifdef GADGET3_IO_LIB //def OUTPUTBULKSTRESS
       return 1;
 #else
       return 0;
@@ -4442,7 +4442,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_SHEARCOEFF:
-#ifdef OUTPUTSHEARCOEFF
+#ifdef GADGET3_IO_LIB //def OUTPUTSHEARCOEFF
       return 1;
 #else
       return 0;
@@ -4450,7 +4450,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_TSTP:
-#ifdef OUTPUTTIMESTEP
+#ifdef GADGET3_IO_LIB //def OUTPUTTIMESTEP
       return 1;
 #else
       return 0;
@@ -4459,7 +4459,7 @@ int blockpresent(enum iofields blocknr)
 
 
     case IO_BFLD:
-#ifdef MAGNETIC
+#ifdef GADGET3_IO_LIB //def MAGNETIC
       return 1;
 #else
       return 0;
@@ -4468,7 +4468,7 @@ int blockpresent(enum iofields blocknr)
 
 
     case IO_BSMTH:
-#ifdef OUTPUTBSMOOTH
+#ifdef GADGET3_IO_LIB //def OUTPUTBSMOOTH
       return 1;
 #else
       return 0;
@@ -4477,7 +4477,7 @@ int blockpresent(enum iofields blocknr)
 
 
     case IO_DBDT:
-#ifdef DBOUTPUT
+#ifdef GADGET3_IO_LIB //def DBOUTPUT
       return 1;
 #else
       return 0;
@@ -4486,7 +4486,7 @@ int blockpresent(enum iofields blocknr)
 
     case IO_VRMS:
     case IO_VBULK:
-#if defined(JD_VTURB)
+#ifdef GADGET3_IO_LIB //defined(JD_VTURB)
       return 1;
 #else
       return 0;
@@ -4494,7 +4494,7 @@ int blockpresent(enum iofields blocknr)
 
     case IO_TRUENGB:
     case IO_WNGB:
-#if defined(KD_OUTPUT_NGBS)
+#ifdef GADGET3_IO_LIB //defined(KD_OUTPUT_NGBS)
       return 1;
 #else
       return 0;
@@ -4502,7 +4502,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_MAINHALO:
-#if defined(KD_MAIN_HALO)
+#ifdef GADGET3_IO_LIB //defined(KD_MAIN_HALO)
       return 1;
 #else
       return 0;
@@ -4511,7 +4511,7 @@ int blockpresent(enum iofields blocknr)
 
     case IO_VRAD:
     case IO_VTAN:
-#if defined(JD_DECOMPOSE_VTURB)
+#ifdef GADGET3_IO_LIB //defined(JD_DECOMPOSE_VTURB)
       return 1;
 #else
       return 0;
@@ -4520,7 +4520,7 @@ int blockpresent(enum iofields blocknr)
 
     case IO_VDIV:
     case IO_VROT:
-#if defined(OUTPUT_DIV_CURL)
+#ifdef GADGET3_IO_LIB //defined(OUTPUT_DIV_CURL)
       return 1;
 #else
       return 0;
@@ -4528,7 +4528,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_VORT:
-#ifdef OUTPUT_VORTICITY
+#ifdef GADGET3_IO_LIB //def OUTPUT_VORTICITY
       return 1;
 #else
       return 0;
@@ -4545,7 +4545,7 @@ int blockpresent(enum iofields blocknr)
 
 
     case IO_DIVB:
-#ifdef TRACEDIVB
+#ifdef GADGET3_IO_LIB //def TRACEDIVB
       return 1;
 #else
       return 0;
@@ -4553,7 +4553,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_RELDIVB:
-#ifdef TRACEDIVB
+#ifdef GADGET3_IO_LIB //def TRACEDIVB
       return 1;
 #else
       return 0;
@@ -4561,7 +4561,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_ABVC:
-#ifdef TIME_DEP_ART_VISC
+#ifdef GADGET3_IO_LIB //def TIME_DEP_ART_VISC
       return 1;
 #else
       return 0;
@@ -4570,7 +4570,7 @@ int blockpresent(enum iofields blocknr)
 
 
     case IO_ACVC:
-#ifdef TIME_DEP_ART_COND
+#ifdef GADGET3_IO_LIB //def TIME_DEP_ART_COND
       return 1;
 #else
       return 0;
@@ -4579,7 +4579,7 @@ int blockpresent(enum iofields blocknr)
 
 
     case IO_AMDC:
-#ifdef TIME_DEP_MAGN_DISP
+#ifdef GADGET3_IO_LIB //def TIME_DEP_MAGN_DISP
       return 1;
 #else
       return 0;
@@ -4603,7 +4603,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_PHI:
-#ifdef OUTPUTDEDNER
+#ifdef GADGET3_IO_LIB //def OUTPUTDEDNER
       return 1;
 #else
       return 0;
@@ -4619,7 +4619,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_GRADPHI:
-#ifdef OUTPUTDEDNER
+#ifdef GADGET3_IO_LIB //def OUTPUTDEDNER
       return 1;
 #else
       return 0;
@@ -4628,7 +4628,7 @@ int blockpresent(enum iofields blocknr)
 
 
     case IO_ROTB:
-#ifdef OUTPUT_ROTB
+#ifdef GADGET3_IO_LIB //def OUTPUT_ROTB
       return 1;
 #else
       return 0;
@@ -4637,7 +4637,7 @@ int blockpresent(enum iofields blocknr)
 
 
     case IO_SROTB:
-#ifdef OUTPUT_SROTB
+#ifdef GADGET3_IO_LIB //def OUTPUT_SROTB
       return 1;
 #else
       return 0;
@@ -4653,7 +4653,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_COOLRATE:
-#ifdef OUTPUTCOOLRATE
+#ifdef GADGET3_IO_LIB //def OUTPUTCOOLRATE
       return 1;
 #else
       return 0;
@@ -4662,7 +4662,7 @@ int blockpresent(enum iofields blocknr)
 
 
     case IO_CONDRATE:
-#ifdef OUTPUTCONDRATE
+#ifdef GADGET3_IO_LIB //def OUTPUTCONDRATE
       return 1;
 #else
       return 0;
@@ -4671,7 +4671,7 @@ int blockpresent(enum iofields blocknr)
 
 
     case IO_DENN:
-#ifdef OUTPUTDENSNORM
+#ifdef GADGET3_IO_LIB //def OUTPUTDENSNORM
       return 1;
 #else
       return 0;
@@ -4682,7 +4682,7 @@ int blockpresent(enum iofields blocknr)
     case IO_ACRB:
     case IO_BHMASS:
     case IO_BHMDOT:
-#ifdef BLACK_HOLES
+#ifdef GADGET3_IO_LIB //def BLACK_HOLES
       return 1;
 #else
       return 0;
@@ -4690,7 +4690,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_BHPROGS:
-#ifdef BLACK_HOLES
+#ifdef GADGET3_IO_LIB //def BLACK_HOLES
       return 1;
 #else
       return 0;
@@ -4698,7 +4698,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_BHMRAD:
-#ifdef UNIFIED_FEEDBACK
+#ifdef GADGET3_IO_LIB //def UNIFIED_FEEDBACK
       return 1;
 #else
       return 0;
@@ -4706,7 +4706,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_MAXSIGNALVEL:
-#ifdef OUTPUTMAXSIGVEL
+#ifdef GADGET3_IO_LIB //def OUTPUTMAXSIGVEL
       return 1;
 #else
       return 0;
@@ -4714,7 +4714,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_MACH:
-#if defined(JD_SHOCK)
+#ifdef GADGET3_IO_LIB //defined(JD_SHOCK)
       return 1;
 #else
       return 0;
@@ -4722,7 +4722,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_MACH_ALFVEN:
-#if defined(JD_SHOCK) && defined(JD_SHOCK_MAGNETIC)
+#ifdef GADGET3_IO_LIB //defined(JD_SHOCK) && defined(JD_SHOCK_MAGNETIC)
       return 1;
 #else
       return 0;
@@ -4732,7 +4732,7 @@ int blockpresent(enum iofields blocknr)
     case IO_SHSPEED:
     case IO_SHCOMPRESS:
     case IO_SHNORMAL:
-#ifdef JD_SHOCK
+#ifdef GADGET3_IO_LIB //def JD_SHOCK
       return 1;
 #else
       return 0;
@@ -4744,7 +4744,7 @@ int blockpresent(enum iofields blocknr)
     case IO_SHPRESDOWN:
     case IO_SHVELUP:
     case IO_SHVELDOWN:
-#if defined(JD_SHOCK) && defined(JD_SHOCK_RECONSTRUCT)
+#ifdef GADGET3_IO_LIB //defined(JD_SHOCK) && defined(JD_SHOCK_RECONSTRUCT)
       return 1;
 #else
       return 0;
@@ -4753,7 +4753,7 @@ int blockpresent(enum iofields blocknr)
 
     case IO_SHALFVENUP:
     case IO_SHALFVENDOWN:
-#if defined(JD_SHOCK) && defined(JD_SHOCK_RECONSTRUCT) && defined(JD_SHOCK_MAGNETIC)
+#ifdef GADGET3_IO_LIB //defined(JD_SHOCK) && defined(JD_SHOCK_RECONSTRUCT) && defined(JD_SHOCK_MAGNETIC)
       return 1;
 #else
       return 0;
@@ -4761,7 +4761,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_SHOBLIQUITY:
-#if defined(JD_SHOCK) && defined(LMB_SHOCK_OBLIQUITY)
+#ifdef GADGET3_IO_LIB //defined(JD_SHOCK) && defined(LMB_SHOCK_OBLIQUITY)
       return 1;
 #else
       return 0;
@@ -4775,7 +4775,7 @@ int blockpresent(enum iofields blocknr)
     case IO_LMBCR_pNORM:
     case IO_LMBCR_pSLOPE:
     case IO_LMBCR_pCUT:
-#ifdef LMB_CR_PROTONS
+#ifdef GADGET3_IO_LIB //def LMB_CR_PROTONS
       return 1;
 #else
       return 0;
@@ -4785,7 +4785,7 @@ int blockpresent(enum iofields blocknr)
     case IO_LMBCR_eNORM:
     case IO_LMBCR_eSLOPE:
     case IO_LMBCR_eCUT:
-#ifdef LMB_CR_ELECTRONS
+#ifdef GADGET3_IO_LIB //def LMB_CR_ELECTRONS
       return 1;
 #else
       return 0;
@@ -4794,7 +4794,7 @@ int blockpresent(enum iofields blocknr)
 
     case IO_LMBCR_pPRESSURE:
     case IO_LMBCR_ePRESSURE:
-#ifdef LMB_SPECTRAL_CRs
+#ifdef GADGET3_IO_LIB //def LMB_SPECTRAL_CRs
       return 1;
 #else
       return 0;
@@ -4802,7 +4802,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_RHO_OLD:
-#ifdef READ_RHO_OLD
+#ifdef GADGET3_IO_LIB //def READ_RHO_OLD
       return 1;
 #else
       return 0;
@@ -4810,7 +4810,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_LMBCR_eSYNCHROTRON:
-#ifdef LMB_CR_OUTPUT_SYNCHROTRON
+#ifdef GADGET3_IO_LIB //def LMB_CR_OUTPUT_SYNCHROTRON
       return 1;
 #else
       return 0;
@@ -4818,7 +4818,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_TIDALTENSORPS:
-#ifdef OUTPUT_TIDALTENSORPS
+#ifdef GADGET3_IO_LIB //def OUTPUT_TIDALTENSORPS
       return 1;
 #else
       return 0;
@@ -4826,7 +4826,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_DISTORTIONTENSORPS:
-#ifdef OUTPUT_DISTORTIONTENSORPS
+#ifdef GADGET3_IO_LIB //def OUTPUT_DISTORTIONTENSORPS
       return 1;
 #else
       return 0;
@@ -4834,7 +4834,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_CAUSTIC_COUNTER:
-#ifdef DISTORTIONTENSORPS
+#ifdef GADGET3_IO_LIB //def DISTORTIONTENSORPS
       return 1;
 #else
       return 0;
@@ -4842,7 +4842,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_FLOW_DETERMINANT:
-#if defined(DISTORTIONTENSORPS) && !defined(GDE_LEAN)
+#ifdef GADGET3_IO_LIB //defined(DISTORTIONTENSORPS) && !defined(GDE_LEAN)
       return 1;
 #else
       return 0;
@@ -4850,7 +4850,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_STREAM_DENSITY:
-#ifdef DISTORTIONTENSORPS
+#ifdef GADGET3_IO_LIB //def DISTORTIONTENSORPS
       return 1;
 #else
       return 0;
@@ -4858,7 +4858,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_PHASE_SPACE_DETERMINANT:
-#ifdef DISTORTIONTENSORPS
+#ifdef GADGET3_IO_LIB //def DISTORTIONTENSORPS
       return 1;
 #else
       return 0;
@@ -4866,7 +4866,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_ANNIHILATION_RADIATION:
-#if defined(DISTORTIONTENSORPS) && !defined(GDE_LEAN)
+#ifdef GADGET3_IO_LIB //defined(DISTORTIONTENSORPS) && !defined(GDE_LEAN)
       return 1;
 #else
       return 0;
@@ -4874,7 +4874,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_LAST_CAUSTIC:
-#ifdef OUTPUT_LAST_CAUSTIC
+#ifdef GADGET3_IO_LIB //def OUTPUT_LAST_CAUSTIC
       return 1;
 #else
       return 0;
@@ -4882,7 +4882,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_SHEET_ORIENTATION:
-#if defined(DISTORTIONTENSORPS) && (!defined(GDE_LEAN) || defined(GDE_READIC))
+#ifdef GADGET3_IO_LIB //defined(DISTORTIONTENSORPS) && (!defined(GDE_LEAN) || defined(GDE_READIC))
       return 1;
 #else
       return 0;
@@ -4890,7 +4890,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_INIT_DENSITY:
-#if defined(DISTORTIONTENSORPS) && (!defined(GDE_LEAN) || defined(GDE_READIC))
+#ifdef GADGET3_IO_LIB //defined(DISTORTIONTENSORPS) && (!defined(GDE_LEAN) || defined(GDE_READIC))
       return 1;
 #else
       return 0;
@@ -4918,7 +4918,7 @@ int blockpresent(enum iofields blocknr)
     case IO_DMHSML:
     case IO_DMDENSITY:
     case IO_DMVELDISP:
-#if defined(SUBFIND_RESHUFFLE_CATALOGUE) && defined(SUBFIND)
+#ifdef GADGET3_IO_LIB //defined(SUBFIND_RESHUFFLE_CATALOGUE) && defined(SUBFIND)
       return 1;
 #else
       return 0;
@@ -4931,7 +4931,7 @@ int blockpresent(enum iofields blocknr)
     case IO_SIDMHSML:
     case IO_SIDMDENSITY:
     case IO_SIDMVELDISP:
-#ifdef SIDM
+#ifdef GADGET3_IO_LIB //def SIDM
       return 1;
 #else
       return 0;
@@ -4941,7 +4941,7 @@ int blockpresent(enum iofields blocknr)
 
     case IO_Zs:
     case IO_iMass:
-#ifdef LT_STELLAREVOLUTION
+#ifdef GADGET3_IO_LIB //def LT_STELLAREVOLUTION
       return 1;
 #else
       return 0;
@@ -4951,7 +4951,7 @@ int blockpresent(enum iofields blocknr)
     case IO_ContribII:
     case IO_ContribIa:
     case IO_ContribAGB:
-#ifdef LT_TRACK_CONTRIBUTES
+#ifdef GADGET3_IO_LIB //def LT_TRACK_CONTRIBUTES
       return 1;
 #else
       return 0;
@@ -4960,7 +4960,7 @@ int blockpresent(enum iofields blocknr)
 
 
     case IO_CLDX:
-#if defined(LT_STELLAREVOLUTION) && !defined(GM_MUPPI)
+#ifdef GADGET3_IO_LIB //defined(LT_STELLAREVOLUTION) && !defined(GM_MUPPI)
       return 1;
 #else
       return 0;
@@ -4968,7 +4968,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_HTEMP:
-#if defined(LT_STELLAREVOLUTION) && !defined(GM_MUPPI)
+#ifdef GADGET3_IO_LIB //defined(LT_STELLAREVOLUTION) && !defined(GM_MUPPI)
       return 1;
 #else
       return 0;
@@ -4976,7 +4976,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_TEMP:
-#ifdef COOLING
+#ifdef GADGET3_IO_LIB //def COOLING
       return 1;
 #else
       return 0;
@@ -4984,14 +4984,14 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_ZAGE:
-#if defined(LT_ZAGE)
+#ifdef GADGET3_IO_LIB //defined(LT_ZAGE)
       return 1;
 #else
       return 0;
 #endif
       break;
     case IO_ZAGE_LLV:
-#if defined(LT_ZAGE_LLV)
+#ifdef GADGET3_IO_LIB //defined(LT_ZAGE_LLV)
       return 1;
 #else
       return 0;
@@ -4999,7 +4999,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_CONTRIB:
-#ifdef LT_TRACK_CONTRIBUTES
+#ifdef GADGET3_IO_LIB //def LT_TRACK_CONTRIBUTES
       return 1;
 #else
       return 0;
@@ -5007,7 +5007,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_ZSMOOTH:
-#if defined(LT_SMOOTH_Z) && !defined(LT_SMOOTH_ALLMETALS)
+#ifdef GADGET3_IO_LIB //defined(LT_SMOOTH_Z) && !defined(LT_SMOOTH_ALLMETALS)
       return 1;
 #else
       return 0;
@@ -5015,7 +5015,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_allZSMOOTH:
-#ifdef LT_SMOOTH_ALLMETALS
+#ifdef GADGET3_IO_LIB //def LT_SMOOTH_ALLMETALS
       return 1;
 #else
       return 0;
@@ -5035,7 +5035,7 @@ int blockpresent(enum iofields blocknr)
     case IO_FB_EREC:
     case IO_FB_EKINREC:
     case IO_FB_TSTARTMP:
-#ifdef GM_MUPPI
+#ifdef GADGET3_IO_LIB //def GM_MUPPI
       return 1;
 #else
       return 0;
@@ -5043,7 +5043,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_FB_M_MO:
-#ifdef MV_OUTPUT_MMOL
+#ifdef GADGET3_IO_LIB //def MV_OUTPUT_MMOL
       return 1;
 #else
       return 0;
@@ -5051,7 +5051,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_FB_GRADRHO:
-#if defined(GM_MUPPI) && defined(GM_GRADRHO_OUT)
+#ifdef GADGET3_IO_LIB //defined(GM_MUPPI) && defined(GM_GRADRHO_OUT)
       return 1;
 #else
       return 0;
@@ -5060,7 +5060,7 @@ int blockpresent(enum iofields blocknr)
 
 
     case IO_AGS_SOFT:
-#if defined (ADAPTGRAVSOFT) && defined(AGS_OUTPUTGRAVSOFT)
+#ifdef GADGET3_IO_LIB //defined (ADAPTGRAVSOFT) && defined(AGS_OUTPUTGRAVSOFT)
       return 1;
 #else
       return 0;
@@ -5068,7 +5068,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_AGS_DENS:
-#if defined (ADAPTGRAVSOFT) && defined(AGS_OUTPUTGRAVNUMDENS)
+#ifdef GADGET3_IO_LIB //defined (ADAPTGRAVSOFT) && defined(AGS_OUTPUTGRAVNUMDENS)
       return 1;
 #else
       return 0;
@@ -5076,7 +5076,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_AGS_ZETA:
-#if defined (ADAPTGRAVSOFT) && defined(AGS_OUTPUTZETA)
+#ifdef GADGET3_IO_LIB //defined (ADAPTGRAVSOFT) && defined(AGS_OUTPUTZETA)
       return 1;
 #else
       return 0;
@@ -5084,7 +5084,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_AGS_OMEGA:
-#if defined (ADAPTGRAVSOFT) && defined(AGS_OUTPUTOMEGA)
+#ifdef GADGET3_IO_LIB //defined (ADAPTGRAVSOFT) && defined(AGS_OUTPUTOMEGA)
       return 1;
 #else
       return 0;
@@ -5092,7 +5092,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_AGS_CORR:
-#if defined (ADAPTGRAVSOFT) && defined(AGS_OUTPUTCORR)
+#ifdef GADGET3_IO_LIB //defined (ADAPTGRAVSOFT) && defined(AGS_OUTPUTCORR)
       return 1;
 #else
       return 0;
@@ -5100,7 +5100,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_AGS_NGBS:
-#if defined (ADAPTGRAVSOFT) && defined(AGS_OUTPUTNGBS)
+#ifdef GADGET3_IO_LIB //defined (ADAPTGRAVSOFT) && defined(AGS_OUTPUTNGBS)
       return 1;
 #else
       return 0;
@@ -5108,7 +5108,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_GRADENERGY:
-#if defined(CONDUCTION_INCLUDEMAGNETIC) || defined(AA_OUTPUT_GRADS)
+#ifdef GADGET3_IO_LIB //defined(CONDUCTION_INCLUDEMAGNETIC) || defined(AA_OUTPUT_GRADS)
       return 1;
 #else
       return 0;
@@ -5116,7 +5116,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_GRADPRESSURE:
-#ifdef AA_OUTPUT_GRADS
+#ifdef GADGET3_IO_LIB //def AA_OUTPUT_GRADS
       return 1;
 #else
       return 0;
@@ -5150,21 +5150,21 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_HSMLSTAR:
-#if defined(GM_STARDENSITY) && !defined(GM_STARDENSITY_FIXAPERTURE)
+#ifdef GADGET3_IO_LIB //defined(GM_STARDENSITY) && !defined(GM_STARDENSITY_FIXAPERTURE)
       return 1;
 #else
       return 0;
 #endif
 
     case IO_NEIGHSTAR:
-#if defined(GM_STARDENSITY) && defined(GM_STARDENSITY_FIXAPERTURE)
+#ifdef GADGET3_IO_LIB //defined(GM_STARDENSITY) && defined(GM_STARDENSITY_FIXAPERTURE)
       return 1;
 #else
       return 0;
 #endif
 
     case IO_RHOSTAR:
-#if defined(GM_STARDENSITY)
+#ifdef GADGET3_IO_LIB //defined(GM_STARDENSITY)
       return 1;
 #else
       return 0;
@@ -5172,7 +5172,7 @@ int blockpresent(enum iofields blocknr)
 
     case IO_DUSTL:
     case IO_DUSTS:
-#ifdef GL_CR_DUST
+#ifdef GADGET3_IO_LIB //def GL_CR_DUST
       return 1;
 #else
       return 0;
