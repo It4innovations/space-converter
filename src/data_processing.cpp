@@ -526,7 +526,21 @@ namespace space_converter {
 #endif			
 			{
 				//grid_main.sparse_grid = std::make_shared<common::vdb::sparse::VoxelOpenMPManager>();
-				grid_main.sparse_grid = std::make_shared<common::vdb::sparse::VoxelNanoVDBManager>();				
+
+				if (from_cl.use_nanovdb) {
+					if (space_data.use_norm_value)
+						grid_main.sparse_grid = std::make_shared<common::vdb::sparse::VoxelNanoVDBManagerFloat>();
+					else
+						grid_main.sparse_grid = std::make_shared<common::vdb::sparse::VoxelNanoVDBManagerFloat3>();
+				} else {
+#ifdef WITH_OPENVDB
+					if (space_data.use_norm_value)
+						grid_main.sparse_grid = std::make_shared<common::vdb::sparse::VoxelOpenVDBManagerFloat>();
+					else
+						grid_main.sparse_grid = std::make_shared<common::vdb::sparse::VoxelOpenVDBManagerFloat3>();
+#endif
+				}
+
 				grid_main.sparse_grid->init(convert_vdb_base->get_local_num_particles()); // TODO: convert_vdb_base->get_local_num_particles()
 			}
 		}
@@ -974,20 +988,33 @@ namespace space_converter {
 //
 //					nanogrid->tree().extrema(space_data.min_value_reduced, space_data.max_value_reduced);
 
-					auto nanovdb_handleI = convert_vdb_base->sparse_to_nanovdb(grid_main_sum.sparse_grid.get());
+					common::vdb::sparse::VoxelNanoVDBManagerFloat* nanovdb_manager_float = dynamic_cast<common::vdb::sparse::VoxelNanoVDBManagerFloat*>(grid_main_sum.sparse_grid.get());
+					common::vdb::sparse::VoxelNanoVDBManagerFloat3* nanovdb_manager_float3 = dynamic_cast<common::vdb::sparse::VoxelNanoVDBManagerFloat3*>(grid_main_sum.sparse_grid.get());
 
-					nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::tools::createNanoGrid(*nanovdb_handleI);
+					if (nanovdb_manager_float) {
+						auto nanovdb_handleI = nanovdb_manager_float->nano_grid;
+						nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::tools::createNanoGrid(*nanovdb_handleI);
 
-					// Serialize NanoVDB to binary vector
-					grid_main_final.vector_grid.resize(grid_handle_final.bufferSize());
-					memcpy(grid_main_final.vector_grid.data(), grid_handle_final.data(), grid_handle_final.bufferSize());
+						// Serialize NanoVDB to binary vector
+						grid_main_final.vector_grid.resize(grid_handle_final.bufferSize());
+						memcpy(grid_main_final.vector_grid.data(), grid_handle_final.data(), grid_handle_final.bufferSize());
+					}
+					else if (nanovdb_manager_float3) {
+						auto nanovdb_handleI = nanovdb_manager_float3->nano_grid;
+						nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::tools::createNanoGrid(*nanovdb_handleI);
 
-					//if (grid_main_sum.nano_grid) {
-					//	nanovdb::NanoGrid<float>* nanogrid = (nanovdb::NanoGrid<float>*) grid_handle_final.data();
+						// Serialize NanoVDB to binary vector
+						grid_main_final.vector_grid.resize(grid_handle_final.bufferSize());
+						memcpy(grid_main_final.vector_grid.data(), grid_handle_final.data(), grid_handle_final.bufferSize());
+					}
+					else {
+						auto nanovdb_handleI = convert_vdb_base->sparse_to_nanovdb(grid_main_sum.sparse_grid.get());
+						nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::tools::createNanoGrid(*nanovdb_handleI);
 
-					// Extract min/max from NanoVDB tree
-
-					//nanogrid->tree().extrema(space_data.min_value_reduced, space_data.max_value_reduced);
+						// Serialize NanoVDB to binary vector
+						grid_main_final.vector_grid.resize(grid_handle_final.bufferSize());
+						memcpy(grid_main_final.vector_grid.data(), grid_handle_final.data(), grid_handle_final.bufferSize());
+					}
 				}
 				// Convert OpenVDB to binary format
 				else {
@@ -999,12 +1026,30 @@ namespace space_converter {
 //#endif
 
 #ifdef WITH_OPENVDB
-					auto openvdb_handleI = convert_vdb_base->sparse_to_openvdb(grid_main_sum.sparse_grid.get());
+					common::vdb::sparse::VoxelOpenVDBManagerFloat* openvdb_manager_float = dynamic_cast<common::vdb::sparse::VoxelOpenVDBManagerFloat*>(grid_main_sum.sparse_grid.get());
+					common::vdb::sparse::VoxelOpenVDBManagerFloat3* openvdb_manager_float3 = dynamic_cast<common::vdb::sparse::VoxelOpenVDBManagerFloat3*>(grid_main_sum.sparse_grid.get());
 
-					convert_vdb_base->openvdb_to_vector(openvdb_handleI, grid_main_final.vector_grid);
-					printf("rank #%d: Active voxels in input grid: %lld\n", from_cl.world_rank, openvdb_handleI->activeVoxelCount());
+					if (openvdb_manager_float) {
+						auto openvdb_handleI = openvdb_manager_float->vdb_grid;
+						
+						convert_vdb_base->openvdb_to_vector(openvdb_handleI, grid_main_final.vector_grid);
+						eval_min_max(openvdb_handleI, space_data.min_value_reduced, space_data.max_value_reduced);
+						printf("rank #%d: Active voxels in input grid: %lld\n", from_cl.world_rank, openvdb_handleI->activeVoxelCount());
+					}
+					else if (openvdb_manager_float3) {
+						auto openvdb_handleI = openvdb_manager_float3->vdb_grid;
 
-					eval_min_max(openvdb_handleI, space_data.min_value_reduced, space_data.max_value_reduced);
+						convert_vdb_base->openvdb_to_vector(openvdb_handleI, grid_main_final.vector_grid);
+						eval_min_max(openvdb_handleI, space_data.min_value_reduced, space_data.max_value_reduced);
+						printf("rank #%d: Active voxels in input grid: %lld\n", from_cl.world_rank, openvdb_handleI->activeVoxelCount());
+					}
+					else {
+						auto openvdb_handleI = convert_vdb_base->sparse_to_openvdb(grid_main_sum.sparse_grid.get());
+
+						convert_vdb_base->openvdb_to_vector(openvdb_handleI, grid_main_final.vector_grid);
+						eval_min_max(openvdb_handleI, space_data.min_value_reduced, space_data.max_value_reduced);
+						printf("rank #%d: Active voxels in input grid: %lld\n", from_cl.world_rank, openvdb_handleI->activeVoxelCount());
+					}
 #endif
 				}
 
@@ -1085,9 +1130,21 @@ namespace space_converter {
 			// Save based on particle type
 			if (particle_type == common::vdb::VDBParticleType::eOpenVDB) {
 #ifdef WITH_OPENVDB
-				//openvdb::io::File(full_filepath).write({ grid_main_final.vdb_grid });
-				auto openvdb_handleI = convert_vdb_base->sparse_to_openvdb(grid_main_final.sparse_grid.get());
-				openvdb::io::File(full_filepath).write({ openvdb_handleI });
+				common::vdb::sparse::VoxelOpenVDBManagerFloat* openvdb_manager_float = dynamic_cast<common::vdb::sparse::VoxelOpenVDBManagerFloat*>(grid_main_sum.sparse_grid.get());
+				common::vdb::sparse::VoxelOpenVDBManagerFloat3* openvdb_manager_float3 = dynamic_cast<common::vdb::sparse::VoxelOpenVDBManagerFloat3*>(grid_main_sum.sparse_grid.get());
+
+				if (openvdb_manager_float) {
+					auto openvdb_handleI = openvdb_manager_float->vdb_grid;
+					openvdb::io::File(full_filepath).write({ openvdb_handleI });
+				}
+				else if (openvdb_manager_float3) {
+					auto openvdb_handleI = openvdb_manager_float3->vdb_grid;
+					openvdb::io::File(full_filepath).write({ openvdb_handleI });
+				}
+				else {
+					auto openvdb_handleI = convert_vdb_base->sparse_to_openvdb(grid_main_final.sparse_grid.get());
+					openvdb::io::File(full_filepath).write({ openvdb_handleI });
+				}
 #endif
 
 				printf("rank #%d: finished: %s\n", from_cl.world_rank, full_filepath.c_str());
@@ -1114,26 +1171,24 @@ namespace space_converter {
 			else if (particle_type == common::vdb::VDBParticleType::eNanoVDB) {
 //				nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::tools::createNanoGrid(*grid_main_final.nano_grid);
 
-				auto nanovdb_handleI = convert_vdb_base->sparse_to_nanovdb(grid_main_final.sparse_grid.get());
+				common::vdb::sparse::VoxelNanoVDBManagerFloat* nanovdb_manager_float = dynamic_cast<common::vdb::sparse::VoxelNanoVDBManagerFloat*>(grid_main_final.sparse_grid.get());
+				common::vdb::sparse::VoxelNanoVDBManagerFloat3* nanovdb_manager_float3 = dynamic_cast<common::vdb::sparse::VoxelNanoVDBManagerFloat3*>(grid_main_final.sparse_grid.get());
+				if (nanovdb_manager_float) {
+					auto nanovdb_handleI = nanovdb_manager_float->nano_grid;
+					nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::tools::createNanoGrid(*nanovdb_handleI);
+					nanovdb::io::writeGrid(space_data.full_filepath, grid_handle_final);
+				}
+				else if (nanovdb_manager_float3) {
+					auto nanovdb_handleI = nanovdb_manager_float3->nano_grid;
+					nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::tools::createNanoGrid(*nanovdb_handleI);
+					nanovdb::io::writeGrid(space_data.full_filepath, grid_handle_final);
+				}
+				else {
+					auto nanovdb_handleI = convert_vdb_base->sparse_to_nanovdb(grid_main_final.sparse_grid.get());
+					nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::tools::createNanoGrid(*nanovdb_handleI);
+					nanovdb::io::writeGrid(space_data.full_filepath, grid_handle_final);
+				}
 
-				nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::tools::createNanoGrid(*nanovdb_handleI);
-
-//				if (grid_main_final.nano_grid) {
-//#if OPENVDB_VERSION == 11
-//					grid_handle_final = nanovdb::createNanoGrid(*grid_main_final.nano_grid);
-//#else
-//					grid_handle_final = nanovdb::tools::createNanoGrid(*grid_main_final.nano_grid);
-//#endif				
-//				}
-//				else if (grid_main_final.nano_grid3) {
-//#if OPENVDB_VERSION == 11
-//					grid_handle_final = nanovdb::createNanoGrid(*grid_main_final.nano_grid3);
-//#else
-//					grid_handle_final = nanovdb::tools::createNanoGrid(*grid_main_final.nano_grid3);
-//#endif
-//				}
-
-				nanovdb::io::writeGrid(space_data.full_filepath, grid_handle_final);
 				printf("rank #%d: finished: %s\n", from_cl.world_rank, full_filepath.c_str());
 			}
 			// Save raw particle format

@@ -117,6 +117,10 @@ namespace common {
 			virtual void merge(uint8_t* /*bin_data*/) {}
 			virtual size_t mem_size() const { return 0; }
 
+			virtual void insertOrUpdate(void* /*h_voxels*/, size_t /*num_voxels*/) {}
+			//virtual int extractAll(Voxel** h_output_voxels) {}
+			virtual void clear() {}
+
 		public:
 			double transform_scale = 0.0;
 		};		

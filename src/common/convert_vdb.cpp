@@ -911,7 +911,6 @@ namespace common {
 
 		std::shared_ptr<nanovdb::tools::build::FloatGrid> ConvertVDBBase::sparse_to_nanovdb(VoxelSparseManager* voxel_manager)
 		{
-
 			std::shared_ptr<nanovdb::tools::build::FloatGrid> nano_grid = std::make_shared<nanovdb::tools::build::FloatGrid>(0.0f, "density", nanovdb::GridClass::FogVolume);
 
 			// Create NanoVDB transform with scale factor and translation offset

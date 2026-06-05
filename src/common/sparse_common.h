@@ -36,7 +36,7 @@
 #ifdef WITH_NANOVDB
 #define NANOVDB_USE_TBB
 #define NANOVDB_USE_INTRINSICS
-#define NANOVDB_USE_OPENVDB
+//#define NANOVDB_USE_OPENVDB
 #include <nanovdb/tools/GridBuilder.h>
 #endif
 
@@ -149,24 +149,26 @@ namespace common {
 					this->merge(&temp_manager);
 				}
 
-			public:
-
 				// Insert or update voxels using OpenMP parallelization with thread-local pre-aggregation
-				void insertOrUpdate(Voxel* h_voxels, int num_voxels);
+				void insertOrUpdate(void* h_voxels, size_t num_voxels) override;
 
 				// Extract all voxels from hash table using OpenMP
-				int extractAll(Voxel** h_output_voxels);
+				//int extractAll(Voxel** h_output_voxels) override;
 
 				// Clear hash table
-				void clear();
+				void clear() override;
 			};
+
 #ifdef WITH_NANOVDB
 		// ---------------------------------------------
 		// NanoVDB-based CPU voxel manager
+		// nanovdb::tools::build::FloatGrid
+		// nanovdb::tools::build::Vec3fGrid
 		// ---------------------------------------------
+		template<typename T>
 		class VoxelNanoVDBManager : public common::vdb::VoxelSparseManager {
 		public:
-			std::shared_ptr<nanovdb::tools::build::FloatGrid> nano_grid;
+			std::shared_ptr<T> nano_grid;
 			int insert_count;
 
 		public:
@@ -190,42 +192,34 @@ namespace common {
 
 			size_t mem_size() const override;
 
-			void merge(uint8_t* bin_data) override {
-				// Deserialize the incoming data into a temporary manager and then merge
-				VoxelNanoVDBManager temp_manager;
-				temp_manager.deserialize(bin_data);
-				this->merge(&temp_manager);
-			}
+			void merge(uint8_t* bin_data) override;
 
-		public:
 			// Insert or update voxels using OpenMP parallelization with thread-local pre-aggregation
-			void insertOrUpdate(Voxel* h_voxels, int num_voxels);
+			void insertOrUpdate(void* h_voxels, size_t num_voxels) override;
 
 			// Extract all voxels from NanoVDB grid using OpenMP
-			int extractAll(Voxel** h_output_voxels);
+			//int extractAll(Voxel** h_output_voxels);
 
 			// Clear NanoVDB grid
-			void clear();
+			void clear() override;
 
 			// Get direct access to the NanoVDB grid (for conversion/output)
-			std::shared_ptr<nanovdb::tools::build::FloatGrid> getGrid() { return nano_grid; }
+			std::shared_ptr<T> getGrid() { return nano_grid; }
 		};
-#endif // WITH_NANOVDB
-#ifdef WITH_OPENVDB
-	// Forward declaration to avoid including openvdb headers in header file
-	namespace openvdb { 
-		template<typename T> class Grid;
-		using FloatGrid = Grid<float>;
-		template<typename T> using SharedPtr = std::shared_ptr<T>;
-	}
 
+		typedef VoxelNanoVDBManager<nanovdb::tools::build::FloatGrid> VoxelNanoVDBManagerFloat;
+		typedef VoxelNanoVDBManager<nanovdb::tools::build::Vec3fGrid> VoxelNanoVDBManagerFloat3;
+
+#endif // WITH_NANOVDB
+
+#ifdef WITH_OPENVDB
 	// ---------------------------------------------
 	// OpenVDB-based CPU voxel manager
 	// ---------------------------------------------
+	template<typename T>
 	class VoxelOpenVDBManager : public common::vdb::VoxelSparseManager {
 	public:
-		// Use forward declaration or include openvdb headers via implementation
-		void* openvdb_grid;  // openvdb::FloatGrid::Ptr stored as void* to avoid header dependency
+		std::shared_ptr<T> vdb_grid;
 		int insert_count;
 
 	public:
@@ -256,20 +250,20 @@ namespace common {
 			this->merge(&temp_manager);
 		}
 
-	public:
 		// Insert or update voxels using OpenMP parallelization with thread-local pre-aggregation
-		void insertOrUpdate(Voxel* h_voxels, int num_voxels);
+		void insertOrUpdate(void* h_voxels, size_t num_voxels) override;
 
 		// Extract all voxels from OpenVDB grid
-		int extractAll(Voxel** h_output_voxels);
+		//int extractAll(Voxel** h_output_voxels);
 
 		// Clear OpenVDB grid
-		void clear();
+		void clear() override;
 
 		// Get direct access to the OpenVDB grid (for conversion/output)
-		void* getGrid() { return openvdb_grid; }
+		std::shared_ptr<T> getGrid() { return vdb_grid; }
 	};
 #endif // WITH_OPENVDB
+
 #ifdef WITH_GPU_CUDA
 			// ---------------------------------------------
 			// GPU-based voxel manager using sort+reduce

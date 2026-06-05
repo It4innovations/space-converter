@@ -149,114 +149,175 @@ namespace common {
 				float& max_value,
 				size_t& particles_count
 			) {
-				// Initialize output tracking variables
-				float min = FLT_MAX;
-				float max = -FLT_MAX;
-				size_t particles_count_temp = 0;
+				common::vdb::sparse::VoxelOpenMPManager* omp_manager = dynamic_cast<common::vdb::sparse::VoxelOpenMPManager*>(voxel_manager);
+				if (omp_manager) {
+					// Initialize output tracking variables
+					float min = FLT_MAX;
+					float max = -FLT_MAX;
+					size_t particles_count_temp = 0;
 
-				// Create thread-local hash maps to avoid race conditions during parallel processing
+					// Create thread-local hash maps to avoid race conditions during parallel processing
 #ifdef WITH_OPENMP
-				const int thread_count = omp_get_max_threads();
+					const int thread_count = omp_get_max_threads();
 #else
-				const int thread_count = 1;
+					const int thread_count = 1;
 #endif
-				std::vector<std::unordered_map<uint64_t, float>> sparse_thread_maps(thread_count);
+					std::vector<std::unordered_map<uint64_t, float>> sparse_thread_maps(thread_count);
 
 #ifdef WITH_OPENMP
 #pragma omp parallel 
-				{
-					// Get thread-local hash map for accumulating voxel values
-					int tid = omp_get_thread_num();
-					auto& sparse_local_map = sparse_thread_maps[tid];
-					sparse_local_map.reserve((size_t)num_particles / (size_t)thread_count + 64);
+					{
+						// Get thread-local hash map for accumulating voxel values
+						int tid = omp_get_thread_num();
+						auto& sparse_local_map = sparse_thread_maps[tid];
+						sparse_local_map.reserve((size_t)num_particles / (size_t)thread_count + 64);
 
 #pragma omp for reduction(min : min) reduction(max : max) reduction(+ : particles_count_temp) schedule(dynamic, 64) //TODO
 #else
-					{
-						// For non-OpenMP builds, use single thread map
-						auto& sparse_local_map = sparse_thread_maps[0];
-						sparse_local_map.reserve(num_particles);
+						{
+							// For non-OpenMP builds, use single thread map
+							auto& sparse_local_map = sparse_thread_maps[0];
+							sparse_local_map.reserve(num_particles);
 #endif
-						for (size_t ic = 0; ic < num_particles; ic++) {
-							// Cached particle index
-							size_t cached_idx = particle_ids[ic];
+							for (size_t ic = 0; ic < num_particles; ic++) {
+								// Cached particle index
+								size_t cached_idx = particle_ids[ic];
 
-							// Particle processing outputs
-							double Pos[3];
-							double px_norm, py_norm, pz_norm;
-							int px, py, pz;
-							float v_orig = 0.0f;
+								// Particle processing outputs
+								double Pos[3];
+								double px_norm, py_norm, pz_norm;
+								int px, py, pz;
+								float v_orig = 0.0f;
 
-							// Check if particle passes filters and compute voxel coordinates
-							bool should_process = process_particle(
-								cached_idx,
-								pos_particles,
-								radius_particles,
-								value_particles,
-								offset_position,
-								bbox_min_orig,
-								bbox_size_orig,
-								bbox_dim,
-								scale_space_diagonal,
-								particle_radius_multiplier,
-								bbox_x_min_norm, bbox_x_max_norm,
-								bbox_y_min_norm, bbox_y_max_norm,
-								bbox_z_min_norm, bbox_z_max_norm,
-								filter_min, filter_max,
-								bbox_sphere_pos, bbox_sphere_r,
-								anim_type, frame_req, frame,
-								use_simple_density,
-								particle_radius_const,
+								// Check if particle passes filters and compute voxel coordinates
+								bool should_process = process_particle(
+									cached_idx,
+									pos_particles,
+									radius_particles,
+									value_particles,
+									offset_position,
+									bbox_min_orig,
+									bbox_size_orig,
+									bbox_dim,
+									scale_space_diagonal,
+									particle_radius_multiplier,
+									bbox_x_min_norm, bbox_x_max_norm,
+									bbox_y_min_norm, bbox_y_max_norm,
+									bbox_z_min_norm, bbox_z_max_norm,
+									filter_min, filter_max,
+									bbox_sphere_pos, bbox_sphere_r,
+									anim_type, frame_req, frame,
+									use_simple_density,
+									particle_radius_const,
 
-								false, // is_dense_grid = false for sparse
-								// Outputs
-								Pos, px_norm, py_norm, pz_norm,
-								px, py, pz, v_orig
-							);
+									false, // is_dense_grid = false for sparse
+									// Outputs
+									Pos, px_norm, py_norm, pz_norm,
+									px, py, pz, v_orig
+								);
 
-							if (!should_process) {
-								continue;
+								if (!should_process) {
+									continue;
+								}
+
+								// Count processed particles
+								particles_count_temp++;
+
+								// Track value range for normalization
+								if (v_orig < min) min = v_orig;
+								if (v_orig > max) max = v_orig;
+
+								// Pack voxel coordinates into 64-bit key and accumulate value
+								const uint64_t key = packCoord3(px, py, pz);
+								sparse_local_map[key] += v_orig;
 							}
 
-							// Count processed particles
-							particles_count_temp++;
+					}
 
-							// Track value range for normalization
-							if (v_orig < min) min = v_orig;
-							if (v_orig > max) max = v_orig;
+					// Store output statistics
+					particles_count = particles_count_temp;
+					min_value = min;
+					max_value = max;
 
-							// Pack voxel coordinates into 64-bit key and accumulate value
-							const uint64_t key = packCoord3(px, py, pz);
-							sparse_local_map[key] += v_orig;
+					// Merge thread-local maps into global voxel manager
+					// First, estimate total unique voxels across all threads
+					size_t total_local_unique = 0;
+					for (const auto& m : sparse_thread_maps) {
+						total_local_unique += m.size();
+					}
+
+					// Merge all thread-local maps (accumulating values for duplicate voxels)
+					std::unordered_map<uint64_t, float> merged;
+					merged.reserve(total_local_unique + total_local_unique / 4 + 1);
+
+					for (const auto& m : sparse_thread_maps) {
+						for (const auto& kv : m) {
+							merged[kv.first] += kv.second;
+						}
+					}
+
+					// Transfer merged voxels to voxel manager
+					for (const auto& kv : merged) {
+						voxel_manager->insertOrUpdatePackedSequential(kv.first, kv.second);
+					}
+				} else {
+					// OpenVDB, NanoVDB
+					// Initialize output tracking variables
+					float min = FLT_MAX;
+					float max = -FLT_MAX;
+					size_t particles_count_temp = 0;
+
+					for (size_t ic = 0; ic < num_particles; ic++) {
+						// Cached particle index
+						size_t cached_idx = particle_ids[ic];
+
+						// Particle processing outputs
+						double Pos[3];
+						double px_norm, py_norm, pz_norm;
+						int px, py, pz;
+						float v_orig = 0.0f;
+
+						// Check if particle passes filters and compute voxel coordinates
+						bool should_process = process_particle(
+							cached_idx,
+							pos_particles,
+							radius_particles,
+							value_particles,
+							offset_position,
+							bbox_min_orig,
+							bbox_size_orig,
+							bbox_dim,
+							scale_space_diagonal,
+							particle_radius_multiplier,
+							bbox_x_min_norm, bbox_x_max_norm,
+							bbox_y_min_norm, bbox_y_max_norm,
+							bbox_z_min_norm, bbox_z_max_norm,
+							filter_min, filter_max,
+							bbox_sphere_pos, bbox_sphere_r,
+							anim_type, frame_req, frame,
+							use_simple_density,
+							particle_radius_const,
+
+							false, // is_dense_grid = false for sparse
+							// Outputs
+							Pos, px_norm, py_norm, pz_norm,
+							px, py, pz, v_orig
+						);
+
+						if (!should_process) {
+							continue;
 						}
 
-				}
+						// Count processed particles
+						particles_count_temp++;
 
-				// Store output statistics
-				particles_count = particles_count_temp;
-				min_value = min;
-				max_value = max;
+						// Track value range for normalization
+						if (v_orig < min) min = v_orig;
+						if (v_orig > max) max = v_orig;
 
-				// Merge thread-local maps into global voxel manager
-				// First, estimate total unique voxels across all threads
-				size_t total_local_unique = 0;
-				for (const auto& m : sparse_thread_maps) {
-					total_local_unique += m.size();
-				}
-
-				// Merge all thread-local maps (accumulating values for duplicate voxels)
-				std::unordered_map<uint64_t, float> merged;
-				merged.reserve(total_local_unique + total_local_unique / 4 + 1);
-
-				for (const auto& m : sparse_thread_maps) {
-					for (const auto& kv : m) {
-						merged[kv.first] += kv.second;
+						common::vdb::sparse::Voxel voxel(px, py, pz, v_orig);
+						voxel_manager->insertOrUpdate(&voxel, 1);
 					}
-				}
-
-				// Transfer merged voxels to voxel manager
-				for (const auto& kv : merged) {
-					voxel_manager->insertOrUpdatePackedSequential(kv.first, kv.second);
 				}
 			}
 
