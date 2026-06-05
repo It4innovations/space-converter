@@ -931,8 +931,8 @@ namespace space_converter {
 					nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::tools::createNanoGrid(*nanovdb_handleI);
 
 					// Serialize NanoVDB to binary vector
-					grid_main_final.vector_grid.resize(grid_handle_final.size());
-					memcpy(grid_main_final.vector_grid.data(), grid_handle_final.data(), grid_handle_final.size());
+					grid_main_final.vector_grid.resize(grid_handle_final.bufferSize());
+					memcpy(grid_main_final.vector_grid.data(), grid_handle_final.data(), grid_handle_final.bufferSize());
 
 					nanovdb::NanoGrid<float>* nanogrid = (nanovdb::NanoGrid<float>*) grid_handle_final.data();
 
@@ -1005,8 +1005,8 @@ namespace space_converter {
 					nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::tools::createNanoGrid(*nanovdb_handleI);
 
 					// Serialize NanoVDB to binary vector
-					grid_main_final.vector_grid.resize(grid_handle_final.size());
-					memcpy(grid_main_final.vector_grid.data(), grid_handle_final.data(), grid_handle_final.size());
+					grid_main_final.vector_grid.resize(grid_handle_final.bufferSize());
+					memcpy(grid_main_final.vector_grid.data(), grid_handle_final.data(), grid_handle_final.bufferSize());
 
 					//if (grid_main_sum.nano_grid) {
 					//	nanovdb::NanoGrid<float>* nanogrid = (nanovdb::NanoGrid<float>*) grid_handle_final.data();

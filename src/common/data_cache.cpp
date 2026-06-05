@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <numeric>
 #include <limits>
+#include <cstdint>
 
 #ifdef WITH_OPENMP
 #include <omp.h>
