@@ -758,7 +758,7 @@ namespace common {
 				}
 			}
 			else if ((grid_dst.type == VDBParticleType::eNanoVDB || grid_dst.type == VDBParticleType::eOpenVDB) && grid_recv.type == VDBParticleType::eVector) {
-				grid_dst.sparse_grid->merge(grid_recv.vector_grid.data());
+				grid_dst.sparse_grid->merge(grid_recv.vector_grid);
 			}
 
 			else if (grid_dst.type == VDBParticleType::eRawParticles && grid_recv.type == VDBParticleType::eVector) {

@@ -111,10 +111,10 @@ namespace common {
 			virtual void init(unsigned int /*expected_voxels*/) {}
 			// virtual int  update() { return 0; }
 			virtual void insertOrUpdatePackedSequential(uint64_t /*key*/, float /*value*/) {}
-			virtual void serialize(uint8_t* /*bin_data*/) {}
-			virtual void deserialize(uint8_t* /*bin_data*/) {}
+			virtual void serialize(std::vector<uint8_t> & /*bin_data*/) {}
+			virtual void deserialize(std::vector<uint8_t> & /*bin_data*/) {}
 			virtual void merge(VoxelSparseManager* /*other*/) {}
-			virtual void merge(uint8_t* /*bin_data*/) {}
+			virtual void merge(std::vector<uint8_t>& /*bin_data*/) {}
 			virtual size_t mem_size() const { return 0; }
 
 			virtual void insertOrUpdate(void* /*h_voxels*/, size_t /*num_voxels*/) {}

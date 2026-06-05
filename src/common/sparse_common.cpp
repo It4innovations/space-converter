@@ -26,6 +26,7 @@
 #ifdef WITH_OPENVDB
 #	include <openvdb/openvdb.h>
 #	include <openvdb/tools/Composite.h>
+#	include <openvdb/io/Stream.h>
 #endif
 
  // Constants
@@ -222,13 +223,14 @@ namespace common {
 			}
 
 			// Serialization: write current voxel data to binary buffer
-			void VoxelOpenMPManager::serialize(uint8_t* bin_data) {
+			void VoxelOpenMPManager::serialize(std::vector<uint8_t> &bin_data) {
 				// int insert_count;
 				// unsigned int table_size;
 				// VoxelHashEntry* hash_table;
 
-				//size_t expected_size = sizeof(int) + sizeof(unsigned int) + sizeof(VoxelHashEntry) * table_size;
-				uint8_t* ptr = bin_data;
+				size_t expected_size = sizeof(int) + sizeof(unsigned int) + sizeof(VoxelHashEntry) * table_size;
+				bin_data.resize(expected_size);
+				uint8_t* ptr = bin_data.data();
 
 				memcpy(ptr, &insert_count, sizeof(int));
 				ptr += sizeof(int);
@@ -238,7 +240,7 @@ namespace common {
 			}
 
 			// Deserialization: read voxel data from binary buffer
-			void VoxelOpenMPManager::deserialize(uint8_t* bin_data) {
+			void VoxelOpenMPManager::deserialize(std::vector<uint8_t> &bin_data) {
 				// int insert_count;
 				// unsigned int table_size;
 				// VoxelHashEntry* hash_table;
@@ -249,7 +251,7 @@ namespace common {
 				// 	return; // Invalid data
 				// }
 
-				const uint8_t* ptr = bin_data;
+				const uint8_t* ptr = bin_data.data();
 				memcpy(&insert_count, ptr, sizeof(int));
 				ptr += sizeof(int);
 				memcpy(&table_size, ptr, sizeof(unsigned int));
@@ -456,14 +458,15 @@ namespace common {
 			}
 
 			template<typename T>
-			void VoxelNanoVDBManager<T>::serialize(uint8_t* bin_data) {
+			void VoxelNanoVDBManager<T>::serialize(std::vector<uint8_t> &bin_data) {
 				nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle = nanovdb::tools::createNanoGrid(*nano_grid);
 				size_t buffer_size = grid_handle.bufferSize();
-				memcpy(bin_data, grid_handle.data(), buffer_size);
+				bin_data.resize(buffer_size);
+				memcpy(bin_data.data(), grid_handle.data(), buffer_size);
 			}
 
 			template<typename T>
-			void VoxelNanoVDBManager<T>::deserialize(uint8_t* bin_data) {
+			void VoxelNanoVDBManager<T>::deserialize(std::vector<uint8_t> &bin_data) {
 				// Deserialize from a finalized NanoGrid into our builder grid
 				// First, clear the current grid
 				using BuildType = GridBuildType_t<T>;
@@ -478,10 +481,10 @@ namespace common {
 			}
 
 			template<typename T>
-			void VoxelNanoVDBManager<T>::merge(uint8_t* bin_data) {
+			void VoxelNanoVDBManager<T>::merge(std::vector<uint8_t>& bin_data) {
 				using BuildType = GridBuildType_t<T>;
 				auto acc_dst = nano_grid->getAccessor();
-				auto* grid_src_float = (nanovdb::NanoGrid<float>*)bin_data;
+				auto* grid_src_float = (nanovdb::NanoGrid<float>*)bin_data.data();
 
 				// loop over child nodes of the root node
 				for (auto it2 = grid_src_float->tree().root().cbeginChild(); it2; ++it2) {
@@ -551,7 +554,33 @@ namespace common {
 				auto acc_dst = nano_grid->getAccessor();
 				nanovdb::GridHandle<nanovdb::HostBuffer> other_grid_handle = nanovdb::tools::createNanoGrid(*other->nano_grid);
 				auto* grid_src_float = (nanovdb::NanoGrid<float>*)other_grid_handle.data();
-				merge((uint8_t*)grid_src_float);
+				//merge((uint8_t*)grid_src_float);
+
+				using BuildType = GridBuildType_t<T>;
+				//auto acc_dst = nano_grid->getAccessor();
+				//auto* grid_src_float = (nanovdb::NanoGrid<float>*)grid_src_float;
+
+				// loop over child nodes of the root node
+				for (auto it2 = grid_src_float->tree().root().cbeginChild(); it2; ++it2) {
+					// loop over child nodes of the upper internal node
+					for (auto it1 = it2->cbeginChild(); it1; ++it1) {
+						// loop over child nodes of the lower internal node
+						for (auto it0 = it1->cbeginChild(); it0; ++it0) {
+							// loop over values
+							for (auto it = it0->cbeginValueOn(); it; ++it) {
+								float f = *it;
+								BuildType v = floatToValue<BuildType>(f);
+
+								nanovdb::Coord xyz = it.getCoord();
+
+								if (acc_dst.isValueOn(xyz)) {
+									v = v + acc_dst.getValue(xyz); //ADD
+								}
+								acc_dst.setValue(xyz, v);
+							}
+						}
+					}
+				}
 			}
 
 			template<typename T>
@@ -575,9 +604,16 @@ namespace common {
 			template<typename GridT>
 			struct GridValueType;
 
-			template<typename ValueT>
-			struct GridValueType<openvdb::Grid<openvdb::tree::Tree4<ValueT, 5, 4, 3>::Type>> {
-				using type = ValueT;
+			// Specialization for openvdb::FloatGrid
+			template<>
+			struct GridValueType<openvdb::FloatGrid> {
+				using type = float;
+			};
+
+			// Specialization for openvdb::Vec3fGrid
+			template<>
+			struct GridValueType<openvdb::Vec3fGrid> {
+				using type = openvdb::Vec3f;
 			};
 
 			template<typename GridT>
@@ -729,24 +765,43 @@ namespace common {
 			}
 
 			template<typename T>
-			void VoxelOpenVDBManager<T>::serialize(uint8_t* bin_data) {
+			void VoxelOpenVDBManager<T>::serialize(std::vector<uint8_t> &bin_data) {
 				// Serialize OpenVDB grid to buffer
-				// Create a grid container and write to stream
-				openvdb::GridPtrVec grids;
-				grids.push_back(vdb_grid);
+				// Create a temporary file in memory using ostringstream
+				//openvdb::GridPtrVec grids;
+				//grids.push_back(vdb_grid);
 
-				std::ostringstream ostr(std::ios_base::binary);
-				openvdb::io::Stream(ostr).write(grids);
-				std::string str = ostr.str();
+				//// Write to temporary file
+				//std::string temp_filename = "temp_grid.vdb";
+				//openvdb::io::File file(temp_filename);
+				//file.write(grids);
+				//file.close();
 
-				// Write size and data
-				size_t size = str.size();
-				memcpy(bin_data, &size, sizeof(size_t));
-				memcpy(bin_data + sizeof(size_t), str.data(), size);
+				//// Read back the file content
+				//std::ifstream ifs(temp_filename, std::ios::binary);
+				//ifs.seekg(0, std::ios::end);
+				//size_t size = ifs.tellg();
+				//ifs.seekg(0, std::ios::beg);
+				//
+				//// Write size first
+				//memcpy(bin_data, &size, sizeof(size_t));
+				//// Then write data
+				//ifs.read(reinterpret_cast<char*>(bin_data + sizeof(size_t)), size);
+				//ifs.close();
+
+				//// Clean up temp file
+				//std::remove(temp_filename.c_str());
+
+				// Convert the stringstream to a vector<char>			
+				std::ostringstream stream(std::ios_base::binary);
+				openvdb::io::Stream(stream).write({ vdb_grid });
+				stream.flush();
+				const std::string& str = stream.str();
+				bin_data.assign(str.begin(), str.end());
 			}
 
 			template<typename T>
-			void VoxelOpenVDBManager<T>::deserialize(uint8_t* bin_data) {
+			void VoxelOpenVDBManager<T>::deserialize(std::vector<uint8_t> &bin_data) {
 				// Deserialize from a finalized OpenVDB grid
 				// First, clear the current grid
 				using ValueType = typename T::ValueType;
@@ -764,17 +819,33 @@ namespace common {
 			}
 
 			template<typename T>
-			void VoxelOpenVDBManager<T>::merge(uint8_t* bin_data) {
-				// Read serialized grid and merge it
-				size_t size;
-				memcpy(&size, bin_data, sizeof(size_t));
-				
-				std::string str(reinterpret_cast<const char*>(bin_data + sizeof(size_t)), size);
-				std::istringstream istr(str, std::ios_base::binary);
-				
-				openvdb::io::Stream stream(istr);
-				openvdb::GridPtrVecPtr grids_src = stream.getGrids();
-				
+			void VoxelOpenVDBManager<T>::merge(std::vector<uint8_t>& bin_data) {
+				//// Read serialized grid and merge it
+				//size_t size;
+				//memcpy(&size, bin_data, sizeof(size_t));
+				//
+				//std::string str(reinterpret_cast<const char*>(bin_data + sizeof(size_t)), size);
+				//std::istringstream istr(str, std::ios_base::binary);
+				//
+				//openvdb::io::Stream stream(istr);
+				//openvdb::GridPtrVecPtr grids_src = stream.getGrids();
+				//
+
+
+				// Convert byte vector back to string stream
+				std::istringstream stream(std::string(bin_data.begin(), bin_data.end()), std::ios_base::binary);
+
+				// Create VDB input stream and read grids
+				openvdb::io::Stream vdbStream(stream);
+				openvdb::GridPtrVecPtr grids_src = vdbStream.getGrids();
+
+				// Find and return the first FloatGrid in the collection
+				//for (auto& grid : *grids) {
+				//	if (grid->isType<openvdb::FloatGrid>()) {
+				//		return openvdb::gridPtrCast<openvdb::FloatGrid>(grid);
+				//	}
+				//}
+
 				if (grids_src && !grids_src->empty()) {
 					typename T::Ptr grid_src = openvdb::gridPtrCast<T>((*grids_src)[0]);
 					if (grid_src) {

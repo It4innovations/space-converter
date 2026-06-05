@@ -40,6 +40,12 @@
 #include <nanovdb/tools/GridBuilder.h>
 #endif
 
+// OpenVDB includes
+#ifdef WITH_OPENVDB
+#include <openvdb/openvdb.h>
+#include <openvdb/tools/Composite.h>
+#endif
+
 #define COORD_BITS 21
 #define COORD_BIAS (1 << (COORD_BITS - 1)) // 2^20
 #define COORD_MASK ((1ull << COORD_BITS) - 1ull)
@@ -130,10 +136,10 @@ namespace common {
 				void insertOrUpdatePackedSequential(uint64_t key, float value) override;
 
 				// Serialization: write current voxel data to binary buffer
-				void serialize(uint8_t* bin_data) override;
+				void serialize(std::vector<uint8_t> &bin_data) override;
 
 				// Deserialization: read voxel data from binary buffer
-				void deserialize(uint8_t* bin_data) override;
+				void deserialize(std::vector<uint8_t> &bin_data) override;
 
 				// Merge: combine voxels from another manager (accumulate values)
 				void merge(common::vdb::VoxelSparseManager* other) override;
@@ -142,7 +148,7 @@ namespace common {
 					return sizeof(int) + sizeof(unsigned int) + sizeof(VoxelHashEntry) * table_size;
 				}
 
-				void merge(uint8_t* bin_data) override {
+				void merge(std::vector<uint8_t>& bin_data) override {
 					// Deserialize the incoming data into a temporary manager and then merge
 					VoxelOpenMPManager temp_manager;
 					temp_manager.deserialize(bin_data);
@@ -182,17 +188,17 @@ namespace common {
 			void insertOrUpdatePackedSequential(uint64_t key, float value) override;
 
 			// Serialization: write current voxel data to binary buffer
-			void serialize(uint8_t* bin_data) override;
+			void serialize(std::vector<uint8_t> &bin_data) override;
 
 			// Deserialization: read voxel data from binary buffer
-			void deserialize(uint8_t* bin_data) override;
+			void deserialize(std::vector<uint8_t> &bin_data) override;
 
 			// Merge: combine voxels from another manager (accumulate values)
 			void merge(common::vdb::VoxelSparseManager* other) override;
 
 			size_t mem_size() const override;
 
-			void merge(uint8_t* bin_data) override;
+			void merge(std::vector<uint8_t>& bin_data) override;
 
 			// Insert or update voxels using OpenMP parallelization with thread-local pre-aggregation
 			void insertOrUpdate(void* h_voxels, size_t num_voxels) override;
@@ -233,22 +239,17 @@ namespace common {
 		void insertOrUpdatePackedSequential(uint64_t key, float value) override;
 
 		// Serialization: write current voxel data to binary buffer
-		void serialize(uint8_t* bin_data) override;
+		void serialize(std::vector<uint8_t> &bin_data) override;
 
 		// Deserialization: read voxel data from binary buffer
-		void deserialize(uint8_t* bin_data) override;
+		void deserialize(std::vector<uint8_t> &bin_data) override;
 
 		// Merge: combine voxels from another manager (accumulate values)
 		void merge(common::vdb::VoxelSparseManager* other) override;
 
-		size_t mem_size() const override;
+		void merge(std::vector<uint8_t>& bin_data) override;
 
-		void merge(uint8_t* bin_data) override {
-			// Deserialize the incoming data into a temporary manager and then merge
-			VoxelOpenVDBManager temp_manager;
-			temp_manager.deserialize(bin_data);
-			this->merge(&temp_manager);
-		}
+		size_t mem_size() const override;
 
 		// Insert or update voxels using OpenMP parallelization with thread-local pre-aggregation
 		void insertOrUpdate(void* h_voxels, size_t num_voxels) override;
@@ -262,6 +263,10 @@ namespace common {
 		// Get direct access to the OpenVDB grid (for conversion/output)
 		std::shared_ptr<T> getGrid() { return vdb_grid; }
 	};
+
+	// Type aliases for commonly used grid types
+	using VoxelOpenVDBManagerFloat = VoxelOpenVDBManager<openvdb::FloatGrid>;
+	using VoxelOpenVDBManagerFloat3 = VoxelOpenVDBManager<openvdb::Vec3fGrid>;
 #endif // WITH_OPENVDB
 
 #ifdef WITH_GPU_CUDA
@@ -280,10 +285,10 @@ namespace common {
 				//void insertOrUpdatePackedSequential(uint64_t key, float value) override;
 
 				// Serialization: write current voxel data to binary buffer
-				void serialize(uint8_t* bin_data) override;
+				void serialize(std::vector<uint8_t> &bin_data) override;
 
 				// Deserialization: read voxel data from binary buffer
-				void deserialize(uint8_t* bin_data) override;
+				void deserialize(std::vector<uint8_t> &bin_data) override;
 
 				// Merge: combine voxels from another manager (accumulate values)
 				void merge(common::vdb::VoxelSparseManager* other) override;
@@ -298,7 +303,7 @@ namespace common {
 					return sizeof(int) + sizeof(uint64_t) * m_last_count + sizeof(float) * m_last_count;
 				}
 
-				void merge(uint8_t* bin_data) override {
+				void merge(std::vector<uint8_t>& bin_data) override {
 					// Deserialize the incoming data into a temporary manager and then merge
 					// Note: bin_data is assumed to be host memory (from std::vector in MPI operations)
 					VoxelGPUManagerSortReduce temp_manager;

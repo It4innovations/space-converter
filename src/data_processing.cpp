@@ -865,12 +865,11 @@ namespace space_converter {
 						}
 						else {
 							// Sparse particle data
-							size_t ns = grid_main_sum.sparse_grid->mem_size();
-							mpi_send(&ns, sizeof(ns), MPI_BYTE, from_cl.world_rank - step, 0);
 #if defined(WITH_GPU_CUDA) && defined(WITH_CUDA_AWARE_MPI)
 							if (auto* gpu_mgr = dynamic_cast<common::vdb::sparse::VoxelGPUManagerSortReduce*>(grid_main_sum.sparse_grid.get())) {
 								// RDMA path: serialize directly into device buffer, send via GPU-direct
 								uint8_t* d_buf = nullptr;
+								size_t ns = grid_main_sum.sparse_grid->mem_size();
 								cudaMalloc(&d_buf, ns);
 								gpu_mgr->serializeGPU(d_buf);
 								mpi_send(d_buf, ns, MPI_BYTE, from_cl.world_rank - step, 0);
@@ -879,8 +878,11 @@ namespace space_converter {
 							else
 #endif
 							{
-								std::vector<uint8_t> grid_handle_main(ns);
-								grid_main_sum.sparse_grid->serialize(grid_handle_main.data());
+								std::vector<uint8_t> grid_handle_main;
+								grid_main_sum.sparse_grid->serialize(grid_handle_main);
+
+								size_t ns = grid_handle_main.size();
+								mpi_send(&ns, sizeof(ns), MPI_BYTE, from_cl.world_rank - step, 0);
 								mpi_send(grid_handle_main.data(), ns, MPI_BYTE, from_cl.world_rank - step, 0);
 							}
 						}
@@ -1030,17 +1032,22 @@ namespace space_converter {
 					common::vdb::sparse::VoxelOpenVDBManagerFloat3* openvdb_manager_float3 = dynamic_cast<common::vdb::sparse::VoxelOpenVDBManagerFloat3*>(grid_main_sum.sparse_grid.get());
 
 					if (openvdb_manager_float) {
+						openvdb_manager_float->serialize(grid_main_final.vector_grid);
 						auto openvdb_handleI = openvdb_manager_float->vdb_grid;
-						
-						convert_vdb_base->openvdb_to_vector(openvdb_handleI, grid_main_final.vector_grid);
+						//convert_vdb_base->openvdb_to_vector(openvdb_handleI, grid_main_final.vector_grid);
 						eval_min_max(openvdb_handleI, space_data.min_value_reduced, space_data.max_value_reduced);
 						printf("rank #%d: Active voxels in input grid: %lld\n", from_cl.world_rank, openvdb_handleI->activeVoxelCount());
 					}
 					else if (openvdb_manager_float3) {
+						openvdb_manager_float3->serialize(grid_main_final.vector_grid);
 						auto openvdb_handleI = openvdb_manager_float3->vdb_grid;
 
-						convert_vdb_base->openvdb_to_vector(openvdb_handleI, grid_main_final.vector_grid);
-						eval_min_max(openvdb_handleI, space_data.min_value_reduced, space_data.max_value_reduced);
+						//convert_vdb_base->openvdb_to_vector(openvdb_handleI, grid_main_final.vector_grid);
+						//eval_min_max(openvdb_handleI, space_data.min_value_reduced, space_data.max_value_reduced);
+						auto extrema = openvdb::tools::minMax(openvdb_handleI->tree());
+						space_data.min_value_reduced = extrema.min().length();
+						space_data.max_value_reduced = extrema.max().length();
+
 						printf("rank #%d: Active voxels in input grid: %lld\n", from_cl.world_rank, openvdb_handleI->activeVoxelCount());
 					}
 					else {
@@ -1130,8 +1137,8 @@ namespace space_converter {
 			// Save based on particle type
 			if (particle_type == common::vdb::VDBParticleType::eOpenVDB) {
 #ifdef WITH_OPENVDB
-				common::vdb::sparse::VoxelOpenVDBManagerFloat* openvdb_manager_float = dynamic_cast<common::vdb::sparse::VoxelOpenVDBManagerFloat*>(grid_main_sum.sparse_grid.get());
-				common::vdb::sparse::VoxelOpenVDBManagerFloat3* openvdb_manager_float3 = dynamic_cast<common::vdb::sparse::VoxelOpenVDBManagerFloat3*>(grid_main_sum.sparse_grid.get());
+				common::vdb::sparse::VoxelOpenVDBManagerFloat* openvdb_manager_float = dynamic_cast<common::vdb::sparse::VoxelOpenVDBManagerFloat*>(grid_main_final.sparse_grid.get());
+				common::vdb::sparse::VoxelOpenVDBManagerFloat3* openvdb_manager_float3 = dynamic_cast<common::vdb::sparse::VoxelOpenVDBManagerFloat3*>(grid_main_final.sparse_grid.get());
 
 				if (openvdb_manager_float) {
 					auto openvdb_handleI = openvdb_manager_float->vdb_grid;
