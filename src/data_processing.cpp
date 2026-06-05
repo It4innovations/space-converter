@@ -768,8 +768,8 @@ namespace space_converter {
 					mpi_reduce(grid_main_gpu->d_data_density, grid_main_gpu_sum->d_data_density, grid_main.dense_grid->size());
 					
 					// Debug logging: print first 10 values from both arrays
-					DEBUG_PRINT_GPU_ARRAY(grid_main_gpu->d_data_density, grid_main.dense_grid->size(), "grid_main_gpu->d_data_density after mpi_reduce");
-					DEBUG_PRINT_GPU_ARRAY(grid_main_gpu_sum->d_data_density, grid_main.dense_grid->size(), "grid_main_gpu_sum->d_data_density after mpi_reduce");
+					// DEBUG_PRINT_GPU_ARRAY(grid_main_gpu->d_data_density, grid_main.dense_grid->size(), "grid_main_gpu->d_data_density after mpi_reduce");
+					// DEBUG_PRINT_GPU_ARRAY(grid_main_gpu_sum->d_data_density, grid_main.dense_grid->size(), "grid_main_gpu_sum->d_data_density after mpi_reduce");
 					
 					// Reduce temp buffer if both grids have it allocated
 					if (grid_main_gpu->d_data_temp != nullptr && grid_main_gpu_sum->d_data_temp != nullptr) {

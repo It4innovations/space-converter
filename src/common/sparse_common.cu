@@ -624,13 +624,13 @@ namespace common {
 			// ================================================================================
 
 			// Override: serialize to host memory buffer (e.g., std::vector)
-			void VoxelGPUManagerSortReduce::serialize(uint8_t* h_data) {
-				serializeCPU(h_data);
+			void VoxelGPUManagerSortReduce::serialize(std::vector<uint8_t>& bin_data) {
+				serializeCPU(bin_data.data());
 			}
 
 			// Override: deserialize from host memory buffer (e.g., std::vector)
-			void VoxelGPUManagerSortReduce::deserialize(uint8_t* h_data) {
-				deserializeCPU(h_data);
+			void VoxelGPUManagerSortReduce::deserialize(std::vector<uint8_t>& bin_data) {
+				deserializeCPU(bin_data.data());
 			}
 
 			// ================================================================================

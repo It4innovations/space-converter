@@ -307,11 +307,10 @@ namespace common {
 					// Deserialize the incoming data into a temporary manager and then merge
 					// Note: bin_data is assumed to be host memory (from std::vector in MPI operations)
 					VoxelGPUManagerSortReduce temp_manager;
-					temp_manager.deserializeCPU(bin_data);
+					temp_manager.deserializeCPU(bin_data.data());
 					this->mergeCPU(&temp_manager);
 				}
-
-
+				
 			public:
 				// Accumulate a batch of voxels: output becomes unique (i,j,k) with summed values
 				// Returns number of unique voxels in the batch.
