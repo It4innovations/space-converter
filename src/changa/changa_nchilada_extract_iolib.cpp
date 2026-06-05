@@ -307,7 +307,7 @@ namespace changa {
 			}
 
 			void print_CPU_steps() {
-				printf("init_lib time: %f\n", steps_time[1] - steps_time[0]);
+				//printf("init_lib time: %f\n", steps_time[1] - steps_time[0]);
 			}
 
 			float get_particle_norm_value(int blocknr, uint64_t id) {

@@ -56,6 +56,9 @@ set(SRC_COMMON
     ${PROJECT_SOURCE_DIR}/submodules/braas-hpc-renderengine/src/renderengine_tcp.h
 
     ${PROJECT_SOURCE_DIR}/src/utility/dense_utility.h
+
+    ${PROJECT_SOURCE_DIR}/src/utility/logging.h
+    ${PROJECT_SOURCE_DIR}/src/utility/logging.cpp
 )
 
 if(WITH_GPU_CUDA)

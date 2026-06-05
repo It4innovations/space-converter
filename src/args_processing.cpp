@@ -319,6 +319,34 @@ namespace space_converter {
 		}
 	}
 
+	void FromCL::print_info() const
+	{
+		std::cout << "\n=== FromCL Configuration ==="<< std::endl;
+		std::cout << "data_type: " << data_type << std::endl;
+		std::cout << "output_path: " << output_path << std::endl;
+		std::cout << "server: " << server << std::endl;
+		std::cout << "port: " << port << std::endl;
+		std::cout << "info: " << (info ? "true" : "false") << std::endl;
+		std::cout << "remote: " << (remote ? "true" : "false") << std::endl;
+		std::cout << "use_nanovdb: " << (use_nanovdb ? "true" : "false") << std::endl;
+		std::cout << "use_save_mpirank: " << (use_save_mpirank ? "true" : "false") << std::endl;
+#ifdef WITH_CUDAKDTREE
+		std::cout << "use_cudakdtree: " << (use_cudakdtree ? "true" : "false") << std::endl;
+		std::cout << "use_cudakdtree_cpu: " << (use_cudakdtree_cpu ? "true" : "false") << std::endl;
+#endif
+#ifdef WITH_NANOFLANN
+		std::cout << "use_nanoflann: " << (use_nanoflann ? "true" : "false") << std::endl;
+#endif
+#ifdef WITH_GPU_CUDA
+		std::cout << "use_gpu_cuda: " << (use_gpu_cuda ? "true" : "false") << std::endl;
+#endif
+		std::cout << "use_sort_by_radius: " << (use_sort_by_radius ? "true" : "false") << std::endl;
+		std::cout << "use_sort_by_non_overlap: " << (use_sort_by_non_overlap ? "true" : "false") << std::endl;
+		std::cout << "world_rank: " << world_rank << std::endl;
+		std::cout << "world_size: " << world_size << std::endl;
+		std::cout << "============================\n" << std::endl;
+	}
+
 } // namespace space_converter
 
 /*

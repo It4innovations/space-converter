@@ -470,7 +470,7 @@ namespace genericio {
 
 			for (int i = start_ranks; i < start_ranks + num_ranks; ++i) {
 				size_t count = gio_data.readNumElems(i);
-				//printf("rank %d: reading count: %lld\n", world_rank, count);
+				//printf("rank #%d: reading count: %lld\n", world_rank, count);
 
 				gio_data.readData(i, false);
 
@@ -479,7 +479,7 @@ namespace genericio {
 				}
 			}
 
-			printf("rank %d: has total count: %lld\n", world_rank, gio_datas[0].get_count());
+			printf("rank #%d: has total count: %lld\n", world_rank, gio_datas[0].get_count());
 
 			for (size_t v = 0; v < gio_datas_temp.size(); ++v) {
 				delete gio_datas_temp[v];
@@ -598,7 +598,7 @@ namespace genericio {
 			//for (int i = start_ranks; i < start_ranks + num_ranks; ++i) 
 			{
 				//size_t count = gio_data.readNumElems(i);
-				//printf("rank %d: reading count: %lld\n", world_rank, count);
+				//printf("rank #%d: reading count: %lld\n", world_rank, count);
 
 				//gio_data.readData(i, false);
 				gio_data.readData(gio_data_rank_id, offset, tot_count, false);
@@ -627,7 +627,7 @@ namespace genericio {
 				}				
 			}
 
-			printf("rank %d: has total count: %lld\n", world_rank, gio_datas[0].get_count());
+			printf("rank #%d: has total count: %lld\n", world_rank, gio_datas[0].get_count());
 
 			for (size_t v = 0; v < gio_datas_temp.size(); ++v) {
 				delete gio_datas_temp[v];
@@ -712,7 +712,7 @@ namespace genericio {
 		}
 
 		void print_CPU_steps() {
-			printf("init_lib time: %f\n", steps_time[1] - steps_time[0]);
+			//printf("init_lib time: %f\n", steps_time[1] - steps_time[0]);
 		}
 
 		float get_particle_norm_value(int blocknr, uint64_t id) {

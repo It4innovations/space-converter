@@ -63,8 +63,12 @@ namespace common {
             // Others
             double particle_radius_const = 0.0; ///< Constant particle radius value
 
-            /// Flag to enable GPU acceleration for CUDA-based computations
+            // Flag to enable GPU acceleration for CUDA-based computations
             bool use_gpu_cuda = false;
+
+            //MPI
+            int world_rank = 0;
+            int world_size = 1;
 
         public:
 

@@ -167,7 +167,7 @@ namespace common {
 
 		void ConvertVDBBase::find_particle_positions()
 		{
-			double t_start = omp_get_wtime();
+			// double t_start = omp_get_wtime();
 
 			size_t no_points = get_local_num_particles();
 			int ptype_count = get_num_types();
@@ -245,7 +245,9 @@ namespace common {
 				cache_manager.particles_ptype_offset[ptype + 1] = cache_manager.particles_ptype_offset[ptype] + cache_manager.pos_particles_per_ptype[ptype].size() / 3;
 			}
 
-			printf("find_particle_positions: Find positions: %f\n", omp_get_wtime() - t_start);
+			// if (cache_manager.world_rank == 0) {
+			// 	printf("find_particle_positions: Find positions: %f\n", omp_get_wtime() - t_start);
+			// }
 		}
 
 		bool ConvertVDBBase::find_particle_values(int ptype, int block_name_id)
@@ -257,7 +259,7 @@ namespace common {
 				return false;
 			}
 
-			double t_start = omp_get_wtime();
+			// double t_start = omp_get_wtime();
 
 			size_t no_points = get_local_num_particles();
 			int ptype_count = get_num_types();
@@ -290,7 +292,9 @@ namespace common {
 			cache_manager.cached_value_ptype = ptype;
 			cache_manager.cached_value_block_name_id = block_name_id;
 
-			printf("find_particle_value: Find values: %f\n", omp_get_wtime() - t_start);
+			// if (cache_manager.world_rank == 0) {
+			// 	printf("find_particle_value: Find values: %f\n", omp_get_wtime() - t_start);
+			// }
 
 			return true;
 		}
@@ -304,7 +308,7 @@ namespace common {
 		 */
 		void ConvertVDBBase::calculate_radius_by_cudakdtree(int calc_radius_neigh, std::string& calc_radius_neigh_file, bool use_cycling, bool use_cudakdtree_cpu, float maxRadius, common::SpaceData::DenseType& rho_kernel)
 		{
-			double t_start = omp_get_wtime();
+			// double t_start = omp_get_wtime();
 
 			if (calc_radius_neigh == -1) {
 				read_radius_from_file(calc_radius_neigh_file);
@@ -371,7 +375,7 @@ namespace common {
 				}
 			}
 
-			printf("cudakdtree: Find nearest neighbors: %f\n", omp_get_wtime() - t_start);
+			// printf("cudakdtree: Find nearest neighbors: %f\n", omp_get_wtime() - t_start);
 		}
 
 #endif		
@@ -386,7 +390,7 @@ namespace common {
 		 */
 		void ConvertVDBBase::calculate_radius_by_nanoflann(int calc_radius_neigh, std::string& calc_radius_neigh_file, bool use_cycling, common::SpaceData::DenseType& rho_kernel)
 		{
-			double t_start = omp_get_wtime();
+			// double t_start = omp_get_wtime();
 
 			if (calc_radius_neigh == -1) {
 				read_radius_from_file(calc_radius_neigh_file);
@@ -457,7 +461,7 @@ namespace common {
 				}
 			}
 
-			printf("nanoflann: Find nearest neighbors: %f\n", omp_get_wtime() - t_start);
+			// printf("nanoflann: Find nearest neighbors: %f\n", omp_get_wtime() - t_start);
 		}
 #endif
 
@@ -509,10 +513,10 @@ namespace common {
 			float *offset_position
 		)
 		{
-#ifdef WITH_OPENMP
-			double t = omp_get_wtime();
-			double t_step = omp_get_wtime();
-#endif   
+// #ifdef WITH_OPENMP
+// 			double t = omp_get_wtime();
+// 			double t_step = omp_get_wtime();
+// #endif   
 
 			// Calculate spatial scaling factors
 			// Compare original cubic bounding box diagonal to actual data bounding box diagonal
@@ -720,9 +724,9 @@ namespace common {
 			}
 
 
-#ifdef WITH_OPENMP
-			t_step = omp_get_wtime();
-#endif
+	// #ifdef WITH_OPENMP
+	// 			t_step = omp_get_wtime();
+	// #endif
 		}
 
 
@@ -937,7 +941,9 @@ namespace common {
 					}
 				}
 
-				printf("VoxelOpenMPManager: Total occupied voxels: %f %%\n", 100.0f * (float)total_occupied / (float)voxel_omp_manager->insert_count);
+				if (cache_manager.world_rank == 0) {
+					printf("rank #%d: VoxelOpenMPManager: Total occupied voxels: %f %%\n", cache_manager.world_rank, 100.0f * (float)total_occupied / (float)voxel_omp_manager->insert_count);
+				}
 			}
 
 
@@ -966,7 +972,9 @@ namespace common {
 				delete[] h_keys;
 				delete[] h_vals;
 
-				printf("VoxelGPUManagerSortReduce: Total occupied voxels: %f %%\n", 100.0f * (float)total_occupied / (float)voxel_gpu_manager->m_last_count);
+				if (cache_manager.world_rank == 0) {
+					printf("rank #%d: VoxelGPUManagerSortReduce: Total occupied voxels: %f %%\n", cache_manager.world_rank, 100.0f * (float)total_occupied / (float)voxel_gpu_manager->m_last_count);
+				}
 			}
 #endif
 

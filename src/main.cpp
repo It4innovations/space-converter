@@ -44,7 +44,7 @@ int main(int argc, char** argv)
 	// ========================================================================
 
 	space_converter::FromCL from_cl;
-	space_converter::init_mpi(argc, argv, from_cl);
+	space_converter::init_mpi(argc, argv, from_cl);	
 
 #ifdef _WIN32
 	// Disable stdout buffering on Windows for immediate output
@@ -60,6 +60,12 @@ int main(int argc, char** argv)
 
 	common::SpaceData space_data;
 	space_converter::parse_args(from_cl, space_data, argc, argv);
+
+	// Print info
+	if (from_cl.world_rank == 0) {
+		from_cl.print_info();
+		space_data.print_info();
+	}
 
 	// Initialize the VDB converter for the specified simulation format
 	common::vdb::ConvertVDBBase* convert_vdb_base = space_converter::init_converter(argc, argv, from_cl, space_data);

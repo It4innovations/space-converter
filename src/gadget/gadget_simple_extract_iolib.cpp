@@ -232,7 +232,7 @@ namespace gadget_simple {
 		size_t  datasize;
 	} blockdata_t;
 
-	int check_number_of_files(std::string& basename);              // check the consistency of the files number
+	int check_number_of_files(std::string& basename, int world_rank);              // check the consistency of the files number
 	int  seek_block(FILE*, const blockname_t);                         // seek a specific block in a specific file
 	int  get_particles_num(io_header* snaphead, nparts_t* nparts_file, nparts_t* nparts_all);              // get how many particles are in a snapshot
 	//int  get_known_block_list(const char*, blockdata_t**);
@@ -592,12 +592,14 @@ namespace gadget_simple {
 			npart_local_rank[NALL] += (npart_local_rank[i] = chunk_size);
 		}
 
-		printf("rank %d: processing file %s (%d/%d), particles: %lld\n", world_rank, name.c_str(), f + 1, nfiles, npart_local_rank[NALL]);
-		printf("rank %d: particles per type: ", world_rank);
-		for (int i = 0; i < NTYPES; i++) {
-			printf("%lld ", npart_local_rank[i]);
+		if (world_rank == 0) {
+			printf("rank #%d: processing file %s (%d/%d), particles: %lld\n", world_rank, name.c_str(), f + 1, nfiles, npart_local_rank[NALL]);
+			printf("rank #%d: particles per type: ", world_rank);
+			for (int i = 0; i < NTYPES; i++) {
+				printf("%lld ", npart_local_rank[i]);
+			}
+			printf("\n");
 		}
-		printf("\n");
 
 		// ---------------------------------------------------------
 		//
@@ -847,8 +849,8 @@ namespace gadget_simple {
 			get_particles_num(&snaphead, &npart_local, &npart_all);
 
 
-			printf("rank %d: processing file %s (%d/%d), particles: %lld\n", world_rank, name.c_str(), f + 1, nfiles, npart_local[NALL]);
-			printf("rank %d: particles per type: ", world_rank);
+			printf("rank #%d: processing file %s (%d/%d), particles: %lld\n", world_rank, name.c_str(), f + 1, nfiles, npart_local[NALL]);
+			printf("rank #%d: particles per type: ", world_rank);
 			for (int i = 0; i < NTYPES; i++) {
 				printf("%lld ", npart_local[i]);
 			}
@@ -1082,7 +1084,64 @@ namespace gadget_simple {
 		//#endif
 	}
 
-	int check_number_of_files(std::string& basename)
+	void gadget_snaphead_print_info(io_header* snaphead, int world_rank)
+	{
+		if (world_rank == 0) {
+			printf("rank #%d: ======== Snapshot Header Info ========\n", world_rank);
+			
+			// Print npart array
+			printf("rank #%d: npart: [", world_rank);
+			for (int i = 0; i < 6; i++) {
+				printf("%d%s", snaphead->npart[i], (i < 5 ? ", " : "]\n"));
+			}
+			
+			// Print mass array
+			printf("rank #%d: mass: [", world_rank);
+			for (int i = 0; i < 6; i++) {
+				printf("%g%s", snaphead->mass[i], (i < 5 ? ", " : "]\n"));
+			}
+			
+			// Print scalar double values
+			printf("rank #%d: time: %g\n", world_rank, snaphead->time);
+			printf("rank #%d: redshift: %g\n", world_rank, snaphead->redshift);
+			
+			// Print flags
+			printf("rank #%d: flag_sfr: %d\n", world_rank, snaphead->flag_sfr);
+			printf("rank #%d: flag_feedback: %d\n", world_rank, snaphead->flag_feedback);
+			
+			// Print npartTotal array
+			printf("rank #%d: npartTotal: [", world_rank);
+			for (int i = 0; i < 6; i++) {
+				printf("%u%s", snaphead->npartTotal[i], (i < 5 ? ", " : "]\n"));
+			}
+			
+			// Print more flags and values
+			printf("rank #%d: flag_cooling: %d\n", world_rank, snaphead->flag_cooling);
+			printf("rank #%d: num_files: %d\n", world_rank, snaphead->num_files);
+			printf("rank #%d: BoxSize: %g\n", world_rank, snaphead->BoxSize);
+			printf("rank #%d: Omega0: %g\n", world_rank, snaphead->Omega0);
+			printf("rank #%d: OmegaLambda: %g\n", world_rank, snaphead->OmegaLambda);
+			printf("rank #%d: HubbleParam: %g\n", world_rank, snaphead->HubbleParam);
+			printf("rank #%d: flag_stellarage: %d\n", world_rank, snaphead->flag_stellarage);
+			printf("rank #%d: flag_metals: %d\n", world_rank, snaphead->flag_metals);
+			
+			// Print npartTotalHighWord array
+			printf("rank #%d: npartTotalHighWord: [", world_rank);
+			for (int i = 0; i < 6; i++) {
+				printf("%u%s", snaphead->npartTotalHighWord[i], (i < 5 ? ", " : "]\n"));
+			}
+			
+			// Print remaining flags
+			printf("rank #%d: flag_entropy_instead_u: %d\n", world_rank, snaphead->flag_entropy_instead_u);
+			printf("rank #%d: flag_doubleprecision: %d\n", world_rank, snaphead->flag_doubleprecision);
+			printf("rank #%d: flag_ic_info: %d\n", world_rank, snaphead->flag_ic_info);
+			printf("rank #%d: lpt_scalingfactor: %g\n", world_rank, snaphead->lpt_scalingfactor);
+			
+			printf("rank #%d: ======================================\n", world_rank);
+		}
+	}
+
+	int check_number_of_files(std::string& basename, int world_rank)
 	{
 #if 0
 		int   nfiles = 1;
@@ -1182,7 +1241,7 @@ namespace gadget_simple {
 		//}
 
 		//if (world_rank == 0)
-		//printf("rank %d: Trying to read file %s in format %d\n", world_rank, buf, 2);
+		//printf("rank #%d: Trying to read file %s in format %d\n", world_rank, buf, 2);
 
 		//#ifndef  HAVE_HDF5
 		//		if (All.ICFormat == 3)
@@ -1243,8 +1302,9 @@ namespace gadget_simple {
 //			//#endif
 //			fread(&dummy, sizeof(dummy), 1, fd);
 //			//}
+			
 			gadget_simple_read_snaphead(fd, &snaphead);
-			printf("snaphead.redshift: %f, snaphead.HubbleParam: %f\n", snaphead.redshift, snaphead.HubbleParam);
+			gadget_snaphead_print_info(&snaphead, world_rank);
 
 			fclose(fd);
 //			//#ifdef HAVE_HDF5
@@ -1312,7 +1372,7 @@ namespace gadget_simple {
 //			fread(&dummy, sizeof(dummy), 1, fd);
 //			//}
 			gadget_simple_read_snaphead(fd, &snaphead);
-			printf("snaphead.redshift: %f, snaphead.HubbleParam: %f\n", snaphead.redshift, snaphead.HubbleParam);
+			gadget_snaphead_print_info(&snaphead, world_rank);
 
 			fclose(fd);
 
@@ -1616,7 +1676,7 @@ namespace gadget_simple {
 
 		void print_CPU_steps()
 		{
-			printf("init_lib time: %f\n", steps_time[1] - steps_time[0]);
+			//printf("init_lib time: %f\n", steps_time[1] - steps_time[0]);
 		}
 
 		int get_particle_type(uint64_t id) {
@@ -1768,7 +1828,7 @@ namespace gadget_simple {
 
 			fill_known_blocks();
 
-			nfiles = check_number_of_files(fname);
+			nfiles = check_number_of_files(fname, world_rank);
 
 			// working dir is the current one
 			if (nfiles <= 0)
@@ -1782,7 +1842,7 @@ namespace gadget_simple {
 			}
 
 			if (world_rank == 0) {
-				printf("Total number of files: %d\n", nfiles);
+				printf("rank #%d: Total number of files: %d\n", world_rank, nfiles);
 			}
 
 			memset(npart_local_rank, 0, sizeof(nparts_t)); // initialize the local particles count to 0

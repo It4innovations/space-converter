@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <vector>
 #include <memory>
+#include <iostream>
 
 #include "raw_common.h"
 // Note: dense_common.h includes data_common.h (not the other way around to avoid circular deps).
@@ -281,6 +282,92 @@ namespace common {
 		bool use_simple_density = false;        // Use simplified density calculation
 		bool use_norm_value = true;		// Use normalized values
 		float offset_position[3] = { 0.0f,0.0f,0.0f };  // Position offset
+
+		/**
+		 * @brief Print all current SpaceData configuration values.
+		 * 
+		 * This function outputs all member variables of the SpaceData structure
+		 * to standard output, useful for debugging and verification of spatial
+		 * data conversion parameters.
+		 */
+		void print_info() const
+		{
+			std::cout << "\n=== SpaceData Configuration ===" << std::endl;
+			
+			// Communication and Processing
+			std::cout << "message_type: " << static_cast<int>(message_type) << std::endl;
+			std::cout << "particle_type: " << particle_type << std::endl;
+			std::cout << "block_name_id: " << block_name_id << std::endl;
+			
+			// Grid Configuration
+			std::cout << "grid_transform: " << grid_transform << std::endl;
+			std::cout << "extracted_type: " << static_cast<int>(extracted_type) << std::endl;
+			std::cout << "extracted_particle_type: " << static_cast<int>(extracted_particle_type) << std::endl;
+			std::cout << "dense_type: " << static_cast<int>(dense_type) << std::endl;
+			std::cout << "dense_norm: " << static_cast<int>(dense_norm) << std::endl;
+			std::cout << "extracted_dense_type: " << static_cast<int>(extracted_dense_type) << std::endl;
+			std::cout << "object_size: " << object_size << std::endl;
+			
+			// Value Ranges
+			std::cout << "min_value: " << min_value << std::endl;
+			std::cout << "max_value: " << max_value << std::endl;
+			std::cout << "min_rho: " << min_rho << std::endl;
+			std::cout << "max_rho: " << max_rho << std::endl;
+			std::cout << "min_value_reduced: " << min_value_reduced << std::endl;
+			std::cout << "max_value_reduced: " << max_value_reduced << std::endl;
+			
+			// Particle Parameters
+			std::cout << "particle_radius_multiplier: " << particle_radius_multiplier << std::endl;
+			std::cout << "particle_radius_const: " << particle_radius_const << std::endl;
+			std::cout << "filter_min: " << filter_min << std::endl;
+			std::cout << "filter_max: " << filter_max << std::endl;
+			
+			// Counts and Statistics
+			std::cout << "particles_count: " << particles_count << std::endl;
+			std::cout << "voxels_count: " << voxels_count << std::endl;
+			std::cout << "particles_count_local: " << particles_count_local << std::endl;
+			
+			// Bounding Box Configuration
+			std::cout << "bbox_min: [" << bbox_min[0] << ", " << bbox_min[1] << ", " << bbox_min[2] << "]" << std::endl;
+			std::cout << "bbox_max: [" << bbox_max[0] << ", " << bbox_max[1] << ", " << bbox_max[2] << "]" << std::endl;
+			std::cout << "bbox_dim: " << bbox_dim << std::endl;
+			std::cout << "bbox_min_orig_local: [" << bbox_min_orig_local[0] << ", " << bbox_min_orig_local[1] << ", " << bbox_min_orig_local[2] << "]" << std::endl;
+			std::cout << "bbox_max_orig_local: [" << bbox_max_orig_local[0] << ", " << bbox_max_orig_local[1] << ", " << bbox_max_orig_local[2] << "]" << std::endl;
+			std::cout << "bbox_min_orig: [" << bbox_min_orig[0] << ", " << bbox_min_orig[1] << ", " << bbox_min_orig[2] << "]" << std::endl;
+			std::cout << "bbox_max_orig: [" << bbox_max_orig[0] << ", " << bbox_max_orig[1] << ", " << bbox_max_orig[2] << "]" << std::endl;
+			std::cout << "bbox_size_orig: " << bbox_size_orig << std::endl;
+			
+			// Local Values (MPI)
+			std::cout << "min_value_local: " << min_value_local << std::endl;
+			std::cout << "max_value_local: " << max_value_local << std::endl;
+			std::cout << "transform_scale: " << transform_scale << std::endl;
+			
+			// Animation Parameters
+			std::cout << "frame: " << frame << std::endl;
+			std::cout << "anim_type: " << static_cast<int>(anim_type) << std::endl;
+			std::cout << "full_filepath: " << full_filepath << std::endl;
+			std::cout << "anim_task_counter: " << anim_task_counter << std::endl;
+			std::cout << "anim_start: " << anim_start << std::endl;
+			std::cout << "anim_end: " << anim_end << std::endl;
+			std::cout << "anim_step: " << anim_step << std::endl;
+			
+			// SPH Radius Calculation
+#if defined(WITH_CUDAKDTREE) || defined(WITH_NANOFLANN)
+			std::cout << "calc_radius_neigh: " << calc_radius_neigh << std::endl;
+			std::cout << "calc_radius_neigh_rho_kernel: " << static_cast<int>(calc_radius_neigh_rho_kernel) << std::endl;
+#endif
+			std::cout << "calc_radius_neigh_file: " << calc_radius_neigh_file << std::endl;
+			
+			// Additional Filtering
+			std::cout << "use_bbox_sphere: " << (use_bbox_sphere ? "true" : "false") << std::endl;
+			std::cout << "bbox_sphere_pos: [" << bbox_sphere_pos[0] << ", " << bbox_sphere_pos[1] << ", " << bbox_sphere_pos[2] << "]" << std::endl;
+			std::cout << "bbox_sphere_r: " << bbox_sphere_r << std::endl;
+			std::cout << "use_simple_density: " << (use_simple_density ? "true" : "false") << std::endl;
+			std::cout << "use_norm_value: " << (use_norm_value ? "true" : "false") << std::endl;
+			std::cout << "offset_position: [" << offset_position[0] << ", " << offset_position[1] << ", " << offset_position[2] << "]" << std::endl;
+			
+			std::cout << "================================\n" << std::endl;
+		}
 	};
 
 } // namespace space_converter

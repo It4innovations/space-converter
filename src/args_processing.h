@@ -110,6 +110,15 @@ namespace space_converter {
 		
 		/// Total number of processes in MPI communicator (default: 1 for single process)
 		int world_size = 1;
+
+		/**
+		 * @brief Print all current configuration values.
+		 * 
+		 * This function outputs all member variables of the FromCL structure
+		 * to standard output, useful for debugging and verification of parsed
+		 * command-line arguments.
+		 */
+		void print_info() const;
 	};
 
 	/**

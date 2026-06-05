@@ -28,10 +28,7 @@
 # include <omp.h>
 #endif
 
-#ifdef WITH_MERIC
-#	include <meric.h>
-#endif
-
+#include "utility/logging.h"
 #include <iostream>
 
 /**
@@ -161,8 +158,7 @@ namespace space_converter {
 		
 #ifdef WITH_MERIC
 		// Initialize performance monitoring
-		MERIC_Init();
-		MERIC_MeasureStart("Main");
+		MERIC_Init();		
 #endif		
 
 #ifdef WITH_OPENMP
@@ -175,6 +171,10 @@ namespace space_converter {
 
 		// Get the rank of this process
 		MPI_Comm_rank(MPI_COMM_WORLD, &from_cl.world_rank);
+
+		// LOG Init 
+		LOG_Init(from_cl.world_rank);
+		LOG_MeasureStart("Main");
 
 		// Get the processor name
 		char processor_name[MPI_MAX_PROCESSOR_NAME];
@@ -216,9 +216,9 @@ namespace space_converter {
 		}
 #endif
 
+		LOG_MeasureStop("Main");
 #ifdef WITH_MERIC
-		// Stop performance monitoring
-		MERIC_MeasureStop("Main");
+		// Stop performance monitoring		
 		MERIC_Close();
 #endif		
 
@@ -290,7 +290,7 @@ namespace space_converter {
 				}
 			}
 
-			printf("message_type: %d\n", space_data.message_type); fflush(0);
+			// printf("message_type: %d\n", space_data.message_type); fflush(0);
 		}
 
 		// Broadcast message type to all processes
@@ -523,7 +523,7 @@ namespace space_converter {
 
 			int ack;
 			tcp_connection.recv_data_data((char*)&ack, sizeof(ack));
-			printf("rank: %d: sendOpenVDB time: %f\n", from_cl.world_rank, omp_get_wtime() - t);
+			printf("rank #%d: sendOpenVDB time: %f\n", from_cl.world_rank, omp_get_wtime() - t);
 			printf("sended: vdb\n");
 		}
 	}
@@ -572,7 +572,7 @@ namespace space_converter {
 
 			int ack;
 			tcp_connection.recv_data_data((char*)&ack, sizeof(ack));
-			printf("rank: %d: sendOpenVDB time: %f\n", from_cl.world_rank, omp_get_wtime() - t);
+			printf("rank #%d: sendOpenVDB time: %f\n", from_cl.world_rank, omp_get_wtime() - t);
 			printf("sended: vdb\n");
 		}
 	}
