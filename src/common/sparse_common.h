@@ -32,6 +32,14 @@
 #include <cuda_runtime.h>
 #endif
 
+// NanoVDB includes
+#ifdef WITH_NANOVDB
+#define NANOVDB_USE_TBB
+#define NANOVDB_USE_INTRINSICS
+#define NANOVDB_USE_OPENVDB
+#include <nanovdb/tools/GridBuilder.h>
+#endif
+
 #define COORD_BITS 21
 #define COORD_BIAS (1 << (COORD_BITS - 1)) // 2^20
 #define COORD_MASK ((1ull << COORD_BITS) - 1ull)
@@ -152,7 +160,116 @@ namespace common {
 				// Clear hash table
 				void clear();
 			};
+#ifdef WITH_NANOVDB
+		// ---------------------------------------------
+		// NanoVDB-based CPU voxel manager
+		// ---------------------------------------------
+		class VoxelNanoVDBManager : public common::vdb::VoxelSparseManager {
+		public:
+			std::shared_ptr<nanovdb::tools::build::FloatGrid> nano_grid;
+			int insert_count;
 
+		public:
+			VoxelNanoVDBManager();
+			~VoxelNanoVDBManager();
+
+		public:
+			void init(unsigned int expected_voxels) override;
+
+			// Helper for sequential insertion
+			void insertOrUpdatePackedSequential(uint64_t key, float value) override;
+
+			// Serialization: write current voxel data to binary buffer
+			void serialize(uint8_t* bin_data) override;
+
+			// Deserialization: read voxel data from binary buffer
+			void deserialize(uint8_t* bin_data) override;
+
+			// Merge: combine voxels from another manager (accumulate values)
+			void merge(common::vdb::VoxelSparseManager* other) override;
+
+			size_t mem_size() const override;
+
+			void merge(uint8_t* bin_data) override {
+				// Deserialize the incoming data into a temporary manager and then merge
+				VoxelNanoVDBManager temp_manager;
+				temp_manager.deserialize(bin_data);
+				this->merge(&temp_manager);
+			}
+
+		public:
+			// Insert or update voxels using OpenMP parallelization with thread-local pre-aggregation
+			void insertOrUpdate(Voxel* h_voxels, int num_voxels);
+
+			// Extract all voxels from NanoVDB grid using OpenMP
+			int extractAll(Voxel** h_output_voxels);
+
+			// Clear NanoVDB grid
+			void clear();
+
+			// Get direct access to the NanoVDB grid (for conversion/output)
+			std::shared_ptr<nanovdb::tools::build::FloatGrid> getGrid() { return nano_grid; }
+		};
+#endif // WITH_NANOVDB
+#ifdef WITH_OPENVDB
+	// Forward declaration to avoid including openvdb headers in header file
+	namespace openvdb { 
+		template<typename T> class Grid;
+		using FloatGrid = Grid<float>;
+		template<typename T> using SharedPtr = std::shared_ptr<T>;
+	}
+
+	// ---------------------------------------------
+	// OpenVDB-based CPU voxel manager
+	// ---------------------------------------------
+	class VoxelOpenVDBManager : public common::vdb::VoxelSparseManager {
+	public:
+		// Use forward declaration or include openvdb headers via implementation
+		void* openvdb_grid;  // openvdb::FloatGrid::Ptr stored as void* to avoid header dependency
+		int insert_count;
+
+	public:
+		VoxelOpenVDBManager();
+		~VoxelOpenVDBManager();
+
+	public:
+		void init(unsigned int expected_voxels) override;
+
+		// Helper for sequential insertion
+		void insertOrUpdatePackedSequential(uint64_t key, float value) override;
+
+		// Serialization: write current voxel data to binary buffer
+		void serialize(uint8_t* bin_data) override;
+
+		// Deserialization: read voxel data from binary buffer
+		void deserialize(uint8_t* bin_data) override;
+
+		// Merge: combine voxels from another manager (accumulate values)
+		void merge(common::vdb::VoxelSparseManager* other) override;
+
+		size_t mem_size() const override;
+
+		void merge(uint8_t* bin_data) override {
+			// Deserialize the incoming data into a temporary manager and then merge
+			VoxelOpenVDBManager temp_manager;
+			temp_manager.deserialize(bin_data);
+			this->merge(&temp_manager);
+		}
+
+	public:
+		// Insert or update voxels using OpenMP parallelization with thread-local pre-aggregation
+		void insertOrUpdate(Voxel* h_voxels, int num_voxels);
+
+		// Extract all voxels from OpenVDB grid
+		int extractAll(Voxel** h_output_voxels);
+
+		// Clear OpenVDB grid
+		void clear();
+
+		// Get direct access to the OpenVDB grid (for conversion/output)
+		void* getGrid() { return openvdb_grid; }
+	};
+#endif // WITH_OPENVDB
 #ifdef WITH_GPU_CUDA
 			// ---------------------------------------------
 			// GPU-based voxel manager using sort+reduce

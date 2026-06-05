@@ -61,6 +61,14 @@ set(SRC_COMMON
     ${PROJECT_SOURCE_DIR}/src/utility/logging.cpp
 )
 
+if(WITH_NANOVDB)
+    list(APPEND SRC_COMMON sparse_nanovdb.cpp)
+endif()
+
+if(WITH_OPENVDB)
+    list(APPEND SRC_COMMON sparse_openvdb.cpp)
+endif()
+
 if(WITH_GPU_CUDA)
     add_definitions(-DWITH_GPU_CUDA)
     list(APPEND SRC_COMMON
