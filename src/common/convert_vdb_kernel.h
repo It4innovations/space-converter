@@ -151,87 +151,82 @@ namespace common {
 
 				///////////////////////////////////////////////////////////////////////////////
 
-				for (int sx = px - iradiusx; sx <= px + iradiusx; sx++) {
+				const size_t dim0 = dims[0];
+				const size_t dim1 = dims[1];
+				const size_t dim2 = dims[2];
+				const size_t slice_size = dim0 * dim1;
+
+				const int off0 = offset[0];
+				const int off1 = offset[1];
+				const int off2 = offset[2];
+
+				const bool has_data_temp = (data_temp != nullptr);
+
+				for (int sz = pz - iradiusz; sz <= pz + iradiusz; sz++) {
+					int osz = sz - off2;
+					if (osz < 0 || osz >= dim2) continue;
+					
+					size_t z_offset = osz * slice_size;
+					double dz = dpz - sz;
+					double dz2 = dz * dz;
+
 					for (int sy = py - iradiusy; sy <= py + iradiusy; sy++) {
-						for (int sz = pz - iradiusz; sz <= pz + iradiusz; sz++) {
+						int osy = sy - off1;
+						if (osy < 0 || osy >= dim1) continue;
+						
+						size_t yz_offset = z_offset + osy * dim0;
+						double dy = dpy - sy;
+						double dy2 = dy * dy;
 
-							int osx = sx - offset[0];
-							int osy = sy - offset[1];
-							int osz = sz - offset[2];
-
-							if (osx < 0 || osy < 0 || osz < 0)
-								continue;
-
-							if (osx > dims[0] - 1 || osy > dims[1] - 1 || osz > dims[2] - 1)
-								continue;
-
-							double density = 1.0;
+						for (int sx = px - iradiusx; sx <= px + iradiusx; sx++) {
+							int osx = sx - off0;
+							if (osx < 0 || osx >= dim0) continue;
 
 							double dx = dpx - sx;
-							double dy = dpy - sy;
-							double dz = dpz - sz;
-#ifdef __CUDA_ARCH__
-							double distance_norm = sqrt(dx * dx + dy * dy + dz * dz);
-#else                        
-							double distance_norm = std::sqrt(dx * dx + dy * dy + dz * dz);
-#endif
+							
+				#ifdef __CUDA_ARCH__
+							double distance_norm = sqrt(dx * dx + dy2 + dz2);
+				#else                        
+							double distance_norm = std::sqrt(dx * dx + dy2 + dz2);
+				#endif
 
 							double W = 0.0;
 							double h = hsml;
 
 							if (iradiusx == 0 && iradiusy == 0 && iradiusz == 0) {
-								W = 1.0; // full value
-							}
-							else {
+								W = 1.0; 
+							} else {
 								double q = distance_norm / h;
-
 								W = utility::dense::sph_kernel::W(dense_type, q, 1.0 / h);
 							}
 
-							density = W;
-
-							//final density
-							float d = density * value;
-
-							double norm = 0.0;
-							if (dense_norm == common::SpaceData::DenseNorm::eNone) {
-								norm = 0.0;
-							}
-							else if (dense_norm == common::SpaceData::DenseNorm::eCount) {
-								norm = 1.0; // count
-							}
-							else if (dense_norm == common::SpaceData::DenseNorm::eSPHInterpolation) {
-								norm = density;
+							float d = static_cast<float>(W * value);
+							
+							float n = 0.0f;
+							if (dense_norm == common::SpaceData::DenseNorm::eCount) {
+								n = 1.0f; 
+							} else if (dense_norm == common::SpaceData::DenseNorm::eSPHInterpolation) {
+								n = static_cast<float>(W);
 							}
 
-							//final norm
-							float n = norm;
+							size_t gindex = yz_offset + osx;
 
-							//x + y * dims[0] + z * dims[0] * dims[1];
-							size_t gindex = osx + osy * dims[0] + osz * dims[0] * dims[1];
-
-							if (!near_zero(d)) 
-							{
-#ifdef __CUDA_ARCH__
+							if (!near_zero(d)) {
+				#ifdef __CUDA_ARCH__
 								atomicAdd(data_density + gindex, d);
-#else
-#pragma omp atomic
+				#else
+				#pragma omp atomic
 								data_density[gindex] += d;
-#endif
+				#endif
 							}
 
-							if (!near_zero(n)) 
-							{
-
-								if (data_temp != nullptr) {
-#ifdef __CUDA_ARCH__
-									atomicAdd(data_temp + gindex, n);
-#else
-#pragma omp atomic
-									data_temp[gindex] += n;
-#endif
-
-								}
+							if (has_data_temp && !near_zero(n)) {
+				#ifdef __CUDA_ARCH__
+								atomicAdd(data_temp + gindex, n);
+				#else
+				#pragma omp atomic
+								data_temp[gindex] += n;
+				#endif
 							}
 						}
 					}
