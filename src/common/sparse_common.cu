@@ -77,7 +77,7 @@ namespace common {
 			// ---------------------------------------------
 			// GPU Hash Table Kernels
 			// ---------------------------------------------
-			
+
 			// Hash function for 3D coordinates (GPU version)
 			__device__ __host__ inline unsigned int hash3D(int i, int j, int k, unsigned int table_size) {
 				// Use prime numbers for better distribution
@@ -94,19 +94,19 @@ namespace common {
 				int* insert_count
 			) {
 				int idx = blockIdx.x * blockDim.x + threadIdx.x;
-				
+
 				if (idx >= num_voxels) return;
-				
+
 				Voxel v = input_voxels[idx];
 				unsigned int hash = hash3D(v.i, v.j, v.k, table_size);
-				
+
 				// Linear probing with atomic operations
 				unsigned int slot = hash;
 				for (unsigned int probe = 0; probe < table_size; probe++) {
-					
+
 					// Try to claim this slot by setting it to "being written" (-1)
 					int old_occupied = atomicCAS(&hash_table[slot].occupied, 0, -1);
-					
+
 					if (old_occupied == 0) {
 						// Slot was empty, we claimed it - insert new voxel
 						hash_table[slot].i = v.i;
@@ -124,8 +124,8 @@ namespace common {
 							// Busy wait until write completes
 						}
 						// Now check if it's our voxel
-						if (hash_table[slot].i == v.i && 
-							hash_table[slot].j == v.j && 
+						if (hash_table[slot].i == v.i &&
+							hash_table[slot].j == v.j &&
 							hash_table[slot].k == v.k) {
 							// Found matching voxel - add to existing value
 							atomicAdd(&hash_table[slot].value, v.value);
@@ -135,8 +135,8 @@ namespace common {
 					}
 					else if (old_occupied == 1) {
 						// Slot is fully written - check if it's our voxel
-						if (hash_table[slot].i == v.i && 
-							hash_table[slot].j == v.j && 
+						if (hash_table[slot].i == v.i &&
+							hash_table[slot].j == v.j &&
 							hash_table[slot].k == v.k) {
 							// Found matching voxel - add to existing value
 							atomicAdd(&hash_table[slot].value, v.value);
@@ -147,7 +147,7 @@ namespace common {
 					slot++;
 					if (slot == table_size) slot = 0;
 				}
-				
+
 				// Hash table is full (should not happen with proper sizing)
 				printf("Warning: Hash table full for voxel (%d, %d, %d)\n", v.i, v.j, v.k);
 			}
@@ -160,9 +160,9 @@ namespace common {
 				int* output_count
 			) {
 				int idx = blockIdx.x * blockDim.x + threadIdx.x;
-				
+
 				if (idx >= table_size) return;
-				
+
 				if (hash_table[idx].occupied == 1) {
 					int pos = atomicAdd(output_count, 1);
 					output_voxels[pos] = Voxel(
@@ -179,7 +179,7 @@ namespace common {
 			{
 				template <typename T>
 				__device__ __forceinline__
-				T operator()(const T &a, const T &b) const {
+					T operator()(const T& a, const T& b) const {
 					return a + b;
 				}
 			};
@@ -187,7 +187,7 @@ namespace common {
 			// ---------------------------------------------
 			// Fast manager: per-batch accumulate via sort+reduce
 			// ---------------------------------------------
-			VoxelGPUManagerSortReduce::VoxelGPUManagerSortReduce(): 
+			VoxelGPUManagerSortReduce::VoxelGPUManagerSortReduce() :
 				m_max(0), m_last_count(0),
 				d_keys(nullptr), d_vals(nullptr),
 				d_keys_alt(nullptr), d_vals_alt(nullptr),
@@ -206,36 +206,36 @@ namespace common {
 
 			void VoxelGPUManagerSortReduce::init(unsigned int expected_voxels)
 			{
-					// Add 50% buffer for MPI merge operations
-					m_max = (size_t)(expected_voxels * 1.5);
-					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys, m_max * sizeof(uint64_t)));
-					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals, m_max * sizeof(float)));
+				// Add 50% buffer for MPI merge operations
+				m_max = (size_t)(expected_voxels * 1.5);
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys, m_max * sizeof(uint64_t)));
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals, m_max * sizeof(float)));
 
-					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys_alt, m_max * sizeof(uint64_t)));
-					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals_alt, m_max * sizeof(float)));
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys_alt, m_max * sizeof(uint64_t)));
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals_alt, m_max * sizeof(float)));
 
-					// Worst-case: all unique => output size == input size
-					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys_out, m_max * sizeof(uint64_t)));
-					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals_out, m_max * sizeof(float)));
-					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_num_out, sizeof(int)));
+				// Worst-case: all unique => output size == input size
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys_out, m_max * sizeof(uint64_t)));
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals_out, m_max * sizeof(float)));
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_num_out, sizeof(int)));
 
-					// Precompute temp storage sizes for CUB primitives (max)
-					size_t sort_bytes = 0;
-					cub::DeviceRadixSort::SortPairs(nullptr, sort_bytes,
-						d_keys, d_keys_alt,
-						d_vals, d_vals_alt,
-						(int)m_max);
-					m_sort_temp_bytes = sort_bytes;
-					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_sort_temp, m_sort_temp_bytes));
+				// Precompute temp storage sizes for CUB primitives (max)
+				size_t sort_bytes = 0;
+				cub::DeviceRadixSort::SortPairs(nullptr, sort_bytes,
+					d_keys, d_keys_alt,
+					d_vals, d_vals_alt,
+					(int)m_max);
+				m_sort_temp_bytes = sort_bytes;
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_sort_temp, m_sort_temp_bytes));
 
-					size_t reduce_bytes = 0;
-					CustomSum op_sum;
-					cub::DeviceReduce::ReduceByKey(nullptr, reduce_bytes,
-						d_keys_alt, d_keys_out,
-						d_vals_alt, d_vals_out,
-						d_num_out,
-						op_sum,
-						(int)m_max);
+				size_t reduce_bytes = 0;
+				CustomSum op_sum;
+				cub::DeviceReduce::ReduceByKey(nullptr, reduce_bytes,
+					d_keys_alt, d_keys_out,
+					d_vals_alt, d_vals_out,
+					d_num_out,
+					op_sum,
+					(int)m_max);
 				m_reduce_temp_bytes = reduce_bytes;
 				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_reduce_temp, m_reduce_temp_bytes));
 
@@ -248,17 +248,17 @@ namespace common {
 				CUDA_CHECK_ERROR(cudaMemset(d_particle_count, 0, sizeof(uint64_t)));
 
 				// Persistent device buffers for per-call host parameters
-				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_bbox_min_orig,   3 * sizeof(int)));
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_bbox_min_orig, 3 * sizeof(int)));
 				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_offset_position, 3 * sizeof(float)));
 				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_bbox_sphere_pos, 3 * sizeof(float)));
 
 				// Precompute temp storage for min/max reductions
 				size_t min_bytes = 0;
 				cub::DeviceReduce::Min(nullptr, min_bytes, d_vals_out, d_min_out, (int)m_max);
-				
+
 				size_t max_bytes = 0;
 				cub::DeviceReduce::Max(nullptr, max_bytes, d_vals_out, d_max_out, (int)m_max);
-				
+
 				// Use the larger of the two
 				m_minmax_temp_bytes = (min_bytes > max_bytes) ? min_bytes : max_bytes;
 				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_minmax_temp, m_minmax_temp_bytes));
@@ -266,111 +266,113 @@ namespace common {
 
 			VoxelGPUManagerSortReduce::~VoxelGPUManagerSortReduce()
 			{
-					// cudaFree(d_inVoxels);
+				// cudaFree(d_inVoxels);
 
-					if (d_keys) {
-						CUDA_CHECK_ERROR(cudaFree(d_keys));
-					}
+				if (d_keys) {
+					CUDA_CHECK_ERROR(cudaFree(d_keys));
+				}
 
-					if (d_vals) {
-						CUDA_CHECK_ERROR(cudaFree(d_vals));
-					}					
+				if (d_vals) {
+					CUDA_CHECK_ERROR(cudaFree(d_vals));
+				}
 
-					if (d_keys_alt) {
-						CUDA_CHECK_ERROR(cudaFree(d_keys_alt));
-					}
-					if (d_vals_alt) {
-						CUDA_CHECK_ERROR(cudaFree(d_vals_alt));
-					}
+				if (d_keys_alt) {
+					CUDA_CHECK_ERROR(cudaFree(d_keys_alt));
+				}
+				if (d_vals_alt) {
+					CUDA_CHECK_ERROR(cudaFree(d_vals_alt));
+				}
 
-					if (d_keys_out) {
-						CUDA_CHECK_ERROR(cudaFree(d_keys_out));
-					}
-					if (d_vals_out) {
-						CUDA_CHECK_ERROR(cudaFree(d_vals_out));
-					}
+				if (d_keys_out) {
+					CUDA_CHECK_ERROR(cudaFree(d_keys_out));
+				}
+				if (d_vals_out) {
+					CUDA_CHECK_ERROR(cudaFree(d_vals_out));
+				}
 
-					if (d_num_out) {
-						CUDA_CHECK_ERROR(cudaFree(d_num_out));
-					}
+				if (d_num_out) {
+					CUDA_CHECK_ERROR(cudaFree(d_num_out));
+				}
 
-					if (d_sort_temp) {
-						CUDA_CHECK_ERROR(cudaFree(d_sort_temp));
-					}
-					if (d_reduce_temp) {
-						CUDA_CHECK_ERROR(cudaFree(d_reduce_temp));
-					}
-					if (d_minmax_temp) {
-						CUDA_CHECK_ERROR(cudaFree(d_minmax_temp));
-					}
-					if (d_min_out) {
-						CUDA_CHECK_ERROR(cudaFree(d_min_out));
-					}
-					if (d_max_out) {
-						CUDA_CHECK_ERROR(cudaFree(d_max_out));
-					}
-					if (d_particle_count) {
-						CUDA_CHECK_ERROR(cudaFree(d_particle_count));
-					}
-					if (d_bbox_min_orig) {
-						CUDA_CHECK_ERROR(cudaFree(d_bbox_min_orig));
-					}
-					if (d_offset_position) {
-						CUDA_CHECK_ERROR(cudaFree(d_offset_position));
-					}
-					if (d_bbox_sphere_pos) {
-						CUDA_CHECK_ERROR(cudaFree(d_bbox_sphere_pos));
-					}
+				if (d_sort_temp) {
+					CUDA_CHECK_ERROR(cudaFree(d_sort_temp));
+				}
+				if (d_reduce_temp) {
+					CUDA_CHECK_ERROR(cudaFree(d_reduce_temp));
+				}
+				if (d_minmax_temp) {
+					CUDA_CHECK_ERROR(cudaFree(d_minmax_temp));
+				}
+				if (d_min_out) {
+					CUDA_CHECK_ERROR(cudaFree(d_min_out));
+				}
+				if (d_max_out) {
+					CUDA_CHECK_ERROR(cudaFree(d_max_out));
+				}
+				if (d_particle_count) {
+					CUDA_CHECK_ERROR(cudaFree(d_particle_count));
+				}
+				if (d_bbox_min_orig) {
+					CUDA_CHECK_ERROR(cudaFree(d_bbox_min_orig));
+				}
+				if (d_offset_position) {
+					CUDA_CHECK_ERROR(cudaFree(d_offset_position));
+				}
+				if (d_bbox_sphere_pos) {
+					CUDA_CHECK_ERROR(cudaFree(d_bbox_sphere_pos));
+				}
 			}
 
 			// Accumulate a batch of voxels: output becomes unique (i,j,k) with summed values
 			// Returns number of unique voxels in the batch.
-			int VoxelGPUManagerSortReduce::insertOrUpdate(const Voxel* h_voxels, int num_voxels)
+			void VoxelGPUManagerSortReduce::insertOrUpdate(void* _voxels, size_t num_voxels)
 			{
-					if (num_voxels <= 0) {
-						m_last_count = 0;
-						return 0;
-					}
-					if ((size_t)num_voxels > m_max) {
-						printf("[VoxelGPUManagerSortReduce] ERROR: num_voxels=%d exceeds max=%zu\n",
-							num_voxels, m_max);
-						return 0;
-					}
+				Voxel* h_voxels = static_cast<Voxel*>(_voxels);
 
-					// H2D
-					Voxel* d_inVoxels = nullptr;
-					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_inVoxels, m_max * sizeof(Voxel)));
-					CUDA_CHECK_ERROR(cudaMemcpy(d_inVoxels, h_voxels, num_voxels * sizeof(Voxel), cudaMemcpyHostToDevice));
+				if (num_voxels <= 0) {
+					m_last_count = 0;
+					return;
+				}
+				if ((size_t)num_voxels > m_max) {
+					printf("[VoxelGPUManagerSortReduce] ERROR: num_voxels=%d exceeds max=%zu\n",
+						num_voxels, m_max);
+					return;
+				}
 
-					// map -> key/value
-					{
-						int block = 256;
-						int grid = (num_voxels + block - 1) / block;
-						voxelsToKeyValue << <grid, block >> > (d_inVoxels, num_voxels, d_keys, d_vals);
-					}
+				// H2D
+				Voxel* d_inVoxels = nullptr;
+				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_inVoxels, m_max * sizeof(Voxel)));
+				CUDA_CHECK_ERROR(cudaMemcpy(d_inVoxels, h_voxels, num_voxels * sizeof(Voxel), cudaMemcpyHostToDevice));
 
-					CUDA_CHECK_ERROR(cudaFree(d_inVoxels));
+				// map -> key/value
+				{
+					int block = 256;
+					int grid = (num_voxels + block - 1) / block;
+					voxelsToKeyValue << <grid, block >> > (d_inVoxels, num_voxels, d_keys, d_vals);
+				}
 
-					// sort by key (pairs)
-					cub::DeviceRadixSort::SortPairs(d_sort_temp, m_sort_temp_bytes,
+				CUDA_CHECK_ERROR(cudaFree(d_inVoxels));
+
+				// sort by key (pairs)
+				cub::DeviceRadixSort::SortPairs(d_sort_temp, m_sort_temp_bytes,
 					d_keys, d_keys_alt,
-						d_vals, d_vals_alt,
-						num_voxels);
+					d_vals, d_vals_alt,
+					num_voxels);
 
-					// reduce-by-key (sum values for identical keys)
-					CustomSum op_sum;
-					cub::DeviceReduce::ReduceByKey(d_reduce_temp, m_reduce_temp_bytes,
-						d_keys_alt, d_keys_out,
-						d_vals_alt, d_vals_out,
-						d_num_out,
-						op_sum,
-						num_voxels);
+				// reduce-by-key (sum values for identical keys)
+				CustomSum op_sum;
+				cub::DeviceReduce::ReduceByKey(d_reduce_temp, m_reduce_temp_bytes,
+					d_keys_alt, d_keys_out,
+					d_vals_alt, d_vals_out,
+					d_num_out,
+					op_sum,
+					num_voxels);
 
-					int h_num_out = 0;
-					CUDA_CHECK_ERROR(cudaMemcpy(&h_num_out, d_num_out, sizeof(int), cudaMemcpyDeviceToHost));
+				int h_num_out = 0;
+				CUDA_CHECK_ERROR(cudaMemcpy(&h_num_out, d_num_out, sizeof(int), cudaMemcpyDeviceToHost));
 
 				m_last_count = h_num_out;
-				return h_num_out;
+				//return h_num_out;
 			}
 
 			int VoxelGPUManagerSortReduce::update(size_t count)
@@ -397,33 +399,33 @@ namespace common {
 				return h_num_out;
 			}
 
-			// Extract the last accumulated unique voxels back to host
-			int VoxelGPUManagerSortReduce::extractAll(Voxel** h_output_voxels)
-			{
-					const int n = m_last_count;
-					if (n <= 0) {
-						*h_output_voxels = nullptr;
-						return 0;
-					}
+			//// Extract the last accumulated unique voxels back to host
+			//int VoxelGPUManagerSortReduce::extractAll(Voxel** h_output_voxels)
+			//{
+			//		const int n = m_last_count;
+			//		if (n <= 0) {
+			//			*h_output_voxels = nullptr;
+			//			return 0;
+			//		}
 
-					Voxel* d_out_voxels = nullptr;
-					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_out_voxels, n * sizeof(Voxel)));
+			//		Voxel* d_out_voxels = nullptr;
+			//		CUDA_CHECK_ERROR(CUDA_MALLOC(&d_out_voxels, n * sizeof(Voxel)));
 
-					{
-						int block = 256;
-						int grid = (n + block - 1) / block;
-						keyValueToVoxels << <grid, block >> > (d_keys_out, d_vals_out, n, d_out_voxels);
-					}
+			//		{
+			//			int block = 256;
+			//			int grid = (n + block - 1) / block;
+			//			keyValueToVoxels << <grid, block >> > (d_keys_out, d_vals_out, n, d_out_voxels);
+			//		}
 
-					*h_output_voxels = new Voxel[n];
-					CUDA_CHECK_ERROR(cudaMemcpy(*h_output_voxels, d_out_voxels, n * sizeof(Voxel), cudaMemcpyDeviceToHost));
+			//		*h_output_voxels = new Voxel[n];
+			//		CUDA_CHECK_ERROR(cudaMemcpy(*h_output_voxels, d_out_voxels, n * sizeof(Voxel), cudaMemcpyDeviceToHost));
 
-					CUDA_CHECK_ERROR(cudaDeviceSynchronize());
+			//		CUDA_CHECK_ERROR(cudaDeviceSynchronize());
 
-					CUDA_CHECK_ERROR(cudaFree(d_out_voxels));
+			//		CUDA_CHECK_ERROR(cudaFree(d_out_voxels));
 
-				return n;
-			}
+			//	return n;
+			//}
 
 			// ================================================================================
 			// CPU-side methods
@@ -431,27 +433,27 @@ namespace common {
 
 			// CPU-side serialization: copy from device to host, then serialize
 			void VoxelGPUManagerSortReduce::serializeCPU(uint8_t* bin_data) {
-				// int    m_last_count = 0;
-				// uint64_t* d_keys_out = nullptr;
-				// float* d_vals_out = nullptr;
-
 				// Allocate host memory for keys and values
-				uint64_t* h_keys = new uint64_t[m_last_count];
-				float* h_vals = new float[m_last_count];
+				//uint64_t* h_keys = new uint64_t[m_last_count];
+				//float* h_vals = new float[m_last_count];
 
 				// Copy directly from device
-				CUDA_CHECK_ERROR(cudaMemcpy(h_keys, d_keys_out, m_last_count * sizeof(uint64_t), cudaMemcpyDeviceToHost));
-				CUDA_CHECK_ERROR(cudaMemcpy(h_vals, d_vals_out, m_last_count * sizeof(float), cudaMemcpyDeviceToHost));
+				//CUDA_CHECK_ERROR(cudaMemcpy(h_keys, d_keys_out, m_last_count * sizeof(uint64_t), cudaMemcpyDeviceToHost));
+				//CUDA_CHECK_ERROR(cudaMemcpy(h_vals, d_vals_out, m_last_count * sizeof(float), cudaMemcpyDeviceToHost));
 
-				uint8_t* ptr = bin_data;				
+				uint8_t* ptr = bin_data;
 				memcpy(ptr, &m_last_count, sizeof(int));
 				ptr += sizeof(int);
-				memcpy(ptr, h_keys, m_last_count * sizeof(uint64_t));
-				ptr += m_last_count * sizeof(uint64_t);
-				memcpy(ptr, h_vals, m_last_count * sizeof(float));
+				
+				//memcpy(ptr, h_keys, m_last_count * sizeof(uint64_t));
+				CUDA_CHECK_ERROR(cudaMemcpy(ptr, d_keys_out, m_last_count * sizeof(uint64_t), cudaMemcpyDeviceToHost));
 
-				delete[] h_keys;
-				delete[] h_vals;
+				ptr += m_last_count * sizeof(uint64_t);
+				//memcpy(ptr, h_vals, m_last_count * sizeof(float));
+				CUDA_CHECK_ERROR(cudaMemcpy(ptr, d_vals_out, m_last_count * sizeof(float), cudaMemcpyDeviceToHost));
+
+				//delete[] h_keys;
+				//delete[] h_vals;
 			}
 
 			// CPU-side deserialization: deserialize then copy to device
@@ -463,7 +465,7 @@ namespace common {
 				// int    m_last_count = 0;
 				// uint64_t* d_keys_out = nullptr;
 				// float* d_vals_out = nullptr;
-				uint8_t* ptr = bin_data;				
+				uint8_t* ptr = bin_data;
 				memcpy(&m_last_count, ptr, sizeof(int));
 				m_max = m_last_count;
 				ptr += sizeof(int);
@@ -493,100 +495,100 @@ namespace common {
 				const int n2 = other->m_last_count;
 				const int n_total = n1 + n2;
 
-			// Reallocate buffers if needed
-			if ((size_t)n_total > m_max) {
-				printf("[VoxelGPUManagerSortReduce::mergeCPU] Reallocating buffers: merged count=%d exceeds max=%zu, reallocating to %d\n",
-					n_total, m_max, n_total);
-				
-				size_t new_max = n_total;
-				
-				// Reallocate main buffers
-				uint64_t* d_keys_new = nullptr;
-				float* d_vals_new = nullptr;
-				uint64_t* d_keys_alt_new = nullptr;
-				float* d_vals_alt_new = nullptr;
-				uint64_t* d_keys_out_new = nullptr;
-				float* d_vals_out_new = nullptr;
-				
-				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys_new, new_max * sizeof(uint64_t)));
-				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals_new, new_max * sizeof(float)));
-				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys_alt_new, new_max * sizeof(uint64_t)));
-				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals_alt_new, new_max * sizeof(float)));
-				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys_out_new, new_max * sizeof(uint64_t)));
-				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals_out_new, new_max * sizeof(float)));
-				
-				// Copy existing data
-				if (m_last_count > 0) {
-					CUDA_CHECK_ERROR(cudaMemcpy(d_keys_out_new, d_keys_out, m_last_count * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
-					CUDA_CHECK_ERROR(cudaMemcpy(d_vals_out_new, d_vals_out, m_last_count * sizeof(float), cudaMemcpyDeviceToDevice));
+				// Reallocate buffers if needed
+				if ((size_t)n_total > m_max) {
+					printf("[VoxelGPUManagerSortReduce::mergeCPU] Reallocating buffers: merged count=%d exceeds max=%zu, reallocating to %d\n",
+						n_total, m_max, n_total);
+
+					size_t new_max = n_total;
+
+					// Reallocate main buffers
+					uint64_t* d_keys_new = nullptr;
+					float* d_vals_new = nullptr;
+					uint64_t* d_keys_alt_new = nullptr;
+					float* d_vals_alt_new = nullptr;
+					uint64_t* d_keys_out_new = nullptr;
+					float* d_vals_out_new = nullptr;
+
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys_new, new_max * sizeof(uint64_t)));
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals_new, new_max * sizeof(float)));
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys_alt_new, new_max * sizeof(uint64_t)));
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals_alt_new, new_max * sizeof(float)));
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys_out_new, new_max * sizeof(uint64_t)));
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals_out_new, new_max * sizeof(float)));
+
+					// Copy existing data
+					if (m_last_count > 0) {
+						CUDA_CHECK_ERROR(cudaMemcpy(d_keys_out_new, d_keys_out, m_last_count * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
+						CUDA_CHECK_ERROR(cudaMemcpy(d_vals_out_new, d_vals_out, m_last_count * sizeof(float), cudaMemcpyDeviceToDevice));
+					}
+
+					// Free old buffers
+					if (d_keys) cudaFree(d_keys);
+					if (d_vals) cudaFree(d_vals);
+					if (d_keys_alt) cudaFree(d_keys_alt);
+					if (d_vals_alt) cudaFree(d_vals_alt);
+					if (d_keys_out) cudaFree(d_keys_out);
+					if (d_vals_out) cudaFree(d_vals_out);
+
+					// Assign new buffers
+					d_keys = d_keys_new;
+					d_vals = d_vals_new;
+					d_keys_alt = d_keys_alt_new;
+					d_vals_alt = d_vals_alt_new;
+					d_keys_out = d_keys_out_new;
+					d_vals_out = d_vals_out_new;
+
+					// Reallocate CUB temporary storage
+					if (d_sort_temp) cudaFree(d_sort_temp);
+					size_t sort_bytes = 0;
+					cub::DeviceRadixSort::SortPairs(nullptr, sort_bytes,
+						d_keys, d_keys_alt,
+						d_vals, d_vals_alt,
+						(int)new_max);
+					m_sort_temp_bytes = sort_bytes;
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_sort_temp, m_sort_temp_bytes));
+
+					if (d_reduce_temp) cudaFree(d_reduce_temp);
+					size_t reduce_bytes = 0;
+					CustomSum op_sum;
+					cub::DeviceReduce::ReduceByKey(nullptr, reduce_bytes,
+						d_keys_alt, d_keys_out,
+						d_vals_alt, d_vals_out,
+						d_num_out,
+						op_sum,
+						(int)new_max);
+					m_reduce_temp_bytes = reduce_bytes;
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_reduce_temp, m_reduce_temp_bytes));
+
+					m_max = new_max;
 				}
-				
-				// Free old buffers
-				if (d_keys) cudaFree(d_keys);
-				if (d_vals) cudaFree(d_vals);
-				if (d_keys_alt) cudaFree(d_keys_alt);
-				if (d_vals_alt) cudaFree(d_vals_alt);
-				if (d_keys_out) cudaFree(d_keys_out);
-				if (d_vals_out) cudaFree(d_vals_out);
-				
-				// Assign new buffers
-				d_keys = d_keys_new;
-				d_vals = d_vals_new;
-				d_keys_alt = d_keys_alt_new;
-				d_vals_alt = d_vals_alt_new;
-				d_keys_out = d_keys_out_new;
-				d_vals_out = d_vals_out_new;
-				
-				// Reallocate CUB temporary storage
-				if (d_sort_temp) cudaFree(d_sort_temp);
-				size_t sort_bytes = 0;
-				cub::DeviceRadixSort::SortPairs(nullptr, sort_bytes,
+
+				// Copy data from both managers into d_keys/d_vals for sorting
+				CUDA_CHECK_ERROR(cudaMemcpy(d_keys, d_keys_out, n1 * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
+				CUDA_CHECK_ERROR(cudaMemcpy(d_vals, d_vals_out, n1 * sizeof(float), cudaMemcpyDeviceToDevice));
+				CUDA_CHECK_ERROR(cudaMemcpy(d_keys + n1, other->d_keys_out, n2 * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
+				CUDA_CHECK_ERROR(cudaMemcpy(d_vals + n1, other->d_vals_out, n2 * sizeof(float), cudaMemcpyDeviceToDevice));
+
+				// Sort combined data
+				cub::DeviceRadixSort::SortPairs(d_sort_temp, m_sort_temp_bytes,
 					d_keys, d_keys_alt,
 					d_vals, d_vals_alt,
-					(int)new_max);
-				m_sort_temp_bytes = sort_bytes;
-				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_sort_temp, m_sort_temp_bytes));
-				
-				if (d_reduce_temp) cudaFree(d_reduce_temp);
-				size_t reduce_bytes = 0;
+					n_total);
+
+				// Reduce-by-key
 				CustomSum op_sum;
-				cub::DeviceReduce::ReduceByKey(nullptr, reduce_bytes,
+				cub::DeviceReduce::ReduceByKey(d_reduce_temp, m_reduce_temp_bytes,
 					d_keys_alt, d_keys_out,
 					d_vals_alt, d_vals_out,
 					d_num_out,
 					op_sum,
-					(int)new_max);
-				m_reduce_temp_bytes = reduce_bytes;
-				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_reduce_temp, m_reduce_temp_bytes));
-				
-				m_max = new_max;
+					n_total);
+
+				int h_num_out = 0;
+				CUDA_CHECK_ERROR(cudaMemcpy(&h_num_out, d_num_out, sizeof(int), cudaMemcpyDeviceToHost));
+				m_last_count = h_num_out;
 			}
-
-			// Copy data from both managers into d_keys/d_vals for sorting
-			CUDA_CHECK_ERROR(cudaMemcpy(d_keys, d_keys_out, n1 * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
-			CUDA_CHECK_ERROR(cudaMemcpy(d_vals, d_vals_out, n1 * sizeof(float), cudaMemcpyDeviceToDevice));
-			CUDA_CHECK_ERROR(cudaMemcpy(d_keys + n1, other->d_keys_out, n2 * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
-			CUDA_CHECK_ERROR(cudaMemcpy(d_vals + n1, other->d_vals_out, n2 * sizeof(float), cudaMemcpyDeviceToDevice));
-
-			// Sort combined data
-			cub::DeviceRadixSort::SortPairs(d_sort_temp, m_sort_temp_bytes,
-				d_keys, d_keys_alt,
-				d_vals, d_vals_alt,
-				n_total);
-
-			// Reduce-by-key
-			CustomSum op_sum;
-			cub::DeviceReduce::ReduceByKey(d_reduce_temp, m_reduce_temp_bytes,
-				d_keys_alt, d_keys_out,
-				d_vals_alt, d_vals_out,
-				d_num_out,
-				op_sum,
-				n_total);
-
-			int h_num_out = 0;
-			CUDA_CHECK_ERROR(cudaMemcpy(&h_num_out, d_num_out, sizeof(int), cudaMemcpyDeviceToHost));
-			m_last_count = h_num_out;
-		}
 
 			// Get min/max values from reduced voxel data using CUB
 			void VoxelGPUManagerSortReduce::find_min_max(float& min_value, float& max_value)
@@ -598,11 +600,11 @@ namespace common {
 				}
 
 				// Use CUB's DeviceReduce::Min and Max on the reduced values
-				cub::DeviceReduce::Min(d_minmax_temp, m_minmax_temp_bytes, 
+				cub::DeviceReduce::Min(d_minmax_temp, m_minmax_temp_bytes,
 					d_vals_out, d_min_out, m_last_count);
-				
+
 				// Reuse the same temp buffer for max (CUB allows this)
-				cub::DeviceReduce::Max(d_minmax_temp, m_minmax_temp_bytes, 
+				cub::DeviceReduce::Max(d_minmax_temp, m_minmax_temp_bytes,
 					d_vals_out, d_max_out, m_last_count);
 
 				// Copy results to host
@@ -625,6 +627,7 @@ namespace common {
 
 			// Override: serialize to host memory buffer (e.g., std::vector)
 			void VoxelGPUManagerSortReduce::serialize(std::vector<uint8_t>& bin_data) {
+				bin_data.resize(mem_size());
 				serializeCPU(bin_data.data());
 			}
 
@@ -640,7 +643,7 @@ namespace common {
 			// GPU-side serialization: allocate device memory and write serialized data
 			void VoxelGPUManagerSortReduce::serializeGPU(uint8_t* d_data) {
 
-				uint8_t* ptr = d_data;				
+				uint8_t* ptr = d_data;
 				CUDA_CHECK_ERROR(cudaMemcpy(ptr, &m_last_count, sizeof(int), cudaMemcpyHostToDevice));
 				ptr += sizeof(int);
 				CUDA_CHECK_ERROR(cudaMemcpy(ptr, d_keys_out, m_last_count * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
@@ -659,7 +662,7 @@ namespace common {
 				// int    m_last_count = 0;
 				// uint64_t* d_keys_out = nullptr;
 				// float* d_vals_out = nullptr;
-				uint8_t* ptr = d_data;				
+				uint8_t* ptr = d_data;
 				CUDA_CHECK_ERROR(cudaMemcpy(&m_last_count, ptr, sizeof(int), cudaMemcpyDeviceToHost));
 				m_max = m_last_count;
 				ptr += sizeof(int);
@@ -670,7 +673,7 @@ namespace common {
 				CUDA_CHECK_ERROR(cudaMemcpy(d_keys_out, ptr, m_last_count * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
 				ptr += m_last_count * sizeof(uint64_t);
 				CUDA_CHECK_ERROR(cudaMemcpy(d_vals_out, ptr, m_last_count * sizeof(float), cudaMemcpyDeviceToDevice));
-				
+
 			}
 
 			// GPU-side merge: combine with another manager without using host memory
@@ -689,103 +692,103 @@ namespace common {
 				const int n2 = other->m_last_count;
 				const int n_total = n1 + n2;
 
-			// Reallocate buffers if needed
-			if ((size_t)n_total > m_max) {
-				printf("[VoxelGPUManagerSortReduce::merge] Reallocating buffers: merged count=%d exceeds max=%zu, reallocating to %d\n",
-					n_total, m_max, n_total);
-				
-				size_t new_max = n_total;
-				
-				// Reallocate main buffers
-				uint64_t* d_keys_new = nullptr;
-				float* d_vals_new = nullptr;
-				uint64_t* d_keys_alt_new = nullptr;
-				float* d_vals_alt_new = nullptr;
-				uint64_t* d_keys_out_new = nullptr;
-				float* d_vals_out_new = nullptr;
-				
-				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys_new, new_max * sizeof(uint64_t)));
-				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals_new, new_max * sizeof(float)));
-				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys_alt_new, new_max * sizeof(uint64_t)));
-				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals_alt_new, new_max * sizeof(float)));
-				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys_out_new, new_max * sizeof(uint64_t)));
-				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals_out_new, new_max * sizeof(float)));
-				
-				// Copy existing data
-				if (m_last_count > 0) {
-					CUDA_CHECK_ERROR(cudaMemcpy(d_keys_out_new, d_keys_out, m_last_count * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
-					CUDA_CHECK_ERROR(cudaMemcpy(d_vals_out_new, d_vals_out, m_last_count * sizeof(float), cudaMemcpyDeviceToDevice));
+				// Reallocate buffers if needed
+				if ((size_t)n_total > m_max) {
+					printf("[VoxelGPUManagerSortReduce::merge] Reallocating buffers: merged count=%d exceeds max=%zu, reallocating to %d\n",
+						n_total, m_max, n_total);
+
+					size_t new_max = n_total;
+
+					// Reallocate main buffers
+					uint64_t* d_keys_new = nullptr;
+					float* d_vals_new = nullptr;
+					uint64_t* d_keys_alt_new = nullptr;
+					float* d_vals_alt_new = nullptr;
+					uint64_t* d_keys_out_new = nullptr;
+					float* d_vals_out_new = nullptr;
+
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys_new, new_max * sizeof(uint64_t)));
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals_new, new_max * sizeof(float)));
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys_alt_new, new_max * sizeof(uint64_t)));
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals_alt_new, new_max * sizeof(float)));
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys_out_new, new_max * sizeof(uint64_t)));
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals_out_new, new_max * sizeof(float)));
+
+					// Copy existing data
+					if (m_last_count > 0) {
+						CUDA_CHECK_ERROR(cudaMemcpy(d_keys_out_new, d_keys_out, m_last_count * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
+						CUDA_CHECK_ERROR(cudaMemcpy(d_vals_out_new, d_vals_out, m_last_count * sizeof(float), cudaMemcpyDeviceToDevice));
+					}
+
+					// Free old buffers
+					if (d_keys) cudaFree(d_keys);
+					if (d_vals) cudaFree(d_vals);
+					if (d_keys_alt) cudaFree(d_keys_alt);
+					if (d_vals_alt) cudaFree(d_vals_alt);
+					if (d_keys_out) cudaFree(d_keys_out);
+					if (d_vals_out) cudaFree(d_vals_out);
+
+					// Assign new buffers
+					d_keys = d_keys_new;
+					d_vals = d_vals_new;
+					d_keys_alt = d_keys_alt_new;
+					d_vals_alt = d_vals_alt_new;
+					d_keys_out = d_keys_out_new;
+					d_vals_out = d_vals_out_new;
+
+					// Reallocate CUB temporary storage
+					if (d_sort_temp) cudaFree(d_sort_temp);
+					size_t sort_bytes = 0;
+					cub::DeviceRadixSort::SortPairs(nullptr, sort_bytes,
+						d_keys, d_keys_alt,
+						d_vals, d_vals_alt,
+						(int)new_max);
+					m_sort_temp_bytes = sort_bytes;
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_sort_temp, m_sort_temp_bytes));
+
+					if (d_reduce_temp) cudaFree(d_reduce_temp);
+					size_t reduce_bytes = 0;
+					CustomSum op_sum;
+					cub::DeviceReduce::ReduceByKey(nullptr, reduce_bytes,
+						d_keys_alt, d_keys_out,
+						d_vals_alt, d_vals_out,
+						d_num_out,
+						op_sum,
+						(int)new_max);
+					m_reduce_temp_bytes = reduce_bytes;
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_reduce_temp, m_reduce_temp_bytes));
+
+					m_max = new_max;
 				}
-				
-				// Free old buffers
-				if (d_keys) cudaFree(d_keys);
-				if (d_vals) cudaFree(d_vals);
-				if (d_keys_alt) cudaFree(d_keys_alt);
-				if (d_vals_alt) cudaFree(d_vals_alt);
-				if (d_keys_out) cudaFree(d_keys_out);
-				if (d_vals_out) cudaFree(d_vals_out);
-				
-				// Assign new buffers
-				d_keys = d_keys_new;
-				d_vals = d_vals_new;
-				d_keys_alt = d_keys_alt_new;
-				d_vals_alt = d_vals_alt_new;
-				d_keys_out = d_keys_out_new;
-				d_vals_out = d_vals_out_new;
-				
-				// Reallocate CUB temporary storage
-				if (d_sort_temp) cudaFree(d_sort_temp);
-				size_t sort_bytes = 0;
-				cub::DeviceRadixSort::SortPairs(nullptr, sort_bytes,
+
+				// Copy data from both managers into d_keys/d_vals for sorting
+				CUDA_CHECK_ERROR(cudaMemcpy(d_keys, d_keys_out, n1 * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
+				CUDA_CHECK_ERROR(cudaMemcpy(d_vals, d_vals_out, n1 * sizeof(float), cudaMemcpyDeviceToDevice));
+
+				// Copy other manager's data after this manager's data
+				CUDA_CHECK_ERROR(cudaMemcpy(d_keys + n1, other->d_keys_out, n2 * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
+				CUDA_CHECK_ERROR(cudaMemcpy(d_vals + n1, other->d_vals_out, n2 * sizeof(float), cudaMemcpyDeviceToDevice));
+
+				// Sort combined data
+				cub::DeviceRadixSort::SortPairs(d_sort_temp, m_sort_temp_bytes,
 					d_keys, d_keys_alt,
 					d_vals, d_vals_alt,
-					(int)new_max);
-				m_sort_temp_bytes = sort_bytes;
-				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_sort_temp, m_sort_temp_bytes));
-				
-				if (d_reduce_temp) cudaFree(d_reduce_temp);
-				size_t reduce_bytes = 0;
+					n_total);
+
+				// Reduce-by-key
 				CustomSum op_sum;
-				cub::DeviceReduce::ReduceByKey(nullptr, reduce_bytes,
+				cub::DeviceReduce::ReduceByKey(d_reduce_temp, m_reduce_temp_bytes,
 					d_keys_alt, d_keys_out,
 					d_vals_alt, d_vals_out,
 					d_num_out,
 					op_sum,
-					(int)new_max);
-				m_reduce_temp_bytes = reduce_bytes;
-				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_reduce_temp, m_reduce_temp_bytes));
-				
-				m_max = new_max;
+					n_total);
+
+				int h_num_out = 0;
+				CUDA_CHECK_ERROR(cudaMemcpy(&h_num_out, d_num_out, sizeof(int), cudaMemcpyDeviceToHost));
+				m_last_count = h_num_out;
+
 			}
-
-			// Copy data from both managers into d_keys/d_vals for sorting
-			CUDA_CHECK_ERROR(cudaMemcpy(d_keys, d_keys_out, n1 * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
-			CUDA_CHECK_ERROR(cudaMemcpy(d_vals, d_vals_out, n1 * sizeof(float), cudaMemcpyDeviceToDevice));
-
-			// Copy other manager's data after this manager's data
-			CUDA_CHECK_ERROR(cudaMemcpy(d_keys + n1, other->d_keys_out, n2 * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
-			CUDA_CHECK_ERROR(cudaMemcpy(d_vals + n1, other->d_vals_out, n2 * sizeof(float), cudaMemcpyDeviceToDevice));
-
-			// Sort combined data
-			cub::DeviceRadixSort::SortPairs(d_sort_temp, m_sort_temp_bytes,
-				d_keys, d_keys_alt,
-				d_vals, d_vals_alt,
-				n_total);
-
-			// Reduce-by-key
-			CustomSum op_sum;
-			cub::DeviceReduce::ReduceByKey(d_reduce_temp, m_reduce_temp_bytes,
-				d_keys_alt, d_keys_out,
-				d_vals_alt, d_vals_out,
-				d_num_out,
-				op_sum,
-				n_total);
-
-			int h_num_out = 0;
-			CUDA_CHECK_ERROR(cudaMemcpy(&h_num_out, d_num_out, sizeof(int), cudaMemcpyDeviceToHost));
-			m_last_count = h_num_out;
-
-		}
-	}  // namespace sparse
-}  // namespace vdb
+		}  // namespace sparse
+	}  // namespace vdb
 }  // namespace common

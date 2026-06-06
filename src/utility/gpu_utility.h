@@ -98,4 +98,8 @@
 #define DEBUG_PRINT_GPU_ARRAY(gpu_ptr, size, label)
 #endif    
 
-#define CUDA_MALLOC cudaMalloc //cudaMallocManaged
+#ifdef WITH_CUDA_MALLOCMANAGED
+#   define CUDA_MALLOC cudaMallocManaged
+#else
+#   define CUDA_MALLOC cudaMalloc
+#endif 

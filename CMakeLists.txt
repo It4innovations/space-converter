@@ -45,6 +45,7 @@ option(WITH_CUDAKDTREE "Enable cudaKDTree" OFF)
 
 option(WITH_GPU_CUDA "Enable GPU CUDA" OFF)
 option(WITH_CUDA_AWARE_MPI "Enable CUDA-aware MPI for RDMA GPU-direct transfers (requires UCX/RDMA-capable MPI)" OFF)
+option(WITH_CUDA_MALLOCMANAGED "Enable CUDA unified memory (managed memory)" OFF)
 
 option(WITH_MERIC  "Enable MERIC" OFF)
 ########################################################

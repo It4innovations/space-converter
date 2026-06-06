@@ -60,6 +60,10 @@ if(WITH_CUDA_AWARE_MPI)
     add_definitions(-DWITH_CUDA_AWARE_MPI)
 endif()
 
+if(WITH_CUDA_MALLOCMANAGED)
+    add_definitions(-DWITH_CUDA_MALLOCMANAGED)
+endif()
+
 if(WITH_OPENMP)
     add_definitions(-DWITH_OPENMP)
 endif()

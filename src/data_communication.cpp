@@ -190,6 +190,11 @@ namespace space_converter {
 				from_cl.world_rank,
 				from_cl.world_size);
 		}
+
+#ifdef _WIN32
+		// Debug
+		wait_on_attach_process(from_cl);
+#endif
 	}
 
 	/**
@@ -599,7 +604,7 @@ namespace space_converter {
 			int attach = 1;			
 			while (attach) {
 #ifdef _WIN32
-				Sleep(1);
+				Sleep(1000);
 #endif
 				printf("wait_on_attach_process\n"); fflush(0);
 			}			

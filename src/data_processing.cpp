@@ -828,17 +828,18 @@ namespace space_converter {
 						// Receiving rank: merge data from partner
 						if (from_cl.world_rank + step < from_cl.world_size) {
 
-							size_t ns = 0;
-							mpi_recv(&ns, sizeof(ns), MPI_BYTE, from_cl.world_rank + step, 0);
 #if defined(WITH_GPU_CUDA) && defined(WITH_CUDA_AWARE_MPI)
 							if (auto* gpu_mgr = dynamic_cast<common::vdb::sparse::VoxelGPUManagerSortReduce*>(grid_main_sum.sparse_grid.get())) {
 								// RDMA path: receive directly into device buffer, merge on GPU
+								size_t ns = 0;
+								mpi_recv(&ns, sizeof(ns), MPI_BYTE, from_cl.world_rank + step, 0);
+
 								uint8_t* d_buf = nullptr;
-								cudaMalloc(&d_buf, ns);
+								CUDA_CHECK_ERROR(CUDA_MALLOC(&d_buf, ns));
 								mpi_recv(d_buf, ns, MPI_BYTE, from_cl.world_rank + step, 0);
 								common::vdb::sparse::VoxelGPUManagerSortReduce recv_mgr;
 								recv_mgr.deserializeGPU(d_buf);
-								cudaFree(d_buf);
+								CUDA_CHECK_ERROR(cudaFree(d_buf));
 								gpu_mgr->merge(&recv_mgr);
 							}
 							else
@@ -846,7 +847,11 @@ namespace space_converter {
 							{
 								common::vdb::VDBParticles nanogrid_recv;
 								nanogrid_recv.type = common::vdb::VDBParticleType::eVector;
+								
+								size_t ns = 0;
+								mpi_recv(&ns, sizeof(ns), MPI_BYTE, from_cl.world_rank + step, 0);
 								nanogrid_recv.vector_grid.resize(ns);
+
 								mpi_recv(nanogrid_recv.vector_grid.data(), ns, MPI_BYTE, from_cl.world_rank + step, 0);
 								convert_vdb_base->merge_grid(grid_main_sum, nanogrid_recv);
 							}
@@ -870,10 +875,11 @@ namespace space_converter {
 								// RDMA path: serialize directly into device buffer, send via GPU-direct
 								uint8_t* d_buf = nullptr;
 								size_t ns = grid_main_sum.sparse_grid->mem_size();
-								cudaMalloc(&d_buf, ns);
+								CUDA_CHECK_ERROR(CUDA_MALLOC(&d_buf, ns));
 								gpu_mgr->serializeGPU(d_buf);
+								mpi_send(&ns, sizeof(ns), MPI_BYTE, from_cl.world_rank - step, 0);
 								mpi_send(d_buf, ns, MPI_BYTE, from_cl.world_rank - step, 0);
-								cudaFree(d_buf);
+								CUDA_CHECK_ERROR(cudaFree(d_buf));
 							}
 							else
 #endif

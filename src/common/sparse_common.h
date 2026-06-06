@@ -33,7 +33,7 @@
 #endif
 
 // NanoVDB includes
-#ifdef WITH_NANOVDB
+#if defined(WITH_NANOVDB) && !defined(__CUDACC__)
 #define NANOVDB_USE_TBB
 #define NANOVDB_USE_INTRINSICS
 //#define NANOVDB_USE_OPENVDB
@@ -41,7 +41,7 @@
 #endif
 
 // OpenVDB includes
-#ifdef WITH_OPENVDB
+#if defined(WITH_OPENVDB) && !defined(__CUDACC__)
 #include <openvdb/openvdb.h>
 #include <openvdb/tools/Composite.h>
 #endif
@@ -165,7 +165,7 @@ namespace common {
 				void clear() override;
 			};
 
-#ifdef WITH_NANOVDB
+#if defined(WITH_NANOVDB) && !defined(__CUDACC__)
 		// ---------------------------------------------
 		// NanoVDB-based CPU voxel manager
 		// nanovdb::tools::build::FloatGrid
@@ -218,7 +218,7 @@ namespace common {
 
 #endif // WITH_NANOVDB
 
-#ifdef WITH_OPENVDB
+#if defined(WITH_OPENVDB) && !defined(__CUDACC__)
 	// ---------------------------------------------
 	// OpenVDB-based CPU voxel manager
 	// ---------------------------------------------
@@ -310,15 +310,15 @@ namespace common {
 					temp_manager.deserializeCPU(bin_data.data());
 					this->mergeCPU(&temp_manager);
 				}
-				
-			public:
+
 				// Accumulate a batch of voxels: output becomes unique (i,j,k) with summed values
 				// Returns number of unique voxels in the batch.
-				int insertOrUpdate(const Voxel* h_voxels, int num_voxels);
+				void insertOrUpdate(void* h_voxels, size_t num_voxels) override;
 
 				// Extract the last accumulated unique voxels back to host
 				int extractAll(Voxel** h_output_voxels);
-
+				
+			public:
 				// CPU-side serialization: write current voxel data to binary buffer
 				void serializeCPU(uint8_t* bin_data);
 

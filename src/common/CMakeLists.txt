@@ -115,7 +115,9 @@ if(WITH_CUDAKDTREE)
     add_definitions(-DWITH_CUDAKDTREE)  
 endif()
 
-
+if(WITH_CUDA_MALLOCMANAGED)
+    add_definitions(-DWITH_CUDA_MALLOCMANAGED)
+endif()
 
 include_directories(${INC})
 ########################################################
