@@ -261,40 +261,31 @@ namespace common {
 
 			// double t_start = omp_get_wtime();
 
-			size_t no_points = get_local_num_particles();
-			int ptype_count = get_num_types();
+			// Get the particle IDs for this type from cache
+			const auto& particle_ids = cache_manager.particles_id_ordered_per_ptype[ptype];
+			size_t num_particles = particle_ids.size();
+
+			if (num_particles == 0) {
+				cache_manager.values_particles.clear();
+				cache_manager.cached_value_ptype = ptype;
+				cache_manager.cached_value_block_name_id = block_name_id;
+				return true;
+			}
 
 			int num_threads = omp_get_max_threads();
 
-			std::vector<float> values_master;
-			std::vector < std::vector<float> > values_thread(num_threads);
+			// Pre-allocate values_master with known size
+			std::vector<float> values_master(num_particles);
 
-#pragma omp parallel num_threads(num_threads) 
-			{
-				int tid = omp_get_thread_num();
-
-#pragma omp for
-				for (size_t i = 0; i < no_points; i++) {
-
-					if (get_particle_type(i) != ptype)
-						continue;
-
-					float value = get_particle_norm_value(block_name_id, i);
-					values_thread[tid].push_back(value);
-				}
-			}
-
-			for (int t = 0; t < num_threads; ++t) {
-				values_master.insert(values_master.end(), values_thread[t].begin(), values_thread[t].end());
+#pragma omp parallel for num_threads(num_threads) 
+			for (size_t idx = 0; idx < num_particles; idx++) {
+				float value = get_particle_norm_value(block_name_id, idx);
+				values_master[idx] = value;
 			}
 
 			cache_manager.values_particles = std::move(values_master);
 			cache_manager.cached_value_ptype = ptype;
 			cache_manager.cached_value_block_name_id = block_name_id;
-
-			// if (cache_manager.world_rank == 0) {
-			// 	printf("find_particle_value: Find values: %f\n", omp_get_wtime() - t_start);
-			// }
 
 			return true;
 		}
@@ -513,8 +504,9 @@ namespace common {
 			float *offset_position
 		)
 		{
+			printf("===convert_iolib_to_grid: START\n");
 // #ifdef WITH_OPENMP
-// 			double t = omp_get_wtime();
+ 			double t = omp_get_wtime();
 // 			double t_step = omp_get_wtime();
 // #endif   
 
@@ -598,8 +590,12 @@ namespace common {
 				return;
 			}
 
+			printf("===convert_iolib_to_grid: INIT: %f [s]\n", omp_get_wtime() - t);
+
 			// Cache value particles if not already cached for this particle type and block
 			bool new_values = find_particle_values(particle_type, block_name_id);
+
+			printf("===convert_iolib_to_grid: FIND: %f [s]\n", omp_get_wtime() - t);
 
 #ifdef WITH_GPU_CUDA
 			if (cache_manager.use_gpu_cuda) {
@@ -608,6 +604,8 @@ namespace common {
 					// Upload values_particles to GPU if they were newly computed
 					cache_manager.copy_values_to_gpu();
 				}
+
+				printf("===convert_iolib_to_grid: COPY TO GPU: %f [s]\n", omp_get_wtime() - t);
 
 				// Use GPU kernel with cached GPU particle positions
 				const float* d_pos_particles = cache_manager.d_pos_particles_per_ptype[particle_type];
@@ -663,6 +661,8 @@ namespace common {
 					scale_space_diagonal,
 					offset_position
 				);
+
+				printf("===convert_iolib_to_grid: CONVERT GPU: %f [s]\n", omp_get_wtime() - t);
 			}
 			else
 #endif
@@ -721,12 +721,15 @@ namespace common {
 
 					offset_position
 				);
+
+				printf("===convert_iolib_to_grid: CONVERT CPU: %f [s]\n", omp_get_wtime() - t);
 			}
 
 
 	// #ifdef WITH_OPENMP
 	// 			t_step = omp_get_wtime();
 	// #endif
+			printf("===convert_iolib_to_grid: FINISHED: %f [s]\n", omp_get_wtime() - t);
 		}
 
 
