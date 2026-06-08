@@ -24,6 +24,10 @@
 #include "data_common.h"
 #include "convert_common.h"
 
+#ifdef WITH_GPU_CUDA
+#include "utility/gpu_logging.h"
+#endif
+
 #ifdef WITH_OPENMP
 # include <omp.h>
 #endif
@@ -175,6 +179,11 @@ namespace space_converter {
 		// LOG Init 
 		LOG_Init(from_cl.world_rank);
 		LOG_MeasureStart("Main");
+
+#ifdef WITH_GPU_CUDA
+		// Initialize GPU logging with MPI rank
+		gpu_logging::set_gpu_log_rank(from_cl.world_rank);
+#endif
 
 		// Get the processor name
 		char processor_name[MPI_MAX_PROCESSOR_NAME];

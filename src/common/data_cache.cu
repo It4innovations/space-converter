@@ -18,6 +18,7 @@
 
  #include "data_cache.h"
  #include "../utility/gpu_utility.h"
+ #include "../utility/gpu_logging.h"
  #include <cuda_runtime.h>
  #include <thrust/device_vector.h>
  #include <thrust/sort.h>

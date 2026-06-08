@@ -59,6 +59,9 @@ set(SRC_COMMON
 
     ${PROJECT_SOURCE_DIR}/src/utility/logging.h
     ${PROJECT_SOURCE_DIR}/src/utility/logging.cpp
+
+    ${PROJECT_SOURCE_DIR}/src/utility/gpu_logging.h
+    ${PROJECT_SOURCE_DIR}/src/utility/gpu_logging.cpp
 )
 
 if(WITH_GPU_CUDA)

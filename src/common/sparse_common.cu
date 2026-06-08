@@ -22,6 +22,7 @@
 
 #include "data_common.h"
 #include "../utility/gpu_utility.h"
+#include "../utility/gpu_logging.h"
 
 namespace common {
 	namespace vdb {
@@ -348,25 +349,31 @@ namespace common {
 				{
 					int block = 256;
 					int grid = (num_voxels + block - 1) / block;
+					GPU_KERNEL_TIME_START(voxelsToKeyValue);
 					voxelsToKeyValue << <grid, block >> > (d_inVoxels, num_voxels, d_keys, d_vals);
+					GPU_KERNEL_TIME_END(voxelsToKeyValue);
 				}
 
 				CUDA_CHECK_ERROR(cudaFree(d_inVoxels));
 
 				// sort by key (pairs)
+				GPU_CUB_TIME_START(DeviceRadixSort_SortPairs);
 				cub::DeviceRadixSort::SortPairs(d_sort_temp, m_sort_temp_bytes,
 					d_keys, d_keys_alt,
 					d_vals, d_vals_alt,
 					num_voxels);
+				GPU_CUB_TIME_END(DeviceRadixSort_SortPairs);
 
 				// reduce-by-key (sum values for identical keys)
 				CustomSum op_sum;
+				GPU_CUB_TIME_START(DeviceReduce_ReduceByKey);
 				cub::DeviceReduce::ReduceByKey(d_reduce_temp, m_reduce_temp_bytes,
 					d_keys_alt, d_keys_out,
 					d_vals_alt, d_vals_out,
 					d_num_out,
 					op_sum,
 					num_voxels);
+				GPU_CUB_TIME_END(DeviceReduce_ReduceByKey);
 
 				int h_num_out = 0;
 				CUDA_CHECK_ERROR(cudaMemcpy(&h_num_out, d_num_out, sizeof(int), cudaMemcpyDeviceToHost));
@@ -378,19 +385,23 @@ namespace common {
 			int VoxelGPUManagerSortReduce::update(size_t count)
 			{
 				// sort by key (pairs)
+				GPU_CUB_TIME_START(DeviceRadixSort_SortPairs_update);
 				cub::DeviceRadixSort::SortPairs(d_sort_temp, m_sort_temp_bytes,
 					d_keys, d_keys_alt,
 					d_vals, d_vals_alt,
 					count);
+				GPU_CUB_TIME_END(DeviceRadixSort_SortPairs_update);
 
 				// reduce-by-key (sum values for identical keys)
 				CustomSum op_sum;
+				GPU_CUB_TIME_START(DeviceReduce_ReduceByKey_update);
 				cub::DeviceReduce::ReduceByKey(d_reduce_temp, m_reduce_temp_bytes,
 					d_keys_alt, d_keys_out,
 					d_vals_alt, d_vals_out,
 					d_num_out,
 					op_sum,
 					count);
+				GPU_CUB_TIME_END(DeviceReduce_ReduceByKey_update);
 
 				int h_num_out = 0;
 				CUDA_CHECK_ERROR(cudaMemcpy(&h_num_out, d_num_out, sizeof(int), cudaMemcpyDeviceToHost));
@@ -600,12 +611,16 @@ namespace common {
 				}
 
 				// Use CUB's DeviceReduce::Min and Max on the reduced values
+				GPU_CUB_TIME_START(DeviceReduce_Min);
 				cub::DeviceReduce::Min(d_minmax_temp, m_minmax_temp_bytes,
 					d_vals_out, d_min_out, m_last_count);
+				GPU_CUB_TIME_END(DeviceReduce_Min);
 
 				// Reuse the same temp buffer for max (CUB allows this)
+				GPU_CUB_TIME_START(DeviceReduce_Max);
 				cub::DeviceReduce::Max(d_minmax_temp, m_minmax_temp_bytes,
 					d_vals_out, d_max_out, m_last_count);
+				GPU_CUB_TIME_END(DeviceReduce_Max);
 
 				// Copy results to host
 				CUDA_CHECK_ERROR(cudaMemcpy(&min_value, d_min_out, sizeof(float), cudaMemcpyDeviceToHost));

@@ -18,6 +18,7 @@
 
 #include "convert_vdb_kernel.h"
 #include "../utility/gpu_utility.h"
+#include "../utility/gpu_logging.h"
 #include "sparse_common.h"
 #include "dense_common.h"
 #include "data_common.h"
@@ -170,6 +171,7 @@ namespace common {
                 int numBlocks = (num_particles + blockSize - 1) / blockSize;
                 numBlocks = min(numBlocks, 1024); // Limit grid size
                 
+                GPU_KERNEL_TIME_START(find_bbox_kernel_cuda);
                 find_bbox_kernel_cuda<<<numBlocks, blockSize>>>(
                     d_pos_particles,
                     num_particles,
@@ -177,6 +179,7 @@ namespace common {
                     d_bbox_min,
                     d_bbox_max
                 );
+                GPU_KERNEL_TIME_END(find_bbox_kernel_cuda);
                 //CUDA_CHECK_LAST_ERROR();
                 CUDA_SYNC_CHECK();
                 
@@ -492,6 +495,7 @@ namespace common {
                 int blockSize = 256;
                 int numBlocks = (num_particles + blockSize - 1) / blockSize;
                 
+                GPU_KERNEL_TIME_START(convert_to_sparse_grid_kernel_cuda);
                 convert_to_sparse_grid_kernel_cuda<<<numBlocks, blockSize>>>(
                     pos_particles,
                     particle_ids,
@@ -527,6 +531,7 @@ namespace common {
                     //d_particle_valid,
                     //d_particle_values
                 );
+                GPU_KERNEL_TIME_END(convert_to_sparse_grid_kernel_cuda);
                 //CUDA_CHECK_LAST_ERROR();
                 CUDA_SYNC_CHECK();
                                
@@ -642,6 +647,7 @@ namespace common {
                 int blockSize = 256;
                 int numBlocks = (num_particles + blockSize - 1) / blockSize;            
 
+                GPU_KERNEL_TIME_START(convert_to_dense_grid_kernel_cuda);
                 convert_to_dense_grid_kernel_cuda<<<numBlocks, blockSize>>>(
                     pos_particles, //    const float* pos_particles,
                     particle_ids, //const size_t* particle_ids
@@ -681,6 +687,7 @@ namespace common {
                     voxel_manager_gpu->d_dims, //size_t* grid_dims,
                     voxel_manager_gpu->d_particle_count //    uint64_t* particle_count
                 );
+                GPU_KERNEL_TIME_END(convert_to_dense_grid_kernel_cuda);
                 //CUDA_CHECK_LAST_ERROR();
                 CUDA_SYNC_CHECK();
 
