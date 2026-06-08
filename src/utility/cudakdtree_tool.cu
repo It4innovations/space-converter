@@ -676,7 +676,74 @@ namespace utility {
                 run_knn_cpu(points, N, k, radius_particles, rho_particles, mass_particles, use_cycling, max_radius, rho_kernel);
         }
 
-        void build_float4_kdtree(
+        void build_float4_kdtree_gpu(
+            const float*  positions,
+            const size_t* ids,
+            size_t        N,
+            const float*  offset,
+            float4**      d_out_tree
+        ) {
+            if (N == 0 || d_out_tree == nullptr) return;
+
+            // Clear any pending CUDA errors before starting
+            cudaError_t clear_err = cudaGetLastError();
+            if (clear_err != cudaSuccess) {
+                printf("[build_float4_kdtree_gpu] Warning: Clearing pending CUDA error: %s\n", 
+                       cudaGetErrorString(clear_err));
+            }
+
+            // Check available GPU memory
+            size_t free_mem, total_mem;
+            CUKD_CUDA_CALL(MemGetInfo(&free_mem, &total_mem));
+            size_t required_mem = N * sizeof(float4);
+            printf("[build_float4_kdtree_gpu] GPU memory - Free: %.2f GB, Total: %.2f GB, Required: %.2f MB\n",
+                   free_mem / (1024.0 * 1024.0 * 1024.0),
+                   total_mem / (1024.0 * 1024.0 * 1024.0),
+                   required_mem / (1024.0 * 1024.0));
+
+            if (free_mem < required_mem * 2) {  // Need some headroom for buildTree operations
+                printf("[build_float4_kdtree_gpu] Warning: Low GPU memory! Free: %.2f MB, Required: %.2f MB\n",
+                       free_mem / (1024.0 * 1024.0), required_mem / (1024.0 * 1024.0));
+            }
+
+            // Allocate GPU memory for the tree
+            CUKD_CUDA_CALL(MallocManaged((void**)d_out_tree, N * sizeof(float4)));
+            
+            // Allocate temporary host memory to prepare nodes
+            std::vector<float4> h_tree(N);
+            for (size_t ic = 0; ic < N; ++ic) {
+                size_t pid = ids[ic];
+                float4 node;
+                // Store offset-adjusted world position; embed original index in w.
+                node.x = positions[pid * 3 + 0] - offset[0];
+                node.y = positions[pid * 3 + 1] - offset[1];
+                node.z = positions[pid * 3 + 2] - offset[2];
+                uint32_t idx32 = (uint32_t)(pid & 0xFFFFFFFFu);
+                memcpy(&node.w, &idx32, sizeof(float));
+                h_tree[ic] = node;
+            }
+            
+            // Copy prepared nodes to GPU
+            CUKD_CUDA_CALL(Memcpy(*d_out_tree, h_tree.data(), N * sizeof(float4), cudaMemcpyHostToDevice));
+            
+            // Build left-balanced KD-tree in-place on GPU
+            printf("[build_float4_kdtree_gpu] Starting buildTree with %zu nodes...\n", N);
+            cukd::buildTree<float4, float4_voxel_traits>(*d_out_tree, (int)N);
+            
+            // Check for errors from buildTree
+            cudaError_t build_err = cudaGetLastError();
+            if (build_err != cudaSuccess) {
+                printf("[build_float4_kdtree_gpu] ERROR in buildTree: %s\n", cudaGetErrorString(build_err));
+                CUKD_CUDA_CALL(Free(*d_out_tree));
+                *d_out_tree = nullptr;
+                throw std::runtime_error(std::string("buildTree failed: ") + cudaGetErrorString(build_err));
+            }
+            
+            CUKD_CUDA_CALL(DeviceSynchronize());
+            printf("[build_float4_kdtree_gpu] buildTree completed successfully\n");
+        }
+
+        void build_float4_kdtree_cpu(
             const float*  positions,
             const size_t* ids,
             size_t        N,
@@ -699,6 +766,21 @@ namespace utility {
             if (N > 0) {
                 cukd::buildTree_host<float4, float4_voxel_traits>(out_tree.data(), (int)N);
             }
+        }
+
+        void build_float4_kdtree(
+            const float*  positions,
+            const size_t* ids,
+            size_t        N,
+            const float*  offset,
+            bool          use_gpu,
+            std::vector<float4>& out_tree,
+            float4**      d_out_tree
+        ) {
+            if (use_gpu)
+                build_float4_kdtree_gpu(positions, ids, N, offset, d_out_tree);
+            else
+                build_float4_kdtree_cpu(positions, ids, N, offset, out_tree);
         }
 
 	}// cudakdtree

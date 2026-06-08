@@ -26,6 +26,7 @@
 
 #ifdef WITH_GPU_CUDA
 #include "utility/gpu_logging.h"
+#include <cuda_runtime.h>
 #endif
 
 #ifdef WITH_OPENMP
@@ -157,6 +158,21 @@ namespace space_converter {
 	 */
 	void init_mpi(int argc, char** argv, space_converter::FromCL& from_cl)
 	{
+#ifdef WITH_GPU_CUDA
+		// Initialize CUDA before MPI to avoid CUDA_ERROR_INVALID_CONTEXT errors
+		// from UCX/MPI trying to query CUDA devices during MPI_Init
+		int deviceCount = 0;
+		cudaError_t err = cudaGetDeviceCount(&deviceCount);
+		if (err == cudaSuccess && deviceCount > 0) {
+			// Set device 0 as default and establish CUDA context
+			cudaSetDevice(0);
+			cudaFree(0);  // Force context creation
+			printf("CUDA initialized before MPI: %d device(s) found\n", deviceCount);
+		} else {
+			printf("Warning: CUDA initialization before MPI failed or no devices: %s\n", 
+			       cudaGetErrorString(err));
+		}
+#endif
 		// Initialize MPI
 		MPI_Init(&argc, &argv);
 		

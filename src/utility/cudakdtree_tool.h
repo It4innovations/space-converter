@@ -42,20 +42,24 @@ namespace utility {
          * @brief Build a float4 KD-tree from particle positions and store into out_tree.
          *
          * Each output node stores (offset-adjusted world position, w=bit-cast particle index).
-         * Calls cukd::buildTree_host so the resulting array is a left-balanced KD-tree.
+         * Calls cukd::buildTree_host (CPU) or cukd::buildTree (GPU) depending on use_gpu.
          *
          * @param positions     Flat array of raw positions [x0,y0,z0, x1,y1,z1, ...].
          * @param ids           Per-entry original particle indices.
          * @param N             Number of particles.
          * @param offset        3-element offset subtracted from positions.
-         * @param out_tree      Output tree (resized and filled by this function).
+         * @param use_gpu       If true, build tree on GPU; if false, build on CPU.
+         * @param out_tree      Output tree (CPU: resized and filled; GPU: not used).
+         * @param d_out_tree    Output device pointer (GPU only: allocated and filled).
          */
         void build_float4_kdtree(
             const float*  positions,
             const size_t* ids,
             size_t        N,
             const float*  offset,
-            std::vector<float4>& out_tree
+            bool          use_gpu,
+            std::vector<float4>& out_tree,
+            float4**      d_out_tree = nullptr
         );
 
 	}// cudakdtree

@@ -382,33 +382,62 @@ namespace common {
 			const int ptype_count = (int)cache_manager.pos_particles_per_ptype.size();
 			cache_manager.voxel_kdtree_per_ptype.resize(ptype_count);
 
-			for (int ptype = 0; ptype < ptype_count; ++ptype) {
-				const auto& pos = cache_manager.pos_particles_per_ptype[ptype];
-				const auto& ids = cache_manager.particles_id_ordered_per_ptype[ptype];
-				size_t N = pos.size() / 3;
-
-				if (N == 0) {
-					cache_manager.voxel_kdtree_per_ptype[ptype].clear();
-					continue;
-				}
-
-				printf("[build_voxel_kdtree] ptype=%d  N=%zu  building float4 KD-tree...\n", ptype, N);
-				utility::cudakdtree::build_float4_kdtree(
-					pos.data(),
-					ids.data(),
-					N,
-					offset_position,
-					cache_manager.voxel_kdtree_per_ptype[ptype]
-				);
-				printf("[build_voxel_kdtree] ptype=%d  tree built (%zu nodes)\n",
-				       ptype, cache_manager.voxel_kdtree_per_ptype[ptype].size());
-			}
-
 #ifdef WITH_GPU_CUDA
 			if (cache_manager.use_gpu_cuda) {
-				cache_manager.upload_voxel_kdtrees_to_gpu();
+				// GPU path: build directly on GPU, store in d_voxel_kdtree_per_ptype
+				cache_manager.d_voxel_kdtree_per_ptype.resize(ptype_count, nullptr);
+				
+				for (int ptype = 0; ptype < ptype_count; ++ptype) {
+					const auto& pos = cache_manager.pos_particles_per_ptype[ptype];
+					const auto& ids = cache_manager.particles_id_ordered_per_ptype[ptype];
+					size_t N = pos.size() / 3;
+
+					if (N == 0) {
+						cache_manager.d_voxel_kdtree_per_ptype[ptype] = nullptr;
+						continue;
+					}
+
+					printf("[build_voxel_kdtree] GPU: ptype=%d  N=%zu  building float4 KD-tree...\n", ptype, N);
+					utility::cudakdtree::build_float4_kdtree(
+						pos.data(),
+						ids.data(),
+						N,
+						offset_position,
+						true,  // use_gpu
+						cache_manager.voxel_kdtree_per_ptype[ptype],  // not used for GPU
+						&cache_manager.d_voxel_kdtree_per_ptype[ptype]
+					);
+					printf("[build_voxel_kdtree] GPU: ptype=%d  tree built on device (%zu nodes)\n", ptype, N);
+				}
 			}
+			else
 #endif
+			{
+				// CPU path: build on CPU, store in voxel_kdtree_per_ptype
+				for (int ptype = 0; ptype < ptype_count; ++ptype) {
+					const auto& pos = cache_manager.pos_particles_per_ptype[ptype];
+					const auto& ids = cache_manager.particles_id_ordered_per_ptype[ptype];
+					size_t N = pos.size() / 3;
+
+					if (N == 0) {
+						cache_manager.voxel_kdtree_per_ptype[ptype].clear();
+						continue;
+					}
+
+					printf("[build_voxel_kdtree] CPU: ptype=%d  N=%zu  building float4 KD-tree...\n", ptype, N);
+					utility::cudakdtree::build_float4_kdtree(
+						pos.data(),
+						ids.data(),
+						N,
+						offset_position,
+						false,  // use_gpu
+						cache_manager.voxel_kdtree_per_ptype[ptype],
+						nullptr  // d_out_tree not used for CPU
+					);
+					printf("[build_voxel_kdtree] CPU: ptype=%d  tree built (%zu nodes)\n",
+					       ptype, cache_manager.voxel_kdtree_per_ptype[ptype].size());
+				}
+			}
 		}
 
 #endif // WITH_CUDAKDTREE
