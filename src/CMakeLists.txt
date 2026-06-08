@@ -56,6 +56,13 @@ if(WITH_GPU_CUDA)
     add_definitions(-DWITH_GPU_CUDA)
 endif()
 
+if(WITH_CUDAKDTREE)
+    add_definitions(-DWITH_CUDAKDTREE)
+    if(CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES)
+        list(APPEND INC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+    endif()
+endif()
+
 if(WITH_CUDA_AWARE_MPI)
     add_definitions(-DWITH_CUDA_AWARE_MPI)
 endif()

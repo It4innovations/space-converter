@@ -369,7 +369,49 @@ namespace common {
 			// printf("cudakdtree: Find nearest neighbors: %f\n", omp_get_wtime() - t_start);
 		}
 
-#endif		
+		/**
+		 * @brief Build per-type float4 KD-trees and cache them in cache_manager.
+		 *
+		 * Called once after find_particle_positions() in init_converter().
+		 * Tree nodes use offset-adjusted world positions (x,y,z) with the original
+		 * particle index bit-cast into w, so they can be used directly in
+		 * convert_to_dense_grid_loop_over_voxels_cpu/gpu without rebuilding.
+		 */
+		void ConvertVDBBase::build_voxel_kdtree(float* offset_position)
+		{
+			const int ptype_count = (int)cache_manager.pos_particles_per_ptype.size();
+			cache_manager.voxel_kdtree_per_ptype.resize(ptype_count);
+
+			for (int ptype = 0; ptype < ptype_count; ++ptype) {
+				const auto& pos = cache_manager.pos_particles_per_ptype[ptype];
+				const auto& ids = cache_manager.particles_id_ordered_per_ptype[ptype];
+				size_t N = pos.size() / 3;
+
+				if (N == 0) {
+					cache_manager.voxel_kdtree_per_ptype[ptype].clear();
+					continue;
+				}
+
+				printf("[build_voxel_kdtree] ptype=%d  N=%zu  building float4 KD-tree...\n", ptype, N);
+				utility::cudakdtree::build_float4_kdtree(
+					pos.data(),
+					ids.data(),
+					N,
+					offset_position,
+					cache_manager.voxel_kdtree_per_ptype[ptype]
+				);
+				printf("[build_voxel_kdtree] ptype=%d  tree built (%zu nodes)\n",
+				       ptype, cache_manager.voxel_kdtree_per_ptype[ptype].size());
+			}
+
+#ifdef WITH_GPU_CUDA
+			if (cache_manager.use_gpu_cuda) {
+				cache_manager.upload_voxel_kdtrees_to_gpu();
+			}
+#endif
+		}
+
+#endif // WITH_CUDAKDTREE
 
 
 #ifdef WITH_NANOFLANN
@@ -659,7 +701,21 @@ namespace common {
 					bbox_z_min_norm,
 					bbox_z_max_norm,
 					scale_space_diagonal,
-					offset_position
+					offset_position,
+#ifdef WITH_CUDAKDTREE
+					cache_manager.use_dense_loop_over_voxels,
+					cache_manager.calc_radius_neigh,
+					// Pre-built device KD-tree (nullptr if not built or wrong ptype)
+					(particle_type < (int)cache_manager.d_voxel_kdtree_per_ptype.size())
+					    ? cache_manager.d_voxel_kdtree_per_ptype[particle_type] : nullptr,
+					(particle_type < (int)cache_manager.d_voxel_kdtree_per_ptype.size())
+					    ? (int)cache_manager.voxel_kdtree_per_ptype[particle_type].size() : 0
+#else
+					false,
+					16,
+					nullptr,
+					0
+#endif
 				);
 
 				printf("===convert_iolib_to_grid: CONVERT GPU: %f [s]\n", omp_get_wtime() - t);
@@ -719,7 +775,22 @@ namespace common {
 					bbox_z_max_norm,
 					scale_space_diagonal,
 
-					offset_position
+					offset_position,
+#ifdef WITH_CUDAKDTREE
+					cache_manager.use_dense_loop_over_voxels,
+					cache_manager.calc_radius_neigh,
+					// Pre-built CPU KD-tree (nullptr if not built or wrong ptype)
+					(particle_type < (int)cache_manager.voxel_kdtree_per_ptype.size()
+					    && !cache_manager.voxel_kdtree_per_ptype[particle_type].empty())
+					    ? cache_manager.voxel_kdtree_per_ptype[particle_type].data() : nullptr,
+					(particle_type < (int)cache_manager.voxel_kdtree_per_ptype.size())
+					    ? (int)cache_manager.voxel_kdtree_per_ptype[particle_type].size() : 0
+#else
+					false,
+					16,
+					nullptr,
+					0
+#endif
 				);
 
 				printf("===convert_iolib_to_grid: CONVERT CPU: %f [s]\n", omp_get_wtime() - t);

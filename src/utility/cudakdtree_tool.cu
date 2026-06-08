@@ -20,10 +20,22 @@
 
 #include "cukd/cukd-math.h"
 #include "cukd/traverse-stack-free.h"
+#include "cukd/builder.h"
 #include "cukd/knn.h"
 #include <mpi.h>
 #include <stdexcept>
 #include <cuda_runtime.h>
+#include <vector>
+#include <limits>
+#include <cstring>
+#include <cmath>
+
+// For convert_to_dense_grid_loop_over_voxels_cpu
+#include "common/convert_vdb_kernel.h"
+
+#ifdef WITH_OPENMP
+#include <omp.h>
+#endif
 
 #define CUKD_MPI_CALL(fctCall)                                          \
   { int rc = MPI_##fctCall;                                             \
@@ -37,6 +49,22 @@ using cukd::divRoundUp;
 #define MAX_MPI_BYTES (INT_MAX - 1024)
 
 #include "utility/dense_utility.h"
+
+// cukd float4 traits: (x,y,z)=voxel-unit position, w=bit-cast particle index.
+struct float4_voxel_traits {
+    using point_t = float3;
+    using data_t  = float4;
+    enum { has_explicit_dim = false };
+
+    static inline __both__ point_t get_point(const float4& n)
+    { return make_float3(n.x, n.y, n.z); }
+
+    static inline __both__ float get_coord(const float4& n, int d)
+    { return d == 0 ? n.x : (d == 1 ? n.y : n.z); }
+
+    static inline __both__ int  get_dim(const float4&) { return -1; }
+    static inline __both__ void set_dim(float4&, int) {}
+};
 
 namespace utility {
 	namespace cudakdtree {
@@ -648,5 +676,200 @@ namespace utility {
                 run_knn_cpu(points, N, k, radius_particles, rho_particles, mass_particles, use_cycling, max_radius, rho_kernel);
         }
 
+        void build_float4_kdtree(
+            const float*  positions,
+            const size_t* ids,
+            size_t        N,
+            const float*  offset,
+            std::vector<float4>& out_tree
+        ) {
+            out_tree.resize(N);
+            for (size_t ic = 0; ic < N; ++ic) {
+                size_t pid = ids[ic];
+                float4 node;
+                // Store offset-adjusted world position; embed original index in w.
+                node.x = positions[pid * 3 + 0] - offset[0];
+                node.y = positions[pid * 3 + 1] - offset[1];
+                node.z = positions[pid * 3 + 2] - offset[2];
+                uint32_t idx32 = (uint32_t)(pid & 0xFFFFFFFFu);
+                memcpy(&node.w, &idx32, sizeof(float));
+                out_tree[ic] = node;
+            }
+            // Build left-balanced KD-tree in-place (host).
+            if (N > 0) {
+                cukd::buildTree_host<float4, float4_voxel_traits>(out_tree.data(), (int)N);
+            }
+        }
+
 	}// cudakdtree
 } //utility
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Voxel-centric dense grid conversion – CPU implementation (host code only).
+// This lives in cudakdtree_tool.cu so it is compiled by nvcc whenever
+// WITH_CUDAKDTREE is ON, regardless of whether WITH_GPU_CUDA is also set.
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace common {
+namespace vdb {
+namespace kernel {
+
+/**
+ * @brief CPU voxel-centric dense grid conversion using cukd KD-tree.
+ *
+ * Algorithm:
+ *   1. Build a cukd k-d tree from particle positions in voxel-unit space.
+ *      Each float4 node carries the original particle index in its w component
+ *      (bit-cast) so the index survives the in-place tree reordering.
+ *   2. For every voxel of the dense grid (OMP-parallel), query the k nearest
+ *      particles and accumulate W(r/h)*value for particles within their
+ *      smoothing radius h.
+ */
+void convert_to_dense_grid_loop_over_voxels_cpu(
+    float4*       tree_nodes,             // pre-built KD-tree (offset-adjusted world coords)
+    int           tree_N,                 // number of tree nodes
+    const float*  radius_particles,       // per-particle smoothing radii (world units)
+    const float*  value_particles,        // per-particle values
+    float  particle_radius_multiplier,
+    int*   bbox_min_orig,
+    double bbox_size_orig,
+    int    bbox_dim,
+
+    common::SpaceData::DenseType dense_type,
+    common::SpaceData::DenseNorm dense_norm,
+    int    block_name_id,
+    float* /*offset_position*/,           // not used (tree already in offset-adjusted space)
+    bool   use_simple_density,
+    double particle_radius_const,
+    double scale_space_diagonal,
+
+    int calc_radius_neigh,
+
+    VoxelDenseManager* grid,
+    float& min_value,
+    float& max_value,
+    size_t& particles_count
+) {
+    if (tree_N <= 0 || tree_nodes == nullptr || !grid) {
+        min_value = max_value = 0.0f;
+        particles_count = 0;
+        return;
+    }
+
+    const double norm_fac = (double)bbox_dim / scale_space_diagonal;
+    const double len2pix  = norm_fac / bbox_size_orig;
+    // Tree is already built – no rebuild needed.
+
+    const size_t dim0 = grid->dims[0];
+    const size_t dim1 = grid->dims[1];
+    const size_t dim2 = grid->dims[2];
+    const size_t off0 = grid->offset[0];
+    const size_t off1 = grid->offset[1];
+    const size_t off2 = grid->offset[2];
+    const bool has_temp = !grid->data_temp.empty();
+
+    float* density = grid->data_density.data();
+    float* temp    = has_temp ? grid->data_temp.data() : nullptr;
+
+    float  g_min   = FLT_MAX, g_max = -FLT_MAX;
+    size_t g_count = 0;
+    const int k    = calc_radius_neigh;
+
+    // ── Iterate over voxels (OMP parallel) ───────────────────────────────────
+    // Query point: offset-adjusted world position of voxel centre.
+    // Tree nodes: same coordinate system (built by build_float4_kdtree).
+    // SPH kernel W is normalised in voxel units (consistent with particle-centric path).
+#ifdef WITH_OPENMP
+#pragma omp parallel reduction(min:g_min) reduction(max:g_max) reduction(+:g_count)
+#endif
+    {
+        std::vector<uint64_t> cand((size_t)k);
+#ifdef WITH_OPENMP
+#pragma omp for schedule(dynamic, 32)
+#endif
+        for (size_t lz = 0; lz < dim2; ++lz) {
+            for (size_t ly = 0; ly < dim1; ++ly) {
+                for (size_t lx = 0; lx < dim0; ++lx) {
+                    // Voxel centre in offset-adjusted world space
+                    size_t wx = lx + off0, wy = ly + off1, wz = lz + off2;
+                    float3 qp = make_float3(
+                        (float)((double)bbox_min_orig[0] + (double)wx / len2pix),
+                        (float)((double)bbox_min_orig[1] + (double)wy / len2pix),
+                        (float)((double)bbox_min_orig[2] + (double)wz / len2pix));
+
+                    memset(cand.data(), 0xFF, (size_t)k * sizeof(uint64_t));
+
+                    cukd::FlexHeapCandidateList cl(
+                        cand.data(), k,
+                        std::numeric_limits<float>::infinity());
+                    cukd::stackFree::knn<cukd::FlexHeapCandidateList,
+                                         float4,
+                                         float4_voxel_traits>(
+                        cl, qp, tree_nodes, tree_N);
+
+                    float density_sum = 0.0f;
+                    float norm_sum    = 0.0f;
+
+                    for (int i = 0; i < k; ++i) {
+                        // Decode: upper 32 bits = dist2 as float, lower 32 = tree index
+                        int   tree_j = (int)(uint32_t(cand[i]));
+                        float dist2  = cukd::uint_as_float((uint32_t)(cand[i] >> 32));
+                        if (tree_j < 0 || std::isinf(dist2)) continue;
+
+                        uint32_t orig_idx32;
+                        memcpy(&orig_idx32, &tree_nodes[tree_j].w, sizeof(uint32_t));
+                        size_t orig_idx = (size_t)orig_idx32;
+
+                        float val = use_simple_density ? 1.0f : value_particles[orig_idx];
+                        if (block_name_id == 0) val = 1.0f;
+
+                        // Smoothing radius: world units → voxel units for W normalization
+                        double h_world = (particle_radius_const > 0.0)
+                            ? particle_radius_const
+                            : (double)radius_particles[orig_idx] * (double)particle_radius_multiplier;
+                        if (h_world <= 0.0) continue;
+                        double h_voxel = h_world * len2pix;
+
+                        double dist_world = std::sqrt((double)dist2);
+                        double q = dist_world / h_world;  // = dist_voxel / h_voxel
+                        if (q > 1.0 + 1e-6) continue;    // outside kernel support
+
+                        // W normalised in voxel units — matches particle-centric path
+                        double W = utility::dense::sph_kernel::W(dense_type, q, 1.0 / h_voxel);
+
+                        density_sum += (float)(W * val);
+                        if (dense_norm == common::SpaceData::DenseNorm::eCount)
+                            norm_sum += 1.0f;
+                        else if (dense_norm == common::SpaceData::DenseNorm::eSPHInterpolation)
+                            norm_sum += (float)W;
+                    }
+
+                    if (density_sum != 0.0f || norm_sum != 0.0f) {
+                        const size_t gidx = lx + ly * dim0 + lz * dim0 * dim1;
+#ifdef WITH_OPENMP
+#pragma omp atomic
+#endif
+                        density[gidx] += density_sum;
+                        if (has_temp && norm_sum != 0.0f) {
+#ifdef WITH_OPENMP
+#pragma omp atomic
+#endif
+                            temp[gidx] += norm_sum;
+                        }
+                        if (density_sum < g_min) g_min = density_sum;
+                        if (density_sum > g_max) g_max = density_sum;
+                        g_count++;
+                    }
+                }
+            }
+        }
+    } // omp parallel
+
+    particles_count = g_count;
+    min_value = (g_count > 0) ? g_min : 0.0f;
+    max_value = (g_count > 0) ? g_max : 0.0f;
+}
+
+} // namespace kernel
+} // namespace vdb
+} // namespace common

@@ -277,6 +277,13 @@ namespace common {
 		int calc_radius_neigh = -1;  // Number of neighbors for radius calculation
 		DenseType calc_radius_neigh_rho_kernel = DenseType::eWendlandC6;  // Kernel for radius calculation
 #endif
+
+#ifdef WITH_CUDAKDTREE
+		// ========== Voxel-Centric Dense Loop ==========
+		/// When true: dense grid conversion loops over voxels and queries nearest particles
+		/// via KD-tree instead of looping over particles and splatting. Requires calc_radius_neigh > 0.
+		bool use_dense_loop_over_voxels = false;
+#endif
 		std::string calc_radius_neigh_file = "";  // Pre-computed radius file
 
 		// ========== Additional Filtering ==========
@@ -361,6 +368,9 @@ namespace common {
 			std::cout << "calc_radius_neigh_rho_kernel: " << static_cast<int>(calc_radius_neigh_rho_kernel) << std::endl;
 #endif
 			std::cout << "calc_radius_neigh_file: " << calc_radius_neigh_file << std::endl;
+#ifdef WITH_CUDAKDTREE
+			std::cout << "use_dense_loop_over_voxels: " << (use_dense_loop_over_voxels ? "true" : "false") << std::endl;
+#endif
 			
 			// Additional Filtering
 			std::cout << "use_bbox_sphere: " << (use_bbox_sphere ? "true" : "false") << std::endl;

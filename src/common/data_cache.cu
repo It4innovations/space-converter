@@ -193,11 +193,39 @@ namespace common {
                 d_values_particles = nullptr;
             }
 
+#ifdef WITH_CUDAKDTREE
+            free_voxel_kdtrees_gpu();
+#endif
+
             // Check for CUDA errors
             CUDA_CHECK_LAST_ERROR();
-            
+
             GPU_KERNEL_TIME_END(free_gpu_memory);
         }
+
+#ifdef WITH_CUDAKDTREE
+        void CacheManager::free_voxel_kdtrees_gpu() {
+            for (auto ptr : d_voxel_kdtree_per_ptype) {
+                if (ptr != nullptr) {
+                    CUDA_CHECK_ERROR(cudaFree(ptr));
+                }
+            }
+            d_voxel_kdtree_per_ptype.clear();
+        }
+
+        void CacheManager::upload_voxel_kdtrees_to_gpu() {
+            free_voxel_kdtrees_gpu();
+            d_voxel_kdtree_per_ptype.resize(voxel_kdtree_per_ptype.size(), nullptr);
+            for (size_t ptype = 0; ptype < voxel_kdtree_per_ptype.size(); ++ptype) {
+                const auto& h_tree = voxel_kdtree_per_ptype[ptype];
+                if (h_tree.empty()) continue;
+                size_t bytes = h_tree.size() * sizeof(float4);
+                CUDA_CHECK_ERROR(CUDA_MALLOC(&d_voxel_kdtree_per_ptype[ptype], bytes));
+                CUDA_CHECK_ERROR(cudaMemcpy(d_voxel_kdtree_per_ptype[ptype],
+                                            h_tree.data(), bytes, cudaMemcpyHostToDevice));
+            }
+        }
+#endif // WITH_CUDAKDTREE
 
         void CacheManager::sort_particles_by_radius_gpu_inplace() {
             GPU_CUB_TIME_START(sort_particles_by_radius_gpu_inplace);

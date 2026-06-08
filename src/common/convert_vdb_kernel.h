@@ -22,6 +22,7 @@
 #include <vector>
 #include <cmath>
 #include "data_common.h"
+#include "data_cache.h"
 #include "../utility/dense_utility.h"
 
 namespace common {
@@ -510,7 +511,13 @@ namespace common {
 				double bbox_z_max_norm,
 				double scale_space_diagonal,
 
-				float* offset_position
+				float* offset_position,
+
+				bool use_dense_loop_over_voxels = false,
+				int calc_radius_neigh = 16,
+				// Pre-built KD-tree for loop-over-voxels (null = disabled)
+				float4* d_kdtree_nodes = nullptr,
+				int     kdtree_N       = 0
 			);
 
 
@@ -577,10 +584,89 @@ namespace common {
 				double bbox_z_max_norm,
 				double scale_space_diagonal,
 
-				float* offset_position
+				float* offset_position,
+
+				bool use_dense_loop_over_voxels = false,
+				int calc_radius_neigh = 16,
+				// Pre-built KD-tree for loop-over-voxels (null = disabled)
+				float4* kdtree_nodes = nullptr,
+				int     kdtree_N     = 0
 			);
 
 
+
+// ── Voxel-centric dense grid conversion (loop over voxels, KD-tree particle query) ───────────
+
+#ifdef WITH_CUDAKDTREE
+
+			/**
+			 * @brief CPU voxel-centric dense grid conversion using a pre-built KD-tree.
+			 *
+			 * @param tree_nodes  Pre-built float4 KD-tree (from cache_manager.voxel_kdtree_per_ptype).
+			 *                    Each node: (x,y,z) = offset-adjusted world position, w = particle idx.
+			 * @param tree_N      Number of tree nodes.
+			 */
+			void convert_to_dense_grid_loop_over_voxels_cpu(
+				float4*       tree_nodes,
+				int           tree_N,
+				const float*  radius_particles,
+				const float*  value_particles,
+				float  particle_radius_multiplier,
+				int*   bbox_min_orig,
+				double bbox_size_orig,
+				int    bbox_dim,
+
+				common::SpaceData::DenseType dense_type,
+				common::SpaceData::DenseNorm dense_norm,
+				int    block_name_id,
+				float* offset_position,
+				bool   use_simple_density,
+				double particle_radius_const,
+				double scale_space_diagonal,
+
+				int calc_radius_neigh,
+
+				VoxelDenseManager* grid,
+				float& min_value,
+				float& max_value,
+				size_t& particles_count
+			);
+
+#if defined(WITH_GPU_CUDA)
+			/**
+			 * @brief GPU voxel-centric dense grid conversion using a pre-built device KD-tree.
+			 *
+			 * @param d_tree  Pre-built device float4 KD-tree (cache_manager.d_voxel_kdtree_per_ptype).
+			 * @param tree_N  Number of tree nodes.
+			 */
+			void convert_to_dense_grid_loop_over_voxels_gpu(
+				float4*       d_tree,
+				int           tree_N,
+				const float*  d_radius_particles,
+				const float*  d_value_particles,
+				float  particle_radius_multiplier,
+				int*   bbox_min_orig,
+				double bbox_size_orig,
+				int    bbox_dim,
+
+				common::SpaceData::DenseType dense_type,
+				common::SpaceData::DenseNorm dense_norm,
+				int    block_name_id,
+				float* offset_position,
+				bool   use_simple_density,
+				double particle_radius_const,
+				double scale_space_diagonal,
+
+				int calc_radius_neigh,
+
+				VoxelDenseManager* grid,
+				float& min_value,
+				float& max_value,
+				size_t& particles_count
+			);
+#endif // WITH_GPU_CUDA
+
+#endif // WITH_CUDAKDTREE
 
 		} // namespace kernel
 	} // namespace vdb

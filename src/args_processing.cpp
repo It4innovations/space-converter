@@ -62,6 +62,7 @@ namespace space_converter {
 #ifdef WITH_CUDAKDTREE
 		std::cout << "\t--cudakdtree                       : Use CUDA-accelerated KDTree for neighbor search" << std::endl;
 		std::cout << "\t--cudakdtree-cpu                   : Use CPU-based CUDA KDTree implementation" << std::endl;
+		std::cout << "\t--dense-loop-over-voxels           : Dense grid: loop over voxels and query nearest particles via KD-tree (requires --calc-radius-neigh)" << std::endl;
 #endif
 
 #ifdef WITH_NANOFLANN
@@ -282,7 +283,7 @@ namespace space_converter {
 			}
 			
 			// === Neighbor Search Implementation ===
-#ifdef WITH_CUDAKDTREE			
+#ifdef WITH_CUDAKDTREE
 			else if (arg == "--cudakdtree") {
 				// Use CUDA-accelerated KDTree for neighbor search
 				from_cl.use_cudakdtree = true;
@@ -290,6 +291,10 @@ namespace space_converter {
 			else if (arg == "--cudakdtree-cpu") {
 				// Use CPU implementation of CUDA KDTree
 				from_cl.use_cudakdtree_cpu = true;
+			}
+			else if (arg == "--dense-loop-over-voxels") {
+				// Voxel-centric dense grid: iterate voxels, query nearest particles via KD-tree
+				from_cl.use_dense_loop_over_voxels = true;
 			}
 #endif
 #ifdef WITH_NANOFLANN
@@ -331,6 +336,7 @@ namespace space_converter {
 #ifdef WITH_CUDAKDTREE
 		std::cout << "use_cudakdtree: " << (use_cudakdtree ? "true" : "false") << std::endl;
 		std::cout << "use_cudakdtree_cpu: " << (use_cudakdtree_cpu ? "true" : "false") << std::endl;
+		std::cout << "use_dense_loop_over_voxels: " << (use_dense_loop_over_voxels ? "true" : "false") << std::endl;
 #endif
 #ifdef WITH_NANOFLANN
 		std::cout << "use_nanoflann: " << (use_nanoflann ? "true" : "false") << std::endl;

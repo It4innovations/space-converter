@@ -724,7 +724,12 @@ namespace common {
 			double bbox_z_max_norm,
 			double scale_space_diagonal,
 
-			float* offset_position
+			float* offset_position,
+
+			bool use_dense_loop_over_voxels,
+			int calc_radius_neigh,
+			float4* kdtree_nodes,
+			int     kdtree_N
 		) {
 			// Route to appropriate conversion function based on grid type
 			if (grid.type == VDBParticleType::eNanoVDB || grid.type == VDBParticleType::eOpenVDB) {
@@ -765,6 +770,34 @@ namespace common {
 				);
 			}
 			else if (grid.type == VDBParticleType::eDense) {
+#ifdef WITH_CUDAKDTREE
+				if (use_dense_loop_over_voxels && calc_radius_neigh > 0
+					    && kdtree_nodes != nullptr && kdtree_N > 0) {
+					convert_to_dense_grid_loop_over_voxels_cpu(
+						kdtree_nodes,
+						kdtree_N,
+						radius_particles,
+						value_particles,
+						particle_radius_multiplier,
+						bbox_min_orig,
+						bbox_size_orig,
+						bbox_dim,
+						dense_type,
+						dense_norm,
+						block_name_id,
+						offset_position,
+						use_simple_density,
+						particle_radius_const,
+						scale_space_diagonal,
+						calc_radius_neigh,
+						grid.dense_grid.get(),
+						min_value,
+						max_value,
+						particles_count
+					);
+				}
+				else
+#endif
 				// Dense grid conversion using SPH kernel splatting
 				convert_to_dense_grid_cpu(
 					pos_particles,

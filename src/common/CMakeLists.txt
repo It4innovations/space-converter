@@ -115,7 +115,12 @@ if(WITH_NANOFLANN)
 endif()
 
 if(WITH_CUDAKDTREE)
-    add_definitions(-DWITH_CUDAKDTREE)  
+    add_definitions(-DWITH_CUDAKDTREE)
+    # data_cache.h uses float4 when WITH_CUDAKDTREE is on, so g++ also needs the CUDA
+    # toolkit include path so that cuda_runtime.h is found during C++ compilation.
+    if(CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES)
+        list(APPEND INC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+    endif()
 endif()
 
 if(WITH_CUDA_MALLOCMANAGED)

@@ -28,6 +28,21 @@
 #include <unordered_map>
 #include <vector>
 #include <stdexcept>
+#include <cstring>
+#include <limits>
+#include <algorithm>
+
+#ifdef WITH_CUDAKDTREE
+#include "cukd/traverse-stack-free.h"
+#include "cukd/builder.h"
+#include "cukd/knn.h"
+#include "cukd/cukd-math.h"
+using cukd::divRoundUp;
+#endif
+
+#ifdef WITH_OPENMP
+#include <omp.h>
+#endif
 
 namespace common {
     namespace vdb {
@@ -790,7 +805,12 @@ namespace common {
                 double bbox_z_max_norm,
                 double scale_space_diagonal,
 
-                float* offset_position
+                float* offset_position,
+
+                bool use_dense_loop_over_voxels,
+                int calc_radius_neigh,
+                float4* d_kdtree_nodes,
+                int     kdtree_N
             ) {
                 // Route to appropriate conversion function based on grid type
                 if (grid.type == VDBParticleType::eNanoVDB || grid.type == VDBParticleType::eOpenVDB) {
@@ -830,7 +850,35 @@ namespace common {
                     );
                 }
                 else if (grid.type == VDBParticleType::eDense) {
-                    // Dense grid conversion using GPU SPH kernel splatting                    
+#ifdef WITH_CUDAKDTREE
+                    if (use_dense_loop_over_voxels && calc_radius_neigh > 0
+                            && d_kdtree_nodes != nullptr && kdtree_N > 0) {
+                        convert_to_dense_grid_loop_over_voxels_gpu(
+                            d_kdtree_nodes,
+                            kdtree_N,
+                            radius_particles,
+                            value_particles,
+                            particle_radius_multiplier,
+                            bbox_min_orig,
+                            bbox_size_orig,
+                            bbox_dim,
+                            dense_type,
+                            dense_norm,
+                            block_name_id,
+                            offset_position,
+                            use_simple_density,
+                            particle_radius_const,
+                            scale_space_diagonal,
+                            calc_radius_neigh,
+                            grid.dense_grid.get(),
+                            min_value,
+                            max_value,
+                            particles_count
+                        );
+                    }
+                    else
+#endif
+                    // Dense grid conversion using GPU SPH kernel splatting
                     convert_to_dense_grid_gpu(
                         pos_particles,
                         particle_ids,
@@ -876,6 +924,285 @@ namespace common {
                 }
             }
             
+// ─────────────────────────────────────────────────────────────────────────────
+// Voxel-centric dense grid conversion – GPU kernels and launcher.
+// CPU implementation lives in cudakdtree_tool.cu (compiled by WITH_CUDAKDTREE).
+// Both require WITH_CUDAKDTREE; the GPU launcher additionally requires WITH_GPU_CUDA.
+// ─────────────────────────────────────────────────────────────────────────────
+#ifdef WITH_CUDAKDTREE
+
+        // cukd traits for float4 nodes: (x,y,z)=voxel-unit position, w=encoded particle idx.
+        struct float4_particle_data_traits_gpu {
+            using point_t = float3;
+            using data_t  = float4;
+            enum { has_explicit_dim = false };
+
+            static inline __both__ point_t get_point(const float4& n)
+            { return make_float3(n.x, n.y, n.z); }
+
+            static inline __both__ float get_coord(const float4& n, int d)
+            { return d == 0 ? n.x : (d == 1 ? n.y : n.z); }
+
+            static inline __both__ int  get_dim(const float4&) { return -1; }
+            static inline __both__ void set_dim(float4&, int) {}
+        };
+
+        // ── Helper kernel: fill voxel query positions for a batch ─────────────────
+        // Produces offset-adjusted world-space positions matching the tree coordinate system.
+        __global__ void fill_voxel_queries_kernel(
+            float3* d_queries,
+            size_t  voxel_start,
+            size_t  batch_size,
+            size_t  dim0,
+            size_t  dim1,
+            size_t  off0,
+            size_t  off1,
+            size_t  off2,
+            // Voxel index → offset-adjusted world position:  world = bbox_min + wx/len2pix
+            float   bbox_min_x,
+            float   bbox_min_y,
+            float   bbox_min_z,
+            double  inv_len2pix   // = bbox_size_orig * scale_space_diagonal / bbox_dim
+        ) {
+            size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+            if (tid >= batch_size) return;
+            size_t v = voxel_start + tid;
+            size_t wx = (v % dim0) + off0;
+            size_t wy = ((v / dim0) % dim1) + off1;
+            size_t wz = (v / (dim0 * dim1)) + off2;
+            float3 q;
+            q.x = (float)((double)bbox_min_x + (double)wx * inv_len2pix);
+            q.y = (float)((double)bbox_min_y + (double)wy * inv_len2pix);
+            q.z = (float)((double)bbox_min_z + (double)wz * inv_len2pix);
+            d_queries[tid] = q;
+        }
+
+        // ── KNN query kernel for float4 tree ──────────────────────────────────────
+        __global__ void runQuery_float4_kernel(
+            float4*   tree,
+            int       tree_N,
+            uint64_t* candidateLists,
+            int       k,
+            float     maxRadius,
+            float3*   queries,
+            int       numQueries
+        ) {
+            size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+            if (tid >= (size_t)numQueries) return;
+            float3 qp = queries[tid];
+            cukd::FlexHeapCandidateList cl(candidateLists + (size_t)k * tid, k, maxRadius);
+            cukd::stackFree::knn<cukd::FlexHeapCandidateList,
+                                 float4,
+                                 float4_particle_data_traits_gpu>(cl, qp, tree, tree_N);
+        }
+
+        // ── Accumulation kernel: SPH contributions from candidates ────────────────
+        __global__ void accumulate_voxel_sph_kernel(
+            float4*   d_tree,
+            uint64_t* d_cand,
+            int       k,
+            size_t    voxel_start,
+            size_t    batch_size,
+            size_t    dim0,
+            size_t    dim1,
+            size_t    dim2,
+            const float* radius_particles,
+            const float* value_particles,
+            float     particle_radius_multiplier,
+            double    particle_radius_const,
+            int*      d_bbox_min_orig,
+            double    bbox_size_orig,
+            int       bbox_dim,
+            double    scale_space_diagonal,
+            common::SpaceData::DenseType dense_type,
+            common::SpaceData::DenseNorm dense_norm,
+            int       block_name_id,
+            bool      use_simple_density,
+            float*    grid_data_density,
+            float*    grid_data_temp,
+            uint64_t* d_particle_count
+        ) {
+            size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+            if (tid >= batch_size) return;
+
+            size_t v  = voxel_start + tid;
+            size_t lx = v % dim0;
+            size_t ly = (v / dim0) % dim1;
+            size_t lz = v / (dim0 * dim1);
+            if (lz >= dim2) return;
+
+            uint64_t* my_cand = d_cand + tid * (size_t)k;
+
+            double density_sum = 0.0;
+            double norm_sum    = 0.0;
+            bool   contributed = false;
+
+            for (int i = 0; i < k; ++i) {
+                // Decode packed entry: upper 32 bits = dist2 (float bits), lower 32 = tree index
+                int   tree_j = (int)(uint32_t(my_cand[i]));
+                float dist2  = cukd::uint_as_float((uint32_t)(my_cand[i] >> 32));
+                if (tree_j < 0) continue;
+                if (isinf(dist2)) continue;
+
+                // Recover original particle index from w component (bit-cast)
+                uint32_t orig_idx32;
+                memcpy(&orig_idx32, &d_tree[tree_j].w, sizeof(uint32_t));
+                size_t orig_idx = (size_t)orig_idx32;
+
+                float val = use_simple_density ? 1.0f : value_particles[orig_idx];
+                if (block_name_id == 0) val = 1.0f;
+
+                // h in world units; W normalised in voxel units for consistency with
+                // the particle-centric path (q is dimensionless, same either way).
+                double h_world = (particle_radius_const > 0.0)
+                    ? particle_radius_const
+                    : (double)radius_particles[orig_idx] * (double)particle_radius_multiplier;
+                if (h_world <= 0.0) continue;
+
+                double norm_fac = (double)bbox_dim / scale_space_diagonal;
+                double len2pix  = norm_fac / bbox_size_orig;
+                double h_voxel  = h_world * len2pix;
+
+                double dist_world = sqrt((double)dist2);
+                double q_ratio    = dist_world / h_world;  // = dist_voxel / h_voxel
+                if (q_ratio > 1.0 + 1e-6) continue;
+
+                double W = utility::dense::sph_kernel::W(dense_type, q_ratio, 1.0 / h_voxel);
+
+                density_sum += W * (double)val;
+                if (dense_norm == common::SpaceData::DenseNorm::eCount)
+                    norm_sum += 1.0;
+                else if (dense_norm == common::SpaceData::DenseNorm::eSPHInterpolation)
+                    norm_sum += W;
+                contributed = true;
+            }
+
+            if (density_sum != 0.0 || norm_sum != 0.0) {
+                size_t gidx = lx + ly * dim0 + lz * dim0 * dim1;
+                atomicAdd(&grid_data_density[gidx], (float)density_sum);
+                if (grid_data_temp && norm_sum != 0.0)
+                    atomicAdd(&grid_data_temp[gidx], (float)norm_sum);
+                if (contributed)
+                    atomicAdd((unsigned long long*)d_particle_count, 1ULL);
+            }
+        }
+
+#ifdef WITH_GPU_CUDA
+        /**
+         * @brief GPU voxel-centric dense conversion using a pre-built device KD-tree.
+         *
+         * The tree was built once by build_voxel_kdtree() in init_converter() and is
+         * stored in cache_manager.d_voxel_kdtree_per_ptype.  No rebuild happens here.
+         */
+        void convert_to_dense_grid_loop_over_voxels_gpu(
+            float4*       d_tree,             // pre-built device float4 KD-tree
+            int           tree_N,
+            const float*  d_radius_particles,
+            const float*  d_value_particles,
+            float  particle_radius_multiplier,
+            int*   bbox_min_orig,
+            double bbox_size_orig,
+            int    bbox_dim,
+
+            common::SpaceData::DenseType dense_type,
+            common::SpaceData::DenseNorm dense_norm,
+            int    block_name_id,
+            float* /*offset_position*/,       // not needed (tree already in offset-adj. space)
+            bool   use_simple_density,
+            double particle_radius_const,
+            double scale_space_diagonal,
+
+            int calc_radius_neigh,
+
+            VoxelDenseManager* grid,
+            float& min_value,
+            float& max_value,
+            size_t& particles_count
+        ) {
+            if (tree_N <= 0 || d_tree == nullptr || !grid) {
+                min_value = max_value = 0.0f;
+                particles_count = 0;
+                return;
+            }
+
+            common::vdb::dense::VoxelGPUDenseManager* voxel_gpu =
+                dynamic_cast<common::vdb::dense::VoxelGPUDenseManager*>(grid);
+            if (!voxel_gpu) {
+                printf("[convert_to_dense_grid_loop_over_voxels_gpu] Error: Incompatible manager\n");
+                return;
+            }
+
+            const size_t dim0 = grid->dims[0];
+            const size_t dim1 = grid->dims[1];
+            const size_t dim2 = grid->dims[2];
+            const size_t off0 = grid->offset[0];
+            const size_t off1 = grid->offset[1];
+            const size_t off2 = grid->offset[2];
+
+            // ── Upload bbox_min_orig for the accumulation kernel ──────────────────
+            int* d_bbox_min_orig_dev = nullptr;
+            CUDA_CHECK_ERROR(CUDA_MALLOC(&d_bbox_min_orig_dev, 3*sizeof(int)));
+            CUDA_CHECK_ERROR(cudaMemcpy(d_bbox_min_orig_dev, bbox_min_orig, 3*sizeof(int), cudaMemcpyHostToDevice));
+
+            // Sync dense manager metadata
+            CUDA_CHECK_ERROR(cudaMemcpy(voxel_gpu->d_offset, voxel_gpu->offset, 3*sizeof(size_t), cudaMemcpyHostToDevice));
+            CUDA_CHECK_ERROR(cudaMemcpy(voxel_gpu->d_dims,   voxel_gpu->dims,   3*sizeof(size_t), cudaMemcpyHostToDevice));
+
+            // ── Process voxels in batches ─────────────────────────────────────────
+            const size_t total_voxels = dim0 * dim1 * dim2;
+            const size_t batch_size   = std::min((size_t)65536, total_voxels);
+            const int    k            = calc_radius_neigh;
+
+            float3*   d_queries = nullptr;
+            uint64_t* d_cand    = nullptr;
+            CUDA_CHECK_ERROR(CUDA_MALLOC(&d_queries, batch_size * sizeof(float3)));
+            CUDA_CHECK_ERROR(CUDA_MALLOC(&d_cand,    batch_size * (size_t)k * sizeof(uint64_t)));
+
+            CUDA_CHECK_ERROR(cudaMemset(voxel_gpu->d_particle_count, 0, sizeof(uint64_t)));
+
+            for (size_t vox_start = 0; vox_start < total_voxels; vox_start += batch_size) {
+                size_t this_batch = std::min(batch_size, total_voxels - vox_start);
+
+                double inv_l2p = bbox_size_orig * scale_space_diagonal / (double)bbox_dim;
+                fill_voxel_queries_kernel<<<divRoundUp(this_batch, 256ULL), 256>>>(
+                    d_queries, vox_start, this_batch, dim0, dim1, off0, off1, off2,
+                    (float)bbox_min_orig[0], (float)bbox_min_orig[1], (float)bbox_min_orig[2],
+                    inv_l2p);
+                CUDA_SYNC_CHECK();
+
+                runQuery_float4_kernel<<<divRoundUp(this_batch, 1024ULL), 1024>>>(
+                    d_tree, tree_N,
+                    d_cand, k, std::numeric_limits<float>::infinity(),
+                    d_queries, (int)this_batch);
+                CUDA_SYNC_CHECK();
+
+                accumulate_voxel_sph_kernel<<<divRoundUp(this_batch, 256ULL), 256>>>(
+                    d_tree, d_cand, k,
+                    vox_start, this_batch,
+                    dim0, dim1, dim2,
+                    d_radius_particles, d_value_particles,
+                    particle_radius_multiplier, particle_radius_const,
+                    d_bbox_min_orig_dev, bbox_size_orig, bbox_dim, scale_space_diagonal,
+                    dense_type, dense_norm, block_name_id, use_simple_density,
+                    voxel_gpu->d_data_density, voxel_gpu->d_data_temp,
+                    voxel_gpu->d_particle_count);
+                CUDA_SYNC_CHECK();
+            }
+
+            // ── Gather statistics ─────────────────────────────────────────────────
+            uint64_t raw_count = 0;
+            CUDA_CHECK_ERROR(cudaMemcpy(&raw_count, voxel_gpu->d_particle_count, sizeof(uint64_t), cudaMemcpyDeviceToHost));
+            particles_count = (size_t)raw_count;
+            voxel_gpu->find_min_max(min_value, max_value);
+
+            CUDA_CHECK_ERROR(cudaFree(d_bbox_min_orig_dev));
+            CUDA_CHECK_ERROR(cudaFree(d_queries));
+            CUDA_CHECK_ERROR(cudaFree(d_cand));
+        }
+#endif // WITH_GPU_CUDA
+
+#endif // WITH_CUDAKDTREE
+
         } // namespace kernel
     } // namespace vdb
 } // namespace common

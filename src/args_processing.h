@@ -103,6 +103,11 @@ namespace space_converter {
 		bool use_sort_by_radius = false;
 		bool use_sort_by_non_overlap = false;
 
+#ifdef WITH_CUDAKDTREE
+		/// Flag to use voxel-centric loop for dense grid conversion (loop over voxels, query particles via KD-tree)
+		bool use_dense_loop_over_voxels = false;
+#endif
+
 		// === MPI Configuration ===
 		
 		/// Rank of the current process in MPI (default: 0 for single process)

@@ -21,6 +21,17 @@
 #include <cstddef>
 #include <vector>
 
+#ifdef WITH_CUDAKDTREE
+// float4 used for voxel KD-tree nodes.  Include CUDA runtime when available;
+// otherwise provide a plain-C fallback (IDE / non-CUDA builds).
+#  if defined(__CUDACC__) || defined(WITH_GPU_CUDA)
+#    include <cuda_runtime.h>
+#  else
+// Fallback definition for builds without CUDA
+struct float4 { float x, y, z, w; };
+#  endif
+#endif
+
 namespace common {
     namespace cache {
         // CacheManager is responsible for managing cached data, including GPU caches and other temporary storage.
@@ -65,6 +76,28 @@ namespace common {
 
             // Flag to enable GPU acceleration for CUDA-based computations
             bool use_gpu_cuda = false;
+
+#ifdef WITH_CUDAKDTREE
+            /// Voxel-centric dense loop: loop over voxels, query particles via KD-tree
+            bool use_dense_loop_over_voxels = false;
+            /// Number of nearest-neighbor particles to query per voxel (from --calc-radius-neigh)
+            int calc_radius_neigh = 16;
+
+            /// CPU float4 KD-trees per particle type.
+            /// Each float4 node: (x,y,z) = offset-adjusted world position, w = bit-cast original particle index.
+            /// Built once in init_converter() by build_voxel_kdtree().
+            std::vector< std::vector<float4> > voxel_kdtree_per_ptype;
+
+#ifdef WITH_GPU_CUDA
+            /// GPU mirror of voxel_kdtree_per_ptype (device pointers, one per ptype).
+            std::vector<float4*> d_voxel_kdtree_per_ptype;
+
+            /// Free all GPU voxel KD-tree allocations.
+            void free_voxel_kdtrees_gpu();
+            /// Upload CPU voxel KD-trees to device (called after build_voxel_kdtree).
+            void upload_voxel_kdtrees_to_gpu();
+#endif // WITH_GPU_CUDA
+#endif // WITH_CUDAKDTREE
 
             //MPI
             int world_rank = 0;

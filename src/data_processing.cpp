@@ -180,8 +180,14 @@ namespace space_converter {
 #ifdef WITH_GPU_CUDA
 		if (from_cl.use_gpu_cuda) {
 			printf("Using GPU CUDA for computations\n");
-		}		
+		}
 		convert_vdb_base->cache_manager.use_gpu_cuda = from_cl.use_gpu_cuda;
+#endif
+#ifdef WITH_CUDAKDTREE
+		convert_vdb_base->cache_manager.use_dense_loop_over_voxels = from_cl.use_dense_loop_over_voxels;
+		if (space_data.calc_radius_neigh > 0) {
+			convert_vdb_base->cache_manager.calc_radius_neigh = space_data.calc_radius_neigh;
+		}
 #endif
 		// MPI
 		convert_vdb_base->cache_manager.world_rank = from_cl.world_rank;
@@ -332,6 +338,14 @@ namespace space_converter {
 		}
 
 		LOG_MeasureStop("calculate_radius");
+
+#ifdef WITH_CUDAKDTREE
+		if (from_cl.use_dense_loop_over_voxels) {
+			LOG_MeasureStart("build_voxel_kdtree");
+			convert_vdb_base->build_voxel_kdtree(space_data.offset_position);
+			LOG_MeasureStop("build_voxel_kdtree");
+		}
+#endif
 
 		return convert_vdb_base;
 	}

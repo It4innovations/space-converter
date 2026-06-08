@@ -208,6 +208,19 @@ namespace common {
 
 #ifdef WITH_CUDAKDTREE
 			/**
+			 * @brief Build per-type float4 KD-trees and store in cache_manager.
+			 *
+			 * Called once during init_converter() after find_particle_positions().
+			 * Each tree node stores the offset-adjusted world position (x,y,z) and the
+			 * original particle index bit-cast into w.  The tree is later used by
+			 * convert_to_dense_grid_loop_over_voxels_cpu/gpu instead of building it
+			 * on every conversion call.
+			 *
+			 * @param offset_position  Per-axis position offset (from --offset-position).
+			 */
+			void build_voxel_kdtree(float* offset_position);
+
+			/**
 			 * @brief Calculate particle radii using CUDA KD-Tree neighbor search
 			 * @param calc_radius_neigh Number of neighbors to consider
 			 * @param calc_radius_neigh_file Output file for radius data
