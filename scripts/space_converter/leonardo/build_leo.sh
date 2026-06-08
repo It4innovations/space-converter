@@ -18,11 +18,12 @@
 #
 #####################################################################################################################
 
-ml purge
+# ml purge
 
-ml cmake
-ml cuda/11.8
-ml openmpi
+ml cmake/4.1.2
+ml openmpi #/5.0.9--gcc--12.2.0-cuda-12.2
+ml cuda/12.2
+ml gcc/12.2.0
 
 ROOT_DIR=${PWD}
 
@@ -31,11 +32,12 @@ output=${ROOT_DIR}/install/space_converter
 src=${ROOT_DIR}/src
 
 ############DEPENDENCIES###############
+# ml git-lfs
 # cd ${lib_dir}
-# git-lfs clone -b blender-v4.5-release  https://projects.blender.org/blender/lib-linux_x64.git
+# git-lfs clone -b blender-v5.2-release  https://projects.blender.org/blender/lib-linux_x64.git
 #######################################
 
-#rm -rf build/space_converter
+# rm -rf build/space_converter
 #-----------space_converter--------------
 mkdir ${ROOT_DIR}/build/space_converter
 cd ${ROOT_DIR}/build/space_converter
@@ -45,19 +47,20 @@ make_d="${src}/space-converter"
 make_d="${make_d} -DTBB_INCLUDE_DIRS=$lib_dir/lib-linux_x64/tbb/include"
 make_d="${make_d} -DOPENVDB_INCLUDE_DIRS=$lib_dir/lib-linux_x64/openvdb/include"
 make_d="${make_d} -DOPENVDB_LIBRARIES=$lib_dir/lib-linux_x64/openvdb/lib/libopenvdb.so;$lib_dir/lib-linux_x64/tbb/lib/libtbb.so" #$lib_dir/lib-linux_x64/blosc/lib/libblosc.so.1
-make_d="${make_d} -DOPENVDB_VERSION=12"
 
 make_d="${make_d} -DWITH_HDF5=OFF"
 make_d="${make_d} -DGADGET_READ_ID=OFF"
-make_d="${make_d} -DGADGET_MAX_HSML=ON"
+make_d="${make_d} -DGADGET_MAX_HSML=OFF"
 
 make_d="${make_d} -DWITH_OPENVDB=ON"
 
 make_d="${make_d} -DWITH_CUDAKDTREE=ON"
+make_d="${make_d} -DWITH_NANOFLANN=ON"
 
-make_d="${make_d} -DWITH_NANOFLANN=OFF"
+make_d="${make_d} -DWITH_CUDA_AWARE_MPI=ON"
+
 make_d="${make_d} -DWITH_HACC=ON"
-
+make_d="${make_d} -DWITH_GPU_CUDA=ON"
 
 #make_d="${make_d} -DCMAKE_BUILD_TYPE=Debug"
 make_d="${make_d} -DCMAKE_BUILD_TYPE=RelWithDebInfo"
@@ -66,4 +69,4 @@ make_d="${make_d} -DCMAKE_INSTALL_PREFIX=${output}"
 
 cmake ${make_d}
 #make clean
-make -j 4 install
+make -j 16 install
