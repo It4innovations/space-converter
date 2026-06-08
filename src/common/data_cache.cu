@@ -30,6 +30,8 @@ namespace common {
     namespace cache {
 
         void CacheManager::copy_values_to_gpu() {
+            GPU_KERNEL_TIME_START(copy_values_to_gpu);
+            
             // Free values_particles
             if (d_values_particles != nullptr) {
                 CUDA_CHECK_ERROR(cudaFree(d_values_particles));
@@ -47,9 +49,13 @@ namespace common {
             }
             // Check for CUDA errors
 			CUDA_CHECK_LAST_ERROR();
+            
+            GPU_KERNEL_TIME_END(copy_values_to_gpu);
         }
         
         void CacheManager::copy_particles_to_gpu() {
+            GPU_KERNEL_TIME_START(copy_particles_to_gpu);
+            
             // Free existing GPU memory if any
             free_gpu_memory();
 
@@ -129,9 +135,12 @@ namespace common {
 
             // Check for CUDA errors
             CUDA_CHECK_LAST_ERROR();
+            
+            GPU_KERNEL_TIME_END(copy_particles_to_gpu);
         }
 
         void CacheManager::free_gpu_memory() {
+            GPU_KERNEL_TIME_START(free_gpu_memory);
             // Free pos_particles_per_ptype
             for (auto ptr : d_pos_particles_per_ptype) {
                 if (ptr != nullptr) {
@@ -186,9 +195,12 @@ namespace common {
 
             // Check for CUDA errors
             CUDA_CHECK_LAST_ERROR();
+            
+            GPU_KERNEL_TIME_END(free_gpu_memory);
         }
 
         void CacheManager::sort_particles_by_radius_gpu_inplace() {
+            GPU_CUB_TIME_START(sort_particles_by_radius_gpu_inplace);
             // Sort particle IDs in-place by radius without modifying radii array
             // Zero additional memory allocation - optimal performance
             
@@ -236,6 +248,8 @@ namespace common {
             // Check for CUDA errors
             //CUDA_CHECK_LAST_ERROR();
             CUDA_SYNC_CHECK();
+            
+            GPU_CUB_TIME_END(sort_particles_by_radius_gpu_inplace);
         }
 
         // Device function to compute Morton code (Z-order curve) for 3D position
@@ -270,6 +284,8 @@ namespace common {
         }
 
         void CacheManager::sort_particles_by_nonoverlap_gpu_inplace() {
+            GPU_CUB_TIME_START(sort_particles_by_nonoverlap_gpu_inplace);
+            
             // Sort particles using Morton codes (Z-order curve) to ensure spatial coherence
             // This minimizes overlapping voxel regions, reducing/eliminating atomic operations
             
@@ -339,6 +355,8 @@ namespace common {
 
             // Check for CUDA errors
             CUDA_SYNC_CHECK();
+            
+            GPU_CUB_TIME_END(sort_particles_by_nonoverlap_gpu_inplace);
         }
     }
 }
