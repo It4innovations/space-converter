@@ -218,7 +218,7 @@ namespace space_converter {
 
 #ifdef _WIN32
 		// Debug
-		wait_on_attach_process(from_cl);
+		//wait_on_attach_process(from_cl);
 #endif
 	}
 

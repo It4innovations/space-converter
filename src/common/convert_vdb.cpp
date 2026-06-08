@@ -389,7 +389,7 @@ namespace common {
 				
 				for (int ptype = 0; ptype < ptype_count; ++ptype) {
 					const auto& pos = cache_manager.pos_particles_per_ptype[ptype];
-					const auto& ids = cache_manager.particles_id_ordered_per_ptype[ptype];
+					//const auto& ids = cache_manager.particles_id_ordered_per_ptype[ptype];
 					size_t N = pos.size() / 3;
 
 					if (N == 0) {
@@ -400,7 +400,7 @@ namespace common {
 					printf("[build_voxel_kdtree] GPU: ptype=%d  N=%zu  building float4 KD-tree...\n", ptype, N);
 					utility::cudakdtree::build_float4_kdtree(
 						pos.data(),
-						ids.data(),
+						//ids.data(),
 						N,
 						offset_position,
 						true,  // use_gpu
@@ -416,7 +416,7 @@ namespace common {
 				// CPU path: build on CPU, store in voxel_kdtree_per_ptype
 				for (int ptype = 0; ptype < ptype_count; ++ptype) {
 					const auto& pos = cache_manager.pos_particles_per_ptype[ptype];
-					const auto& ids = cache_manager.particles_id_ordered_per_ptype[ptype];
+					//const auto& ids = cache_manager.particles_id_ordered_per_ptype[ptype];
 					size_t N = pos.size() / 3;
 
 					if (N == 0) {
@@ -427,7 +427,7 @@ namespace common {
 					printf("[build_voxel_kdtree] CPU: ptype=%d  N=%zu  building float4 KD-tree...\n", ptype, N);
 					utility::cudakdtree::build_float4_kdtree(
 						pos.data(),
-						ids.data(),
+						//ids.data(),
 						N,
 						offset_position,
 						false,  // use_gpu
@@ -738,7 +738,7 @@ namespace common {
 					(particle_type < (int)cache_manager.d_voxel_kdtree_per_ptype.size())
 					    ? cache_manager.d_voxel_kdtree_per_ptype[particle_type] : nullptr,
 					(particle_type < (int)cache_manager.d_voxel_kdtree_per_ptype.size())
-					    ? (int)cache_manager.voxel_kdtree_per_ptype[particle_type].size() : 0
+					    ? (int)cache_manager.particles_id_ordered_per_ptype[particle_type].size() : 0
 #else
 					false,
 					16,

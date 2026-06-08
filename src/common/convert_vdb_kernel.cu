@@ -1054,9 +1054,15 @@ namespace common {
 
                 // h in world units; W normalised in voxel units for consistency with
                 // the particle-centric path (q is dimensionless, same either way).
-                double h_world = (particle_radius_const > 0.0)
-                    ? particle_radius_const
-                    : (double)radius_particles[orig_idx] * (double)particle_radius_multiplier;
+                double h_world = 0.0;
+                if (particle_radius_const != 0.0) {
+                    h_world = particle_radius_const;
+                } else if (particle_radius_multiplier != 0.0f) {
+                    h_world = (double)radius_particles[orig_idx] * (double)particle_radius_multiplier;
+                } else {
+                    h_world = (double)radius_particles[orig_idx];
+                }
+
                 if (h_world <= 0.0) continue;
 
                 double norm_fac = (double)bbox_dim / scale_space_diagonal;
@@ -1170,7 +1176,7 @@ namespace common {
                     inv_l2p);
                 CUDA_SYNC_CHECK();
 
-                runQuery_float4_kernel<<<divRoundUp(this_batch, 1024ULL), 1024>>>(
+                runQuery_float4_kernel<<<divRoundUp(this_batch, 256ULL), 256>>>(
                     d_tree, tree_N,
                     d_cand, k, std::numeric_limits<float>::infinity(),
                     d_queries, (int)this_batch);

@@ -370,7 +370,7 @@ namespace utility {
 					CUKD_CUDA_CALL(Memset(d_batch_rho, 0, d_batch_rho_size));
 
                     // Run query for this batch
-                    runQuery << <divRoundUp(this_batch, 1024ULL), 1024ULL >> >(
+                    runQuery << <divRoundUp(this_batch, 256ULL), 256 >> >(
                         d_tree, N,
                         d_cand, k, maxRadius,
                         d_batch_queries, this_batch,
@@ -379,7 +379,7 @@ namespace utility {
                     CUKD_CUDA_CALL(DeviceSynchronize());
 
                     // Extract results for this batch
-                    extractFinalResult<<<divRoundUp(this_batch, 1024ULL), 1024ULL >>>(
+                    extractFinalResult<<<divRoundUp(this_batch, 256ULL), 256 >>>(
 						d_batch_radius, d_batch_rho, d_batch_mass, this_batch, k, d_cand, rho_kernel
                     );
                     CUKD_CUDA_CALL(DeviceSynchronize());
@@ -678,7 +678,7 @@ namespace utility {
 
         void build_float4_kdtree_gpu(
             const float*  positions,
-            const size_t* ids,
+            //const size_t* ids,
             size_t        N,
             const float*  offset,
             float4**      d_out_tree
@@ -712,7 +712,7 @@ namespace utility {
             // Allocate temporary host memory to prepare nodes
             std::vector<float4> h_tree(N);
             for (size_t ic = 0; ic < N; ++ic) {
-                size_t pid = ids[ic];
+                size_t pid = ic;// ids[ic];
                 float4 node;
                 // Store offset-adjusted world position; embed original index in w.
                 node.x = positions[pid * 3 + 0] - offset[0];
@@ -745,14 +745,14 @@ namespace utility {
 
         void build_float4_kdtree_cpu(
             const float*  positions,
-            const size_t* ids,
+            //const size_t* ids,
             size_t        N,
             const float*  offset,
             std::vector<float4>& out_tree
         ) {
             out_tree.resize(N);
             for (size_t ic = 0; ic < N; ++ic) {
-                size_t pid = ids[ic];
+                size_t pid = ic; // ids[ic];
                 float4 node;
                 // Store offset-adjusted world position; embed original index in w.
                 node.x = positions[pid * 3 + 0] - offset[0];
@@ -770,7 +770,7 @@ namespace utility {
 
         void build_float4_kdtree(
             const float*  positions,
-            const size_t* ids,
+            //const size_t* ids,
             size_t        N,
             const float*  offset,
             bool          use_gpu,
@@ -778,9 +778,9 @@ namespace utility {
             float4**      d_out_tree
         ) {
             if (use_gpu)
-                build_float4_kdtree_gpu(positions, ids, N, offset, d_out_tree);
+                build_float4_kdtree_gpu(positions, N, offset, d_out_tree);
             else
-                build_float4_kdtree_cpu(positions, ids, N, offset, out_tree);
+                build_float4_kdtree_cpu(positions, N, offset, out_tree);
         }
 
 	}// cudakdtree

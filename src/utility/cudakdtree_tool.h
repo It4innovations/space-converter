@@ -54,7 +54,7 @@ namespace utility {
          */
         void build_float4_kdtree(
             const float*  positions,
-            const size_t* ids,
+            //const size_t* ids,
             size_t        N,
             const float*  offset,
             bool          use_gpu,
