@@ -516,7 +516,7 @@ namespace common {
 				bool use_dense_loop_over_voxels = false,
 				int calc_radius_neigh = 16,
 				// Pre-built KD-tree for loop-over-voxels (null = disabled)
-				float4* d_kdtree_nodes = nullptr,
+				void* d_kdtree_nodes = nullptr,
 				int     kdtree_N       = 0
 			);
 
@@ -589,7 +589,7 @@ namespace common {
 				bool use_dense_loop_over_voxels = false,
 				int calc_radius_neigh = 16,
 				// Pre-built KD-tree for loop-over-voxels (null = disabled)
-				float4* kdtree_nodes = nullptr,
+				void* kdtree_nodes = nullptr,
 				int     kdtree_N     = 0
 			);
 

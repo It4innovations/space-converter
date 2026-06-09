@@ -177,3 +177,4 @@ if(WITH_NANOFLANN)
 endif()
 
 install (TARGETS space_common DESTINATION lib)
+install (FILES data_common.h DESTINATION include)

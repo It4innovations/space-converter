@@ -809,7 +809,7 @@ namespace common {
 
                 bool use_dense_loop_over_voxels,
                 int calc_radius_neigh,
-                float4* d_kdtree_nodes,
+                void* d_kdtree_nodes,
                 int     kdtree_N
             ) {
                 // Route to appropriate conversion function based on grid type
