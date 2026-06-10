@@ -734,7 +734,7 @@ namespace space_converter {
 					int     kdtree_N
 				) {
 					// Route to appropriate conversion function based on grid type
-					if (grid.type == VDBParticleType::eNanoVDB || grid.type == VDBParticleType::eOpenVDB) {
+					if (grid.type == VDBParticleType::eNanoVDB || grid.type == VDBParticleType::eOpenVDB || grid.type == VDBParticleType::eCUB) {
 						// Sparse grid conversion using hash-based voxel accumulation
 						convert_to_sparse_grid_cpu(
 							pos_particles,

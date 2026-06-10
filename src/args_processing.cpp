@@ -45,7 +45,7 @@ namespace space_converter {
 		std::cout << "\t--anim-merge" << std::endl;		
 		std::cout << "\t--raw-particles X" << std::endl;
 		// std::cout << "\t--rawpart2vdb" << std::endl;
-		std::cout << "\t--export-data TYPE DATASET" << std::endl;
+		std::cout << "\t--export, --export-data TYPE DATASET" << std::endl;
 		std::cout << "\t--dense-type X" << std::endl;
 		std::cout << "\t--dense-norm X" << std::endl;
 		std::cout << "\t--bbox-sphere x y z r" << std::endl;
@@ -173,6 +173,10 @@ namespace space_converter {
 				from_cl.use_nanovdb = true;
 			}
 #endif
+			else if (arg == "--cub") {
+				// Use CUB format (GPU-friendly VDB variant)
+				from_cl.use_cub = true;
+			}
 			else if (arg == "--dense-file") {
 				// Export dense matrix representation to file
 				//from_cl.use_dense2file = true;
@@ -206,7 +210,7 @@ namespace space_converter {
 			// else if (arg == "--rawpart2vdb") {
 			// 	from_cl.use_rawpart2vdb = true;
 			// }			
-			else if (arg == "--export-data") {
+			else if (arg == "--export-data" || arg == "--export") {
 				space_data.particle_type = std::stoi(argv[++i]);
 				space_data.block_name_id = std::stoi(argv[++i]);
 				//from_cl.export_dense_type = std::stoi(argv[++i]);				
@@ -332,6 +336,7 @@ namespace space_converter {
 		std::cout << "info: " << (info ? "true" : "false") << std::endl;
 		std::cout << "remote: " << (remote ? "true" : "false") << std::endl;
 		std::cout << "use_nanovdb: " << (use_nanovdb ? "true" : "false") << std::endl;
+		std::cout << "use_cub: " << (use_cub ? "true" : "false") << std::endl;
 		std::cout << "use_save_mpirank: " << (use_save_mpirank ? "true" : "false") << std::endl;
 #ifdef WITH_CUDAKDTREE
 		std::cout << "use_cudakdtree: " << (use_cudakdtree ? "true" : "false") << std::endl;

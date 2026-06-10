@@ -31,7 +31,8 @@ namespace space_converter {
 				eVector,       ///< Serialized binary format
 				eNanoVDB,      ///< NanoVDB sparse grid
 				eOpenVDB,      ///< OpenVDB sparse grid
-				eRawParticles  ///< Raw point cloud
+				eCUB,          ///< CUB format (GPU-friendly)
+				eRawParticles,  ///< Raw point cloud
 			};
 
 			/**
@@ -156,7 +157,9 @@ namespace space_converter {
 			FTI_OPENVDB = 1,  ///< OpenVDB format (sparse volumetric data)
 			FTI_NANOVDB = 2,  ///< NanoVDB format (GPU-friendly VDB)
 			FTI_PATH = 3,     ///< File path reference only
-			FTI_RAW_PART = 4  ///< Raw particle data format
+			FTI_RAW_PART = 4,  ///< Raw particle data format
+			FTI_CUB = 5       ///< CUB format (GPU-friendly VDB variant)
+			// Add more file types as needed
 		};
 
 		/**

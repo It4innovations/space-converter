@@ -517,7 +517,10 @@ namespace space_converter {
 			}
 			else if (from_cl.use_nanovdb) {
 				file_type = common::FTI_NANOVDB; // GPU-friendly NanoVDB format
-			}			
+			}
+			else if (from_cl.use_cub) {
+				file_type = common::FTI_CUB; // GPU-friendly CUB format
+			}		
 
 			// Send file type identifier
 			tcp_connection.send_data_data((char*)&file_type, sizeof(file_type));

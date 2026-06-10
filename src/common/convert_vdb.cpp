@@ -603,7 +603,7 @@ namespace space_converter {
 				RawParticles::ParticleData raw_frame;
 
 				// Set grid transform (voxel size in world space units)
-				if (grid.type == VDBParticleType::eNanoVDB || grid.type == VDBParticleType::eOpenVDB) {
+				if (grid.type == VDBParticleType::eNanoVDB || grid.type == VDBParticleType::eOpenVDB || grid.type == VDBParticleType::eCUB) {
 					//grid.nano_grid->setTransform(transform_scale);
 					grid.sparse_grid->set_transform(transform_scale);
 				}

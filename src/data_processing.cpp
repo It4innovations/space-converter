@@ -527,6 +527,8 @@ namespace space_converter {
 // #endif			
 			if (from_cl.use_nanovdb) {
 				grid_main.type = common::vdb::VDBParticleType::eNanoVDB;				
+			} else if (from_cl.use_cub) {
+				grid_main.type = common::vdb::VDBParticleType::eCUB;
 			} else {
 				grid_main.type = common::vdb::VDBParticleType::eOpenVDB;
 			}
@@ -822,7 +824,8 @@ namespace space_converter {
 			grid_main_sum.type = grid_main.type;
 
 			if (grid_main_sum.type == common::vdb::VDBParticleType::eOpenVDB ||
-				grid_main_sum.type == common::vdb::VDBParticleType::eNanoVDB) {
+				grid_main_sum.type == common::vdb::VDBParticleType::eNanoVDB ||
+				grid_main_sum.type == common::vdb::VDBParticleType::eCUB) {
 				grid_main_sum.sparse_grid = grid_main.sparse_grid;
 // #ifdef WITH_OPENVDB
 // 				grid_main_sum.vdb_grid = grid_main.vdb_grid;
@@ -949,6 +952,10 @@ namespace space_converter {
 					// Extract min/max from NanoVDB tree
 					nanogrid->tree().extrema(space_data.min_value_reduced, space_data.max_value_reduced);
 				}
+				else if (from_cl.use_cub) {
+					// Convert dense grid to CUB format
+					// TODO: Implement CUB conversion and min/max extraction
+				}
 				// Convert dense grid to sparse OpenVDB format
 				else {
 
@@ -1037,6 +1044,14 @@ namespace space_converter {
 						grid_main_final.vector_grid.resize(grid_handle_final.bufferSize());
 						memcpy(grid_main_final.vector_grid.data(), grid_handle_final.data(), grid_handle_final.bufferSize());
 					}
+				}
+				else if (from_cl.use_cub) {
+					// Convert to CUB format
+					//TODO: Implement CUB conversion and min/max extraction
+					common::vdb::sparse::VoxelGPUManagerSortReduce* gpu_mgr = dynamic_cast<common::vdb::sparse::VoxelGPUManagerSortReduce*>(grid_main_sum.sparse_grid.get());
+					grid_main_final.vector_grid.resize(gpu_mgr->mem_size());
+					gpu_mgr->serializeCPU(grid_main_final.vector_grid.data());
+					
 				}
 				// Convert OpenVDB to binary format
 				else {
@@ -1142,12 +1157,18 @@ namespace space_converter {
 				else if (from_cl.use_nanovdb) {
 					full_filepath = full_filepath + std::string(".nvdb");
 				}
+				else if (from_cl.use_cub) {
+					full_filepath = full_filepath + std::string(".cub");
+				}
 				else {
 					full_filepath = full_filepath + std::string(".vdb");
 				}				
 			}
 			else if (particle_type == common::vdb::VDBParticleType::eNanoVDB) {
 				full_filepath = full_filepath + std::string(".nvdb");
+			}
+			else if (particle_type == common::vdb::VDBParticleType::eCUB) {
+				full_filepath = full_filepath + std::string(".cub");
 			}
 			else {
 				full_filepath = full_filepath + std::string(".vdb");
@@ -1217,6 +1238,9 @@ namespace space_converter {
 				}
 
 				printf("rank #%d: finished: %s\n", from_cl.world_rank, full_filepath.c_str());
+			}
+			else if (particle_type == common::vdb::VDBParticleType::eCUB) {
+				//TODO: Implement CUB saving
 			}
 			// Save raw particle format
 			else if (particle_type == common::vdb::VDBParticleType::eRawParticles) {

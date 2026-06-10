@@ -71,6 +71,8 @@ namespace space_converter {
 		bool use_nanovdb = true;
 #endif
 
+		bool use_cub = false;
+
 		/// Flag to save MPI rank information for parallel processing
 		bool use_save_mpirank = false;
 		
