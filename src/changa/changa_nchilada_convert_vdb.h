@@ -25,7 +25,7 @@ namespace changa {
 
     // ConvertVDBChangaNchilada is a derived class from common::vdb::ConvertVDBBase.
     // It provides implementations specific to Changa and nchilada particle data conversions.
-    class ConvertVDBChangaNchilada : public common::vdb::ConvertVDBBase {
+    class ConvertVDBChangaNchilada : public space_converter::common::vdb::ConvertVDBBase {
     public:
         // Print the steps executed on the CPU during the conversion process.
         void print_CPU_steps() override;

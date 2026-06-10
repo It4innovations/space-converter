@@ -25,7 +25,7 @@ namespace gadget_simple {
 
     // ConvertVDBGadgetSimple is a derived class from common::vdb::ConvertVDBBase.
     // This class implements methods for converting particle data from Gadget simulations into VDB format.
-    class ConvertVDBGadgetSimple : public common::vdb::ConvertVDBBase {
+    class ConvertVDBGadgetSimple : public space_converter::common::vdb::ConvertVDBBase {
     public:
         // Print the steps executed on the CPU during the conversion process.
         void print_CPU_steps() override;

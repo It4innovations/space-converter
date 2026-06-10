@@ -21,28 +21,30 @@
 #include <cuda_runtime.h>
 #include <stdio.h>
 
-namespace gpu_logging {
-    // Global rank for GPU logging (can be set from MPI)
-    extern int g_gpu_log_rank;
+namespace space_converter {
+    namespace gpu_logging {
+        // Global rank for GPU logging (can be set from MPI)
+        extern int g_gpu_log_rank;
 
-    /**
-     * @brief Set the MPI rank for GPU logging output
-     * 
-     * @param rank The MPI rank of the current process
-     */
-    inline void set_gpu_log_rank(int rank) {
-        g_gpu_log_rank = rank;
-    }
+        /**
+         * @brief Set the MPI rank for GPU logging output
+         *
+         * @param rank The MPI rank of the current process
+         */
+        inline void set_gpu_log_rank(int rank) {
+            g_gpu_log_rank = rank;
+        }
 
-    /**
-     * @brief Get the current GPU logging rank
-     * 
-     * @return Current MPI rank
-     */
-    inline int get_gpu_log_rank() {
-        return g_gpu_log_rank;
-    }
-}
+        /**
+         * @brief Get the current GPU logging rank
+         *
+         * @return Current MPI rank
+         */
+        inline int get_gpu_log_rank() {
+            return g_gpu_log_rank;
+        }
+	} // namespace gpu_logging
+} // namespace space_converter
 
 /**
  * @brief Macro for timing CUDA kernel launches

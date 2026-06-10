@@ -511,12 +511,12 @@ namespace space_converter {
 			std::size_t size = grid_handle.vector_grid.size();
 
 			// Determine output file type based on extraction mode
-			int file_type = FTI_OPENVDB;
+			int file_type = common::FTI_OPENVDB;
 			if (space_data.extracted_type == common::SpaceData::ExtractedType::eParticle) {
-				file_type = FTI_RAW_PART; // Raw particle data
+				file_type = common::FTI_RAW_PART; // Raw particle data
 			}
 			else if (from_cl.use_nanovdb) {
-				file_type = FTI_NANOVDB; // GPU-friendly NanoVDB format
+				file_type = common::FTI_NANOVDB; // GPU-friendly NanoVDB format
 			}			
 
 			// Send file type identifier
@@ -564,7 +564,7 @@ namespace space_converter {
 			double t = omp_get_wtime();
 
 			// Send file path type identifier
-			int file_type = FTI_PATH;
+			int file_type = common::FTI_PATH;
 			tcp_connection.send_data_data((char*)&file_type, sizeof(file_type));
 
 			// Send VDB file path

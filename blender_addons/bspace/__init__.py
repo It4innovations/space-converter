@@ -22,7 +22,7 @@ bl_info = {
     "author": "Milan Jaros, Petr Strakos, Lubomir Riha",
     "description": "",
     "blender": (5, 0, 0),
-    "version": (0, 5, 0),
+    "version": (1, 1, 0),
     "location": "View3D > Sidebar > BSpace Tab",
     "warning": "",
     "category": "3D View"

@@ -25,19 +25,21 @@
 #define STDMAX std::max
 #define STDMIN std::min
 
-namespace common {
+namespace space_converter {
+	namespace common {
 
-	// String manipulation utilities
-	std::string ltrim(const std::string& s);        // Remove leading whitespace
-	std::string rtrim(const std::string& s);        // Remove trailing whitespace
-	std::string trim(const std::string& s);         // Remove leading and trailing whitespace
+		// String manipulation utilities
+		std::string ltrim(const std::string& s);        // Remove leading whitespace
+		std::string rtrim(const std::string& s);        // Remove trailing whitespace
+		std::string trim(const std::string& s);         // Remove leading and trailing whitespace
 
-	// Gaussian kernel functions for smoothing and density estimation
-	double gaussian_kernel(double x, double h = 1.0);                            // Compute Gaussian kernel value
-	void generate_normalized_gaussian(std::vector<double>& densities, double h = 1.0);  // Generate normalized Gaussian distribution
+		// Gaussian kernel functions for smoothing and density estimation
+		double gaussian_kernel(double x, double h = 1.0);                            // Compute Gaussian kernel value
+		void generate_normalized_gaussian(std::vector<double>& densities, double h = 1.0);  // Generate normalized Gaussian distribution
 
-	// Vector magnitude calculation utilities
-	double calculate_dmagnitude3(double x, double y, double z);  // Calculate 3D vector magnitude
-	double calculate_dmagnituden(double* v, int n);              // Calculate N-D vector magnitude (double)
-	double calculate_fmagnituden(float* v, int n);               // Calculate N-D vector magnitude (float)
-} //common
+		// Vector magnitude calculation utilities
+		double calculate_dmagnitude3(double x, double y, double z);  // Calculate 3D vector magnitude
+		double calculate_dmagnituden(double* v, int n);              // Calculate N-D vector magnitude (double)
+		double calculate_fmagnituden(float* v, int n);               // Calculate N-D vector magnitude (float)
+	} //namespace common
+} //namespace space_converter

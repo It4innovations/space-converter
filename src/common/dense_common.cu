@@ -130,187 +130,189 @@ namespace {
 
 } // anonymous namespace
 
-namespace common {
-	namespace vdb {
-		namespace dense {
+namespace space_converter {
+	namespace common {
+		namespace vdb {
+			namespace dense {
 
-			// 
-			// Internal helper
-			// 
+				// 
+				// Internal helper
+				// 
 
-			//static void CUDA_CHECK_ERROR(cudaError_t err, const char* context) {
-			//	if (err != cudaSuccess)
-			//		throw std::runtime_error(std::string(context) + ": " + cudaGetErrorString(err));
-			//}
+				//static void CUDA_CHECK_ERROR(cudaError_t err, const char* context) {
+				//	if (err != cudaSuccess)
+				//		throw std::runtime_error(std::string(context) + ": " + cudaGetErrorString(err));
+				//}
 
-			// 
-			// VoxelGPUDenseManager  host lifecycle methods
-			// 
+				// 
+				// VoxelGPUDenseManager  host lifecycle methods
+				// 
 
-			__host__ void VoxelGPUDenseManager::clear() {
-				free_device();
-				data_density.clear();
-				data_temp.clear();
-				memset(dims, 0, 3 * sizeof(size_t));
-				memset(offset, 0, 3 * sizeof(size_t));
-			}
-
-			__host__ void VoxelGPUDenseManager::create(size_t x, size_t y, size_t z, bool allocate_data_temp) {
-				dims[0] = x;  dims[1] = y;  dims[2] = z;
-
-//				data_density.resize(size());
-//				memset(data_density.data(), 0, memsize());
-//				if (allocate_data_temp) {
-//					data_temp.resize(size());
-//					memset(data_temp.data(), 0, memsize());
-//				}
-
-				// d_data_density
-				if (d_data_density == nullptr)
-					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_data_density, memsize()));
-
-				CUDA_CHECK_ERROR(cudaMemset(d_data_density, 0, memsize()));
-
-				// d_data_temp (only allocate if normalization is needed)
-				if (allocate_data_temp) {
-					if (d_data_temp == nullptr)
-						CUDA_CHECK_ERROR(CUDA_MALLOC(&d_data_temp, memsize()));
-
-					CUDA_CHECK_ERROR(cudaMemset(d_data_temp, 0, memsize()));
+				__host__ void VoxelGPUDenseManager::clear() {
+					free_device();
+					data_density.clear();
+					data_temp.clear();
+					memset(dims, 0, 3 * sizeof(size_t));
+					memset(offset, 0, 3 * sizeof(size_t));
 				}
 
-				// d_dims
-				if (d_dims == nullptr)
-					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_dims, 3 * sizeof(size_t)));
-				CUDA_CHECK_ERROR(cudaMemcpy(d_dims, dims, 3 * sizeof(size_t), cudaMemcpyHostToDevice));
+				__host__ void VoxelGPUDenseManager::create(size_t x, size_t y, size_t z, bool allocate_data_temp) {
+					dims[0] = x;  dims[1] = y;  dims[2] = z;
 
-				// d_offset
-				if (d_offset == nullptr)
-					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_offset, 3 * sizeof(size_t)));
-				CUDA_CHECK_ERROR(cudaMemcpy(d_offset, offset, 3 * sizeof(size_t), cudaMemcpyHostToDevice));
+					//				data_density.resize(size());
+					//				memset(data_density.data(), 0, memsize());
+					//				if (allocate_data_temp) {
+					//					data_temp.resize(size());
+					//					memset(data_temp.data(), 0, memsize());
+					//				}
 
-				// d_particle_count
-				if (d_particle_count == nullptr)
-					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_particle_count, sizeof(uint64_t)));
-				
-				CUDA_CHECK_ERROR(cudaMemset(d_particle_count, 0, sizeof(uint64_t)));
-			}
+									// d_data_density
+					if (d_data_density == nullptr)
+						CUDA_CHECK_ERROR(CUDA_MALLOC(&d_data_density, memsize()));
 
-			// 
-			// VoxelGPUDenseManager  GPU memory management
-			// 
+					CUDA_CHECK_ERROR(cudaMemset(d_data_density, 0, memsize()));
 
-			__host__ void VoxelGPUDenseManager::to_device() {
-				const size_t n = size();
-				if (n == 0)
-					return;
+					// d_data_temp (only allocate if normalization is needed)
+					if (allocate_data_temp) {
+						if (d_data_temp == nullptr)
+							CUDA_CHECK_ERROR(CUDA_MALLOC(&d_data_temp, memsize()));
 
-				// d_data_density
-				//if (d_data_density == nullptr)
-				//	CUDA_CHECK_ERROR(CUDA_MALLOC(&d_data_density, memsize()));
-				CUDA_CHECK_ERROR(cudaMemcpy(d_data_density, data_density.data(), memsize(),
-					cudaMemcpyHostToDevice));
+						CUDA_CHECK_ERROR(cudaMemset(d_data_temp, 0, memsize()));
+					}
 
-				// d_data_temp (only if allocated)
-				if (d_data_temp != nullptr && !data_temp.empty()) {
-					CUDA_CHECK_ERROR(cudaMemcpy(d_data_temp, data_temp.data(), memsize(),
+					// d_dims
+					if (d_dims == nullptr)
+						CUDA_CHECK_ERROR(CUDA_MALLOC(&d_dims, 3 * sizeof(size_t)));
+					CUDA_CHECK_ERROR(cudaMemcpy(d_dims, dims, 3 * sizeof(size_t), cudaMemcpyHostToDevice));
+
+					// d_offset
+					if (d_offset == nullptr)
+						CUDA_CHECK_ERROR(CUDA_MALLOC(&d_offset, 3 * sizeof(size_t)));
+					CUDA_CHECK_ERROR(cudaMemcpy(d_offset, offset, 3 * sizeof(size_t), cudaMemcpyHostToDevice));
+
+					// d_particle_count
+					if (d_particle_count == nullptr)
+						CUDA_CHECK_ERROR(CUDA_MALLOC(&d_particle_count, sizeof(uint64_t)));
+
+					CUDA_CHECK_ERROR(cudaMemset(d_particle_count, 0, sizeof(uint64_t)));
+				}
+
+				// 
+				// VoxelGPUDenseManager  GPU memory management
+				// 
+
+				__host__ void VoxelGPUDenseManager::to_device() {
+					const size_t n = size();
+					if (n == 0)
+						return;
+
+					// d_data_density
+					//if (d_data_density == nullptr)
+					//	CUDA_CHECK_ERROR(CUDA_MALLOC(&d_data_density, memsize()));
+					CUDA_CHECK_ERROR(cudaMemcpy(d_data_density, data_density.data(), memsize(),
 						cudaMemcpyHostToDevice));
+
+					// d_data_temp (only if allocated)
+					if (d_data_temp != nullptr && !data_temp.empty()) {
+						CUDA_CHECK_ERROR(cudaMemcpy(d_data_temp, data_temp.data(), memsize(),
+							cudaMemcpyHostToDevice));
+					}
+
+					// d_dims
+					//if (d_dims == nullptr)
+					//	CUDA_CHECK_ERROR(CUDA_MALLOC(&d_dims, 3 * sizeof(size_t)));
+					CUDA_CHECK_ERROR(cudaMemcpy(d_dims, dims, 3 * sizeof(size_t),
+						cudaMemcpyHostToDevice));
+
+					// d_offset
+					//if (d_offset == nullptr)
+					//	CUDA_CHECK_ERROR(CUDA_MALLOC(&d_offset, 3 * sizeof(size_t)));
+					CUDA_CHECK_ERROR(cudaMemcpy(d_offset, offset, 3 * sizeof(size_t),
+						cudaMemcpyHostToDevice));
+
+					// d_particle_count
+					//if (d_particle_count == nullptr)
+					//	CUDA_CHECK_ERROR(CUDA_MALLOC(&d_particle_count, sizeof(uint64_t)));
+					CUDA_CHECK_ERROR(cudaMemset(d_particle_count, 0, sizeof(uint64_t)));
 				}
 
-				// d_dims
-				//if (d_dims == nullptr)
-				//	CUDA_CHECK_ERROR(CUDA_MALLOC(&d_dims, 3 * sizeof(size_t)));
-				CUDA_CHECK_ERROR(cudaMemcpy(d_dims, dims, 3 * sizeof(size_t),
-					cudaMemcpyHostToDevice));
+				__host__ void VoxelGPUDenseManager::from_device() {
+					const size_t n = size();
+					if (n == 0)
+						return;
 
-				// d_offset
-				//if (d_offset == nullptr)
-				//	CUDA_CHECK_ERROR(CUDA_MALLOC(&d_offset, 3 * sizeof(size_t)));
-				CUDA_CHECK_ERROR(cudaMemcpy(d_offset, offset, 3 * sizeof(size_t),
-					cudaMemcpyHostToDevice));
+					if (d_data_density != nullptr) {
+						if (data_density.size() != n) data_density.resize(n);
+						CUDA_CHECK_ERROR(cudaMemcpy(data_density.data(), d_data_density, memsize(),
+							cudaMemcpyDeviceToHost));
+					}
 
-				// d_particle_count
-				//if (d_particle_count == nullptr)
-				//	CUDA_CHECK_ERROR(CUDA_MALLOC(&d_particle_count, sizeof(uint64_t)));
-				CUDA_CHECK_ERROR(cudaMemset(d_particle_count, 0, sizeof(uint64_t)));
-			}
+					// d_data_temp (only if allocated)
+					if (d_data_temp != nullptr) {
+						if (data_temp.size() != n) data_temp.resize(n);
+						CUDA_CHECK_ERROR(cudaMemcpy(data_temp.data(), d_data_temp, memsize(),
+							cudaMemcpyDeviceToHost));
+					}
+				}
 
-			__host__ void VoxelGPUDenseManager::from_device() {
-				const size_t n = size();
-				if (n == 0)
-					return;
+				__host__ void VoxelGPUDenseManager::free_device() {
+					if (d_data_density) { cudaFree(d_data_density); d_data_density = nullptr; }
+					if (d_data_temp) { cudaFree(d_data_temp);    d_data_temp = nullptr; }
+					if (d_dims) { cudaFree(d_dims);         d_dims = nullptr; }
+					if (d_offset) { cudaFree(d_offset);       d_offset = nullptr; }
+					if (d_particle_count) { cudaFree(d_particle_count); d_particle_count = nullptr; }
+				}
 
-				if (d_data_density != nullptr) {
-					if (data_density.size() != n) data_density.resize(n);
-					CUDA_CHECK_ERROR(cudaMemcpy(data_density.data(), d_data_density, memsize(),
+				// 
+				// VoxelGPUDenseManager  find_min_max
+				// 
+
+				__host__ void VoxelGPUDenseManager::find_min_max(float& min_value, float& max_value) {
+					const size_t n = size();
+					if (n == 0) {
+						min_value = 0.0f;
+						max_value = 0.0f;
+						return;
+					}
+
+					if (d_data_density == nullptr)
+						throw std::runtime_error("find_min_max: d_data_density is null; call to_device() first");
+
+					// Allocate and initialise the two scalar result buffers on the device
+					float* d_min = nullptr;
+					float* d_max = nullptr;
+					const float init_min = FLT_MAX;
+					const float init_max = -FLT_MAX;
+
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_min, sizeof(float)));
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_max, sizeof(float)));
+					CUDA_CHECK_ERROR(cudaMemcpy(d_min, &init_min, sizeof(float),
+						cudaMemcpyHostToDevice));
+					CUDA_CHECK_ERROR(cudaMemcpy(d_max, &init_max, sizeof(float),
+						cudaMemcpyHostToDevice));
+
+					// Launch: 256 threads/block, up to 1024 blocks
+					constexpr int THREADS = 256;
+					const int blocks = static_cast<int>(
+						std::min<size_t>((n + THREADS - 1) / THREADS, 1024));
+
+					GPU_KERNEL_TIME_START(find_min_max_kernel);
+					find_min_max_kernel << <blocks, THREADS >> > (d_data_density, n, d_min, d_max);
+					GPU_KERNEL_TIME_END(find_min_max_kernel);
+					CUDA_CHECK_ERROR(cudaGetLastError());
+					CUDA_CHECK_ERROR(cudaDeviceSynchronize());
+
+					// Copy results back to host
+					CUDA_CHECK_ERROR(cudaMemcpy(&min_value, d_min, sizeof(float),
 						cudaMemcpyDeviceToHost));
-				}
-
-				// d_data_temp (only if allocated)
-				if (d_data_temp != nullptr) {
-					if (data_temp.size() != n) data_temp.resize(n);
-					CUDA_CHECK_ERROR(cudaMemcpy(data_temp.data(), d_data_temp, memsize(),
+					CUDA_CHECK_ERROR(cudaMemcpy(&max_value, d_max, sizeof(float),
 						cudaMemcpyDeviceToHost));
-				}
-			}
 
-			__host__ void VoxelGPUDenseManager::free_device() {
-				if (d_data_density) { cudaFree(d_data_density); d_data_density = nullptr; }
-				if (d_data_temp) { cudaFree(d_data_temp);    d_data_temp = nullptr; }
-				if (d_dims) { cudaFree(d_dims);         d_dims = nullptr; }
-				if (d_offset) { cudaFree(d_offset);       d_offset = nullptr; }
-				if (d_particle_count) { cudaFree(d_particle_count); d_particle_count = nullptr; }
-			}
-
-			// 
-			// VoxelGPUDenseManager  find_min_max
-			// 
-
-			__host__ void VoxelGPUDenseManager::find_min_max(float& min_value, float& max_value) {
-				const size_t n = size();
-				if (n == 0) {
-					min_value = 0.0f;
-					max_value = 0.0f;
-					return;
+					CUDA_CHECK_ERROR(cudaFree(d_min));
+					CUDA_CHECK_ERROR(cudaFree(d_max));
 				}
 
-				if (d_data_density == nullptr)
-					throw std::runtime_error("find_min_max: d_data_density is null; call to_device() first");
-
-				// Allocate and initialise the two scalar result buffers on the device
-				float* d_min = nullptr;
-				float* d_max = nullptr;
-				const float init_min =  FLT_MAX;
-				const float init_max = -FLT_MAX;
-
-				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_min, sizeof(float)));
-				CUDA_CHECK_ERROR(CUDA_MALLOC(&d_max, sizeof(float)));
-				CUDA_CHECK_ERROR(cudaMemcpy(d_min, &init_min, sizeof(float),
-					cudaMemcpyHostToDevice));
-				CUDA_CHECK_ERROR(cudaMemcpy(d_max, &init_max, sizeof(float),
-					cudaMemcpyHostToDevice));
-
-				// Launch: 256 threads/block, up to 1024 blocks
-				constexpr int THREADS = 256;
-				const int blocks = static_cast<int>(
-					std::min<size_t>((n + THREADS - 1) / THREADS, 1024));
-
-				GPU_KERNEL_TIME_START(find_min_max_kernel);
-				find_min_max_kernel<<<blocks, THREADS>>>(d_data_density, n, d_min, d_max);
-				GPU_KERNEL_TIME_END(find_min_max_kernel);
-				CUDA_CHECK_ERROR(cudaGetLastError());
-				CUDA_CHECK_ERROR(cudaDeviceSynchronize());
-
-				// Copy results back to host
-				CUDA_CHECK_ERROR(cudaMemcpy(&min_value, d_min, sizeof(float),
-					cudaMemcpyDeviceToHost));
-				CUDA_CHECK_ERROR(cudaMemcpy(&max_value, d_max, sizeof(float),
-					cudaMemcpyDeviceToHost));
-
-				CUDA_CHECK_ERROR(cudaFree(d_min));
-				CUDA_CHECK_ERROR(cudaFree(d_max));
-			}
-
-		} // dense
-	} // vdb
-} // common
+			} // dense
+		} // vdb
+	} // common
+} // space_converter

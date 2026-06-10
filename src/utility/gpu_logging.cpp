@@ -18,7 +18,9 @@
 
 #include "gpu_logging.h"
 
-namespace gpu_logging {
-    // Initialize global rank to 0
-    int g_gpu_log_rank = 0;
+namespace space_converter {
+    namespace gpu_logging {
+        // Initialize global rank to 0
+        int g_gpu_log_rank = 0;
+    }
 }

@@ -82,7 +82,9 @@
 
 #ifdef _WIN32
 #   include <windows.h>
+#ifndef __restrict__
 #   define __restrict__
+#endif
 #   define __thread
 #   define M_PI           3.14159265358979323846  /* pi */
 #endif
