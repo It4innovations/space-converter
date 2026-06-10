@@ -107,7 +107,12 @@ target_link_libraries(
 
 target_link_libraries(changa_tipsy_converter space_common)
 
-install (TARGETS changa_tipsy_converter DESTINATION lib)
+install (TARGETS changa_tipsy_converter 
+    EXPORT space_converter_targets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+)
 ###########################NCHILADA#############################
 add_library(changa_nchilada_converter ${SRC_NCHILADA})
 target_link_libraries(
@@ -120,4 +125,9 @@ target_link_libraries(
 
 target_link_libraries(changa_nchilada_converter space_common)
     
-install (TARGETS changa_nchilada_converter DESTINATION lib)
+install (TARGETS changa_nchilada_converter 
+    EXPORT space_converter_targets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+)

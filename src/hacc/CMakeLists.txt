@@ -90,7 +90,12 @@ target_link_libraries(
 
 target_link_libraries(hacc_genericio_converter space_common genericio_lib_static sz_lib)
     
-install (TARGETS hacc_genericio_converter DESTINATION lib)
+install (TARGETS hacc_genericio_converter 
+    EXPORT space_converter_targets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+)
 ########################################################
 add_library(haccbin_converter ${SRC_HACCBIN})
 target_link_libraries(
@@ -103,4 +108,9 @@ target_link_libraries(
 
 target_link_libraries(haccbin_converter space_common)
     
-install (TARGETS haccbin_converter DESTINATION lib)
+install (TARGETS haccbin_converter 
+    EXPORT space_converter_targets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+)

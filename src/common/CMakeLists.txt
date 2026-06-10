@@ -176,5 +176,13 @@ if(WITH_NANOFLANN)
    target_link_libraries(space_common nanoflann_tool)
 endif()
 
-install (TARGETS space_common DESTINATION lib)
+install (TARGETS space_common 
+    EXPORT space_converter_targets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+)
 install (FILES data_common.h DESTINATION include)
+install (FILES raw_common.h DESTINATION include)
+install (FILES dense_common.h DESTINATION include)
+install (FILES sparse_common.h DESTINATION include)

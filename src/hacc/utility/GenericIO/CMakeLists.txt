@@ -51,7 +51,12 @@ target_link_libraries(genericio_lib_static PUBLIC
   ${BLOSC_LIBRARIES}
   )
 
-install (TARGETS genericio_lib_static DESTINATION lib)
+install (TARGETS genericio_lib_static 
+    EXPORT space_converter_targets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+)
 
 # ------------------------------------------------------------------
 # PRINT

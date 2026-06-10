@@ -107,6 +107,13 @@ set(SZ_include_dirs
 include_directories(${SZ_include_dirs})
 add_library(sz_lib STATIC ${SZ_Sources})
 
+install (TARGETS sz_lib 
+    EXPORT space_converter_targets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+)
+
 # target_link_libraries(
 #    sz_lib 
 #    ${ZLIB_LIBRARIES}

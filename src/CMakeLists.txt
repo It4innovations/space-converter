@@ -205,5 +205,10 @@ if(WITH_CUDAKDTREE)
 endif()    
 
 
-install (TARGETS space_converter DESTINATION bin)
+install (TARGETS space_converter 
+    EXPORT space_converter_targets
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+)
 

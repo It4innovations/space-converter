@@ -152,7 +152,12 @@ if(WITH_CUDAKDTREE)
             MPI::MPI_CXX
     )
         
-    install (TARGETS cudakdtree_tool DESTINATION lib)
+    install (TARGETS cudakdtree_tool 
+        EXPORT space_converter_targets
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib
+        RUNTIME DESTINATION bin
+    )
 endif()
 ########################################################
 if(WITH_NANOFLANN)
@@ -169,7 +174,12 @@ if(WITH_NANOFLANN)
         MPI::MPI_CXX
     )
         
-    install (TARGETS nanoflann_tool DESTINATION lib)
+    install (TARGETS nanoflann_tool 
+        EXPORT space_converter_targets
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib
+        RUNTIME DESTINATION bin
+    )
 endif()
 ########################################################
 if(WITH_OPENVDB)

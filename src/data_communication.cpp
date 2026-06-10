@@ -36,18 +36,6 @@
 #include "utility/logging.h"
 #include <iostream>
 
-/**
- * @brief File type identifiers for data transmission.
- * 
- * These constants define the different file format types that can be
- * transmitted over the communication channel.
- */
-#define	FTI_NONE 0        ///< No file type specified
-#define	FTI_OPENVDB 1     ///< OpenVDB format (sparse volumetric data)
-#define	FTI_NANOVDB 2     ///< NanoVDB format (GPU-friendly VDB)
-#define	FTI_PATH 3        ///< File path reference only
-#define	FTI_RAW_PART 4    ///< Raw particle data format
-
 namespace space_converter {
 
 	// ============================================================================

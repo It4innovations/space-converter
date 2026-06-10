@@ -83,4 +83,9 @@ target_link_libraries(
 
 target_link_libraries(pluto_vtk_converter space_common)
     
-install (TARGETS pluto_vtk_converter DESTINATION lib)
+install (TARGETS pluto_vtk_converter 
+    EXPORT space_converter_targets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+)

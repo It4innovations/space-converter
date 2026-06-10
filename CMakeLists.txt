@@ -174,3 +174,40 @@ endif()
 ########################################################
 add_subdirectory(src)
 ########################################################
+
+# ==================================================================
+# CMake Package Configuration for find_package() support
+# ==================================================================
+include(CMakePackageConfigHelpers)
+include(GNUInstallDirs)
+
+# Set the installation directory for CMake files
+set(SPACE_CONVERTER_CMAKE_DIR ${CMAKE_INSTALL_LIBDIR}/cmake/space_converter)
+
+# Install export targets file
+install(EXPORT space_converter_targets
+    FILE space_converterTargets.cmake
+    NAMESPACE space_converter::
+    DESTINATION ${SPACE_CONVERTER_CMAKE_DIR}
+)
+
+# Generate the config file that contains the exports
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/space_converterConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/space_converterConfig.cmake"
+    INSTALL_DESTINATION ${SPACE_CONVERTER_CMAKE_DIR}
+)
+
+# Generate the version file for the config file
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/space_converterConfigVersion.cmake"
+    VERSION 1.0.0
+    COMPATIBILITY AnyNewerVersion
+)
+
+# Install the generated config and version files
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/space_converterConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/space_converterConfigVersion.cmake"
+    DESTINATION ${SPACE_CONVERTER_CMAKE_DIR}
+)

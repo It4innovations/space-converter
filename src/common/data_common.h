@@ -15,6 +15,18 @@
 #define FDATA_EPSILON 1e-8f  // Small epsilon value for floating-point comparisons
 
 /**
+ * @brief File type identifiers for data transmission.
+ * 
+ * These constants define the different file format types that can be
+ * transmitted over the communication channel.
+ */
+#define	FTI_NONE 0        ///< No file type specified
+#define	FTI_OPENVDB 1     ///< OpenVDB format (sparse volumetric data)
+#define	FTI_NANOVDB 2     ///< NanoVDB format (GPU-friendly VDB)
+#define	FTI_PATH 3        ///< File path reference only
+#define	FTI_RAW_PART 4    ///< Raw particle data format
+
+/**
  * Namespace common provides functionality for handling spatial data conversions
  */
 namespace common {

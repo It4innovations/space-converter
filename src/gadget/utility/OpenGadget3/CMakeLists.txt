@@ -86,5 +86,10 @@ if(WITH_HDF5)
   target_compile_definitions(gadget3_io_lib_static PUBLIC -DHAVE_HDF5 -DH5_BUILT_AS_DYNAMIC_LIB)
 endif()
 
-install (TARGETS gadget3_io_lib_static DESTINATION lib)
+install (TARGETS gadget3_io_lib_static 
+    EXPORT space_converter_targets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+)
 install (FILES IO/gadget3_io_lib.h DESTINATION include)

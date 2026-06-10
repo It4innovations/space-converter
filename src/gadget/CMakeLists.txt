@@ -105,7 +105,12 @@ target_link_libraries(
 
 target_link_libraries(gadget_converter space_common gadget3_io_lib_static)
     
-install (TARGETS gadget_converter DESTINATION lib)
+install (TARGETS gadget_converter 
+    EXPORT space_converter_targets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+)
 ########################################################
 add_library(gadget_simple_converter ${SRC_SIMPLE})
 target_link_libraries(
@@ -117,5 +122,10 @@ target_link_libraries(
 
 target_link_libraries(gadget_simple_converter space_common gadget3_io_lib_static)
 
-install (TARGETS gadget_simple_converter DESTINATION lib)
+install (TARGETS gadget_simple_converter 
+    EXPORT space_converter_targets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+)
 ########################################################

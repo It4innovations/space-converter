@@ -83,5 +83,10 @@ target_link_libraries(
 
 target_link_libraries(ipic3d_hdf5_converter space_common)
     
-install (TARGETS ipic3d_hdf5_converter DESTINATION lib)
+install (TARGETS ipic3d_hdf5_converter 
+    EXPORT space_converter_targets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+)
 ########################################################
