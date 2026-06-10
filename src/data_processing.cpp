@@ -1049,8 +1049,9 @@ namespace space_converter {
 					// Convert to CUB format
 					//TODO: Implement CUB conversion and min/max extraction
 					common::vdb::sparse::VoxelGPUManagerSortReduce* gpu_mgr = dynamic_cast<common::vdb::sparse::VoxelGPUManagerSortReduce*>(grid_main_sum.sparse_grid.get());
-					grid_main_final.vector_grid.resize(gpu_mgr->mem_size());
-					gpu_mgr->serializeCPU(grid_main_final.vector_grid.data());
+					grid_main_final.vector_grid.resize(gpu_mgr->get_header_size() + gpu_mgr->mem_size());
+					gpu_mgr->get_header(grid_main_final.vector_grid.data());
+					gpu_mgr->serializeCPU(grid_main_final.vector_grid.data() + gpu_mgr->get_header_size());
 					
 				}
 				// Convert OpenVDB to binary format

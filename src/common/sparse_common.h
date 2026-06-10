@@ -320,6 +320,12 @@ namespace space_converter {
 					int extractAll(Voxel** h_output_voxels);
 
 				public:
+					// Get the size of the header (bbox + transformation matrix)
+					size_t get_header_size() const;
+
+					// Get header data (bbox + transformation matrix) and save to binary buffer
+					void get_header(uint8_t* bin_data);
+
 					// CPU-side serialization: write current voxel data to binary buffer
 					void serializeCPU(uint8_t* bin_data);
 

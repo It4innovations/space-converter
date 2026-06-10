@@ -23,6 +23,7 @@
 #include "data_common.h"
 #include "../utility/gpu_utility.h"
 #include "../utility/gpu_logging.h"
+#include <climits>
 
 namespace space_converter {
 	namespace common {
@@ -183,6 +184,72 @@ namespace space_converter {
 					__device__ __forceinline__
 						T operator()(const T& a, const T& b) const {
 						return a + b;
+					}
+				};
+
+				// ---------------------------------------------
+				// GPU bbox reduction helpers
+				// ---------------------------------------------
+				struct BBox2D {
+					int min_x, min_y, max_x, max_y;
+					__host__ __device__ BBox2D()
+						: min_x(INT_MAX), min_y(INT_MAX), max_x(INT_MIN), max_y(INT_MIN) {}
+					__host__ __device__ BBox2D(int x, int y)
+						: min_x(x), min_y(y), max_x(x), max_y(y) {}
+				};
+
+				struct BBox2DReduceOp {
+					__host__ __device__ __forceinline__
+					BBox2D operator()(const BBox2D& a, const BBox2D& b) const {
+						BBox2D r;
+						r.min_x = a.min_x < b.min_x ? a.min_x : b.min_x;
+						r.min_y = a.min_y < b.min_y ? a.min_y : b.min_y;
+						r.max_x = a.max_x > b.max_x ? a.max_x : b.max_x;
+						r.max_y = a.max_y > b.max_y ? a.max_y : b.max_y;
+						return r;
+					}
+				};
+
+				struct KeyToBBox2D {
+					__host__ __device__ __forceinline__
+					BBox2D operator()(const uint64_t& key) const {
+						int x = (int)((key) & COORD_MASK) - COORD_BIAS;
+						int y = (int)((key >> COORD_BITS) & COORD_MASK) - COORD_BIAS;
+						return BBox2D(x, y);
+					}
+				};
+
+				// 3D bounding box structures
+				struct BBox3D {
+					int min_x, min_y, min_z, max_x, max_y, max_z;
+					__host__ __device__ BBox3D()
+						: min_x(INT_MAX), min_y(INT_MAX), min_z(INT_MAX),
+						  max_x(INT_MIN), max_y(INT_MIN), max_z(INT_MIN) {}
+					__host__ __device__ BBox3D(int x, int y, int z)
+						: min_x(x), min_y(y), min_z(z), max_x(x), max_y(y), max_z(z) {}
+				};
+
+				struct BBox3DReduceOp {
+					__host__ __device__ __forceinline__
+					BBox3D operator()(const BBox3D& a, const BBox3D& b) const {
+						BBox3D r;
+						r.min_x = a.min_x < b.min_x ? a.min_x : b.min_x;
+						r.min_y = a.min_y < b.min_y ? a.min_y : b.min_y;
+						r.min_z = a.min_z < b.min_z ? a.min_z : b.min_z;
+						r.max_x = a.max_x > b.max_x ? a.max_x : b.max_x;
+						r.max_y = a.max_y > b.max_y ? a.max_y : b.max_y;
+						r.max_z = a.max_z > b.max_z ? a.max_z : b.max_z;
+						return r;
+					}
+				};
+
+				struct KeyToBBox3D {
+					__host__ __device__ __forceinline__
+					BBox3D operator()(const uint64_t& key) const {
+						int x = (int)((key) & COORD_MASK) - COORD_BIAS;
+						int y = (int)((key >> COORD_BITS) & COORD_MASK) - COORD_BIAS;
+						int z = (int)((key >> (2 * COORD_BITS)) & COORD_MASK) - COORD_BIAS;
+						return BBox3D(x, y, z);
 					}
 				};
 
@@ -635,6 +702,86 @@ namespace space_converter {
 					if (h_vals && d_vals_out) {
 						CUDA_CHECK_ERROR(cudaMemcpy(h_vals, d_vals_out, m_last_count * sizeof(float), cudaMemcpyDeviceToHost));
 					}
+				}
+
+				size_t VoxelGPUManagerSortReduce::get_header_size() const {
+					// Header contains:
+					// - float index_bbox[6]: min_x, min_y, min_z, max_x, max_y, max_z
+					// - float transformation_matrix[12]: 3x4 transformation matrix
+					return 6 * sizeof(float) + 12 * sizeof(float); // 18 floats total = 72 bytes
+				}
+
+				void VoxelGPUManagerSortReduce::get_header(uint8_t *bin_data) {
+					//bin_data.resize(get_header_size());
+
+					float index_bbox[6] = { FLT_MAX, FLT_MAX, FLT_MAX, -FLT_MAX, -FLT_MAX, -FLT_MAX };
+
+					if (m_last_count > 0 && d_keys_out) {
+						// Transform iterator: unpack each uint64 key → BBox3D on the fly (no host copy)
+						cub::TransformInputIterator<BBox3D, KeyToBBox3D, uint64_t*>
+							d_iter(d_keys_out, KeyToBBox3D{});
+
+						// Allocate output and temp storage
+						BBox3D* d_bbox_out = nullptr;
+						CUDA_CHECK_ERROR(CUDA_MALLOC(&d_bbox_out, sizeof(BBox3D)));
+
+						void* d_temp = nullptr;
+						size_t temp_bytes = 0;
+						BBox3D init_val;
+						CUDA_CHECK_ERROR(cub::DeviceReduce::Reduce(nullptr, temp_bytes,
+							d_iter, d_bbox_out, m_last_count, BBox3DReduceOp{}, init_val));
+						CUDA_CHECK_ERROR(CUDA_MALLOC(&d_temp, temp_bytes));
+
+						CUDA_CHECK_ERROR(cub::DeviceReduce::Reduce(d_temp, temp_bytes,
+							d_iter, d_bbox_out, m_last_count, BBox3DReduceOp{}, init_val));
+
+						BBox3D h_bbox;
+						CUDA_CHECK_ERROR(cudaMemcpy(&h_bbox, d_bbox_out, sizeof(BBox3D), cudaMemcpyDeviceToHost));
+						cudaFree(d_temp);
+						cudaFree(d_bbox_out);
+
+						index_bbox[0] = static_cast<float>(h_bbox.min_x);
+						index_bbox[1] = static_cast<float>(h_bbox.min_y);
+						index_bbox[2] = static_cast<float>(h_bbox.min_z);
+						index_bbox[3] = static_cast<float>(h_bbox.max_x);
+						index_bbox[4] = static_cast<float>(h_bbox.max_y);
+						index_bbox[5] = static_cast<float>(h_bbox.max_z);
+					}
+					
+					// Create transformation matrix (3x4 = 12 floats)
+					// Format: [ scale  0      0      0 ]
+					//         [ 0      scale  0      0 ]
+					//         [ 0      0      scale  0 ]
+					float transformation_matrix[12];
+					float scale = static_cast<float>(transform_scale);
+					
+					// Row 0
+					transformation_matrix[0] = scale;
+					transformation_matrix[1] = 0.0f;
+					transformation_matrix[2] = 0.0f;
+					transformation_matrix[3] = 0.0f;
+					
+					// Row 1
+					transformation_matrix[4] = 0.0f;
+					transformation_matrix[5] = scale;
+					transformation_matrix[6] = 0.0f;
+					transformation_matrix[7] = 0.0f;
+					
+					// Row 2
+					transformation_matrix[8] = 0.0f;
+					transformation_matrix[9] = 0.0f;
+					transformation_matrix[10] = scale;
+					transformation_matrix[11] = 0.0f;
+					
+					// Write header to binary data
+					uint8_t* data_ptr = bin_data;
+					
+					// Write bounding box (6 floats)
+					memcpy(data_ptr, index_bbox, 6 * sizeof(float));
+					data_ptr += 6 * sizeof(float);
+					
+					// Write transformation matrix (12 floats)
+					memcpy(data_ptr, transformation_matrix, 12 * sizeof(float));
 				}
 
 				// ================================================================================
