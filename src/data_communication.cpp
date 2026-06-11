@@ -155,7 +155,7 @@ namespace space_converter {
 			// Set device 0 as default and establish CUDA context
 			cudaSetDevice(0);
 			cudaFree(0);  // Force context creation
-			printf("CUDA initialized before MPI: %d device(s) found\n", deviceCount);
+			//printf("CUDA initialized before MPI: %d device(s) found\n", deviceCount);
 		} else {
 			printf("Warning: CUDA initialization before MPI failed or no devices: %s\n", 
 			       cudaGetErrorString(err));

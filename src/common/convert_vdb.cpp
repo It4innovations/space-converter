@@ -576,7 +576,7 @@ namespace space_converter {
 				float* offset_position
 			)
 			{
-				printf("===convert_iolib_to_grid: START\n");
+				//printf("===convert_iolib_to_grid: START\n");
 				// #ifdef WITH_OPENMP
 				double t = omp_get_wtime();
 				// 			double t_step = omp_get_wtime();
@@ -662,12 +662,12 @@ namespace space_converter {
 					return;
 				}
 
-				printf("===convert_iolib_to_grid: INIT: %f [s]\n", omp_get_wtime() - t);
+				//printf("===convert_iolib_to_grid: INIT: %f [s]\n", omp_get_wtime() - t);
 
 				// Cache value particles if not already cached for this particle type and block
 				bool new_values = find_particle_values(particle_type, block_name_id);
 
-				printf("===convert_iolib_to_grid: FIND: %f [s]\n", omp_get_wtime() - t);
+				//printf("===convert_iolib_to_grid: FIND: %f [s]\n", omp_get_wtime() - t);
 
 #ifdef WITH_GPU_CUDA
 				if (cache_manager.use_gpu_cuda) {
@@ -677,7 +677,7 @@ namespace space_converter {
 						cache_manager.copy_values_to_gpu();
 					}
 
-					printf("===convert_iolib_to_grid: COPY TO GPU: %f [s]\n", omp_get_wtime() - t);
+					//printf("===convert_iolib_to_grid: COPY TO GPU: %f [s]\n", omp_get_wtime() - t);
 
 					// Use GPU kernel with cached GPU particle positions
 					const float* d_pos_particles = cache_manager.d_pos_particles_per_ptype[particle_type];
@@ -748,7 +748,7 @@ namespace space_converter {
 #endif
 					);
 
-					printf("===convert_iolib_to_grid: CONVERT GPU: %f [s]\n", omp_get_wtime() - t);
+					//printf("===convert_iolib_to_grid: CONVERT GPU: %f [s]\n", omp_get_wtime() - t);
 				}
 				else
 #endif
@@ -823,14 +823,14 @@ namespace space_converter {
 #endif
 					);
 
-					printf("===convert_iolib_to_grid: CONVERT CPU: %f [s]\n", omp_get_wtime() - t);
+					//printf("===convert_iolib_to_grid: CONVERT CPU: %f [s]\n", omp_get_wtime() - t);
 				}
 
 
 				// #ifdef WITH_OPENMP
 				// 			t_step = omp_get_wtime();
 				// #endif
-				printf("===convert_iolib_to_grid: FINISHED: %f [s]\n", omp_get_wtime() - t);
+				//printf("===convert_iolib_to_grid: FINISHED: %f [s]\n", omp_get_wtime() - t);
 			}
 
 

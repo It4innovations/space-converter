@@ -21,6 +21,8 @@
 #include <cuda_runtime.h>
 #include <stdio.h>
 
+//#define SPACE_CONVERTER_GPU_LOGGING_ENABLED
+
 namespace space_converter {
     namespace gpu_logging {
         // Global rank for GPU logging (can be set from MPI)
@@ -46,6 +48,7 @@ namespace space_converter {
 	} // namespace gpu_logging
 } // namespace space_converter
 
+#ifdef SPACE_CONVERTER_GPU_LOGGING_ENABLED
 /**
  * @brief Macro for timing CUDA kernel launches
  * 
@@ -95,3 +98,10 @@ namespace space_converter {
     printf("[rank #%d]: GPU CUB '%s': %.3f ms\n", gpu_logging::g_gpu_log_rank, #operation_name, gpu_cub_elapsed_##operation_name); \
     cudaEventDestroy(gpu_cub_start_##operation_name); \
     cudaEventDestroy(gpu_cub_stop_##operation_name);
+
+#else
+#define GPU_KERNEL_TIME_START(kernel_name)
+#define GPU_KERNEL_TIME_END(kernel_name)
+#define GPU_CUB_TIME_START(operation_name)
+#define GPU_CUB_TIME_END(operation_name)
+#endif

@@ -178,7 +178,7 @@ namespace space_converter {
 
 		// Other params
 #ifdef WITH_GPU_CUDA
-		if (from_cl.use_gpu_cuda) {
+		if (from_cl.use_gpu_cuda && from_cl.world_rank == 0) {
 			printf("Using GPU CUDA for computations\n");
 		}
 		convert_vdb_base->cache_manager.use_gpu_cuda = from_cl.use_gpu_cuda;
@@ -649,7 +649,7 @@ namespace space_converter {
 				from_cl.world_rank, bbox_x_mid_orig, bbox_y_mid_orig, bbox_z_mid_orig,
 				std::max(bbox_x_r_orig, std::max(bbox_y_r_orig, bbox_z_r_orig)));
 
-			printf("rank #%d: bbox coord: %f, %f, %f, %f, %f, %f\n",
+			printf("rank #%d: bbox coord: %f %f %f %f %f %f\n",
 				from_cl.world_rank, space_data.bbox_min[0], space_data.bbox_min[1], space_data.bbox_min[2],
 				space_data.bbox_max[0], space_data.bbox_max[1], space_data.bbox_max[2]);
 		}
