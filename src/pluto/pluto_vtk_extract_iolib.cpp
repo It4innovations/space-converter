@@ -45,7 +45,7 @@
 
 #define RETURN_NORM_EMPTY return 0;
 #define RETURN_NORM_VALUE(v) return (float)(v);
-#define RETURN_NORM_VECTOR3(v) return (float)common::calculate_dmagnitude3(v[0], v[1], v[2]);
+#define RETURN_NORM_VECTOR3(v) return (float)space_converter::common::calculate_dmagnitude3(v[0], v[1], v[2]);
 
 #define RETURN_COMP_EMPTY return 0;
 #define RETURN_COMP_VALUE(v) return 1;

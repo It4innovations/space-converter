@@ -22,6 +22,7 @@
 #include <vector>
 #include "data_common.h"
 
+namespace space_converter {
 namespace utility {
 	namespace nanoflann_tool {
 
@@ -29,3 +30,4 @@ namespace utility {
 
 	}// nanoflann
 } //utility
+} // namespace space_converter

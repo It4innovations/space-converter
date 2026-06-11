@@ -25,7 +25,7 @@ namespace plutovtk {
 
     // ConvertVDBPlutoVTK is a derived class from common::vdb::ConvertVDBBase.
     // This class implements methods for converting VTK structured grid data from PLUTO simulations into VDB format.
-    class ConvertVDBPlutoVTK : public common::vdb::ConvertVDBBase {
+    class ConvertVDBPlutoVTK : public space_converter::common::vdb::ConvertVDBBase {
     public:
         // Print the steps executed on the CPU during the conversion process.
         void print_CPU_steps() override;

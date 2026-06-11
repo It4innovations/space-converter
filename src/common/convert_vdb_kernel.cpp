@@ -776,7 +776,7 @@ namespace space_converter {
 						if (use_dense_loop_over_voxels && calc_radius_neigh > 0
 							&& kdtree_nodes != nullptr && kdtree_N > 0) {
 							convert_to_dense_grid_loop_over_voxels_cpu(
-								kdtree_nodes,
+								(float4*)kdtree_nodes,
 								kdtree_N,
 								radius_particles,
 								value_particles,

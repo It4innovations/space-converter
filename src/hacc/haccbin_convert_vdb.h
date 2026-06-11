@@ -25,7 +25,7 @@ namespace haccbin {
 
     // ConvertVDBHACCBin is a derived class from common::vdb::ConvertVDBBase.
     // This class implements methods for converting particle data from HACCBin/Excel format into VDB format.
-    class ConvertVDBHACCBin : public common::vdb::ConvertVDBBase {
+    class ConvertVDBHACCBin : public space_converter::common::vdb::ConvertVDBBase {
     public:
         // Print the steps executed on the CPU during the conversion process.
         void print_CPU_steps() override;

@@ -62,6 +62,8 @@ make_d="${make_d} -DWITH_CUDA_AWARE_MPI=ON"
 make_d="${make_d} -DWITH_HACC=ON"
 make_d="${make_d} -DWITH_GPU_CUDA=ON"
 
+make_d="${make_d} -DCMAKE_CUDA_ARCHITECTURES=80"
+
 #make_d="${make_d} -DCMAKE_BUILD_TYPE=Debug"
 make_d="${make_d} -DCMAKE_BUILD_TYPE=RelWithDebInfo"
 #make_d="${make_d} -DCMAKE_BUILD_TYPE=Release"

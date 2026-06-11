@@ -139,8 +139,10 @@ if(WITH_CUDAKDTREE)
     
     target_include_directories(cudakdtree_tool 
         PUBLIC 
-            ${PROJECT_SOURCE_DIR}/submodules/cudaKDTree 
-            ${INC}
+            $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/submodules/cudaKDTree>
+            $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/utility/.>
+            $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/submodules/openvdb/nanovdb>
+            $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/common>
         PRIVATE
             ${MPI_INCLUDE_PATH}
             ${MPI_CXX_INCLUDE_PATH}
@@ -167,7 +169,7 @@ if(WITH_NANOFLANN)
     )    
 
     add_library(nanoflann_tool STATIC ${SRC_NANOFLANN})
-    target_include_directories(nanoflann_tool PUBLIC ${PROJECT_SOURCE_DIR}/submodules/nanoflann/include/)
+    target_include_directories(nanoflann_tool PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/submodules/nanoflann/include/>)
 
     target_link_libraries(
         nanoflann_tool

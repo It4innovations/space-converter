@@ -45,10 +45,12 @@ add_library(genericio_lib_static STATIC
 
 target_compile_definitions(genericio_lib_static PUBLIC -DGENERICIO_NO_MPI)
 
-target_link_libraries(genericio_lib_static PUBLIC
-  sz_lib
-  MPI::MPI_CXX
-  ${BLOSC_LIBRARIES}
+target_link_libraries(genericio_lib_static
+  PUBLIC
+    sz_lib
+    MPI::MPI_CXX
+  PRIVATE
+    $<BUILD_INTERFACE:${BLOSC_LIBRARIES}>
   )
 
 install (TARGETS genericio_lib_static 

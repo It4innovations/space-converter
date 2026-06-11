@@ -66,6 +66,7 @@ struct float4_voxel_traits {
     static inline __both__ void set_dim(float4&, int) {}
 };
 
+namespace space_converter {
 namespace utility {
 	namespace cudakdtree {
 
@@ -785,6 +786,7 @@ namespace utility {
 
 	}// cudakdtree
 } //utility
+} // namespace space_converter
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Voxel-centric dense grid conversion – CPU implementation (host code only).
@@ -792,6 +794,7 @@ namespace utility {
 // WITH_CUDAKDTREE is ON, regardless of whether WITH_GPU_CUDA is also set.
 // ─────────────────────────────────────────────────────────────────────────────
 
+namespace space_converter {
 namespace common {
 namespace vdb {
 namespace kernel {
@@ -955,3 +958,4 @@ void convert_to_dense_grid_loop_over_voxels_cpu(
 } // namespace kernel
 } // namespace vdb
 } // namespace common
+} // namespace space_converter

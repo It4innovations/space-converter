@@ -21,6 +21,7 @@
 #include <mpi.h>
 #include <nanoflann.hpp>
 #include <iostream>
+#include "dense_utility.h"
 
 //#undef WITH_OPENMP
 
@@ -39,6 +40,7 @@
 
 #include "utility/dense_utility.h"
 
+namespace space_converter {
 namespace utility {
 	namespace nanoflann_tool {
 
@@ -367,3 +369,4 @@ namespace utility {
 
 	}// nanoflann
 } //utility
+} // namespace space_converter

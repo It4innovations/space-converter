@@ -25,7 +25,7 @@ namespace ipic3d {
 
     // ConvertVDBIPIC3DHDF5 is a derived class from common::vdb::ConvertVDBBase.
     // This class implements methods for converting particle data from iPIC3D HDF5 format into VDB format.
-    class ConvertVDBIPIC3DHDF5 : public common::vdb::ConvertVDBBase {
+    class ConvertVDBIPIC3DHDF5 : public space_converter::common::vdb::ConvertVDBBase {
     public:
         // Print the steps executed on the CPU during the conversion process.
         void print_CPU_steps() override;

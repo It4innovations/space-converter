@@ -855,7 +855,7 @@ namespace space_converter {
 						if (use_dense_loop_over_voxels && calc_radius_neigh > 0
 							&& d_kdtree_nodes != nullptr && kdtree_N > 0) {
 							convert_to_dense_grid_loop_over_voxels_gpu(
-								d_kdtree_nodes,
+								(float4*)d_kdtree_nodes,
 								kdtree_N,
 								radius_particles,
 								value_particles,

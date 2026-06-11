@@ -33,6 +33,7 @@ struct float4 { float x, y, z, w; };
 #endif
 #include "data_common.h"
 
+namespace space_converter {
 namespace utility {
 	namespace cudakdtree {
 
@@ -64,3 +65,4 @@ namespace utility {
 
 	}// cudakdtree
 } //utility
+} // namespace space_converter
