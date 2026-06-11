@@ -708,7 +708,10 @@ namespace space_converter {
 					// Header contains:
 					// - float index_bbox[6]: min_x, min_y, min_z, max_x, max_y, max_z
 					// - float transformation_matrix[12]: 3x4 transformation matrix
-					return 6 * sizeof(float) + 12 * sizeof(float); // 18 floats total = 72 bytes
+					// - int32_t voxel_count
+					// NOTE: serializeCPU() writes its own int32_t count at the next 4 bytes,
+					// which occupies the SerializableCUBData::padding slot and aligns uint64_t keys[] to offset 80.
+					return 6 * sizeof(float) + 12 * sizeof(float) + sizeof(int32_t);
 				}
 
 				void VoxelGPUManagerSortReduce::get_header(uint8_t *bin_data) {
@@ -782,6 +785,13 @@ namespace space_converter {
 					
 					// Write transformation matrix (12 floats)
 					memcpy(data_ptr, transformation_matrix, 12 * sizeof(float));
+					data_ptr += 12 * sizeof(float);
+					
+					// Write voxel count (int32_t)
+					int32_t last_count = static_cast<int32_t>(m_last_count);
+					memcpy(data_ptr, &last_count, sizeof(int32_t));
+					// serializeCPU() follows immediately and writes its own int32_t count at offset+4,
+					// which fills the SerializableCUBData::padding slot so uint64_t keys[] land at offset 80.
 				}
 
 				// ================================================================================
