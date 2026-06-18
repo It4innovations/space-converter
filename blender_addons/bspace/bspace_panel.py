@@ -577,7 +577,8 @@ class BSPACE_OT_ExtractData(bpy.types.Operator):
     def execute(self, context):
         try:
             context.scene.bspace.extract_data(context)
-        except:
+        except Exception as e:
+            print(f"Error occurred: {e}")
             #reconnect
             context.scene.bspace.disconnect(context)
             context.scene.bspace.connect(context)
@@ -865,8 +866,8 @@ class BSPACE:
         context.scene.eevee.volumetric_tile_size = '4'
         context.scene.eevee.volumetric_samples = 64
 
-        context.scene.render.engine = 'CYCLES'
-        context.scene.cycles.device = 'GPU'
+        #context.scene.render.engine = 'CYCLES'
+        #context.scene.cycles.device = 'GPU'
 
         context.scene.cycles.volume_preview_step_rate = 0.1
         context.scene.cycles.volume_max_steps = 64
@@ -1928,105 +1929,106 @@ class BSPACE:
                 # import vdb
                 bpy.ops.object.volume_import(filepath=filename, align='WORLD', location=(0, 0, 0), scale=(1, 1, 1))
         else:
-            if self.get_bbox_name() in bpy.data.objects:
-                obj_cube = bpy.data.objects[self.get_bbox_name()]
+            bbox_name = 'BSPACE_INTERACTIVE_BBOX'
+            if bbox_name in bpy.data.objects:
+                obj_cube = bpy.data.objects[bbox_name]
 
-                if obj_cube.type == 'EMPTY':
-                    # If the object is linked to a collection, unlink it first
-                    for collection in obj_cube.users_collection:
-                        collection.objects.unlink(obj_cube)
+                # if obj_cube.type == 'EMPTY':
+                # If the object is linked to a collection, unlink it first
+                for collection in obj_cube.users_collection:
+                    collection.objects.unlink(obj_cube)
 
-                    # Delete the object
-                    bpy.data.objects.remove(obj_cube)
+                # Delete the object
+                bpy.data.objects.remove(obj_cube)
 
-                    #################### Create a new empty object
-                    #bpy.ops.object.empty_add(type='CUBE')
-                    # Define the vertices for the cube            
-                    v = context.scene.view_pg_bspace.bbox_size
-                    vertices = [
-                        (-v/2.0, -v/2.0, -v/2.0),
-                        (v/2.0, -v/2.0, -v/2.0),
-                        (v/2.0, v/2.0, -v/2.0),
-                        (-v/2.0, v/2.0, -v/2.0),
-                        (-v/2.0, -v/2.0, v/2.0),
-                        (v/2.0, -v/2.0, v/2.0),
-                        (v/2.0, v/2.0, v/2.0),
-                        (-v/2.0, v/2.0, v/2.0)
-                    ]
+            #################### Create a new empty object
+            #bpy.ops.object.empty_add(type='CUBE')
+            # Define the vertices for the cube            
+            v = context.scene.view_pg_bspace.bbox_size
+            vertices = [
+                (-v/2.0, -v/2.0, -v/2.0),
+                (v/2.0, -v/2.0, -v/2.0),
+                (v/2.0, v/2.0, -v/2.0),
+                (-v/2.0, v/2.0, -v/2.0),
+                (-v/2.0, -v/2.0, v/2.0),
+                (v/2.0, -v/2.0, v/2.0),
+                (v/2.0, v/2.0, v/2.0),
+                (-v/2.0, v/2.0, v/2.0)
+            ]
 
-                    # Define the edges for the cube
-                    #edges = []
-                    edges = [
-                        (0, 1),
-                        (1, 2),
-                        (2, 3),
-                        (3, 0),
-                        (4, 5),
-                        (5, 6),
-                        (6, 7),
-                        (7, 4),
-                        (0, 4),
-                        (1, 5),
-                        (2, 6),
-                        (3, 7)
-                    ]
-                    faces = []
+            # Define the edges for the cube
+            #edges = []
+            edges = [
+                (0, 1),
+                (1, 2),
+                (2, 3),
+                (3, 0),
+                (4, 5),
+                (5, 6),
+                (6, 7),
+                (7, 4),
+                (0, 4),
+                (1, 5),
+                (2, 6),
+                (3, 7)
+            ]
+            faces = []
 
-                    # Create the new mesh and object
-                    mesh = bpy.data.meshes.new(self.get_bbox_name())
-                    mesh.from_pydata(vertices, edges, faces)
-                    mesh.update()
+            # Create the new mesh and object
+            mesh = bpy.data.meshes.new(bbox_name)
+            mesh.from_pydata(vertices, edges, faces)
+            mesh.update()
 
-                    # if hasattr(bpy.types.Scene, 'haystack_scene'):
-                    #     context.scene.haystack_scene.create_bbox(context)
+            # if hasattr(bpy.types.Scene, 'haystack_scene'):
+            #     context.scene.haystack_scene.create_bbox(context)
 
-                    obj_cube = bpy.data.objects.new(self.get_bbox_name(), mesh)
+            obj_cube = bpy.data.objects.new(bbox_name, mesh)
 
-                    bbox_size = context.scene.view_pg_bspace.bbox_size
-                    bbox_size_half = bbox_size / 2.0
+            bbox_size = context.scene.view_pg_bspace.bbox_size
+            bbox_size_half = bbox_size / 2.0
 
-                    #obj_cube.empty_display_size = bbox_size_half
-                    obj_cube.scale=(bbox_size_half, bbox_size_half, bbox_size_half)
-                    obj_cube.location=(bbox_size_half, bbox_size_half, bbox_size_half)                    
+            #obj_cube.empty_display_size = bbox_size_half
+            #obj_cube.scale=(bbox_size_half, bbox_size_half, bbox_size_half)
+            obj_cube.location=(bbox_size_half, bbox_size_half, bbox_size_half)                    
 
-                    # Add the object into the scene
-                    #scene = bpy.context.scene
-                    #scene.collection.objects.link(obj_cube)
-                    # Get the active collection
-                    active_collection = bpy.context.view_layer.active_layer_collection.collection
+            # Add the object into the scene
+            #scene = bpy.context.scene
+            #scene.collection.objects.link(obj_cube)
+            # Get the active collection
+            active_collection = bpy.context.view_layer.active_layer_collection.collection
 
-                    # Add the object into the active collection
-                    active_collection.objects.link(obj_cube)
+            # Add the object into the active collection
+            active_collection.objects.link(obj_cube)
 
-                    # # Set the origin to the center of the cube
-                    # v = context.scene.view_pg_bspace.bbox_size
-                    # origin_location = (v/2, v/2, v/2)
+            # # Set the origin to the center of the cube
+            # v = context.scene.view_pg_bspace.bbox_size
+            # origin_location = (v/2, v/2, v/2)
 
-                    # # Store the current cursor location
-                    # saved_cursor_location = context.scene.cursor.location.copy()
+            # # Store the current cursor location
+            # saved_cursor_location = context.scene.cursor.location.copy()
 
-                    # # Move cursor to the desired origin position
-                    # context.scene.cursor.location = origin_location
+            # # Move cursor to the desired origin position
+            # context.scene.cursor.location = origin_location
 
-                    # # Set origin to cursor position
-                    # context.view_layer.objects.active = obj_cube
-                    # bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+            # # Set origin to cursor position
+            # context.view_layer.objects.active = obj_cube
+            # bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
 
-                    # # Restore cursor position
-                    # context.scene.cursor.location = saved_cursor_location                    
+            # # Restore cursor position
+            # context.scene.cursor.location = saved_cursor_location                    
 
-                    obj_cube['MIN_VALUE'] = 0.0
-                    obj_cube['MAX_VALUE'] = 1.0
-                    self.set_vdb_shader(context, obj_cube)
+            # obj_cube['MIN_VALUE'] = 0.0
+            # obj_cube['MAX_VALUE'] = 1.0
+            # self.set_vdb_shader(context, obj_cube)
 
-                    try:
-                        context.scene.cyclesphi.server_settings.mat_volume = obj_cube.data.materials[0]
-                    except:
-                        pass     
+            # try:
+            #     context.scene.cyclesphi.server_settings.mat_volume = obj_cube.data.materials[0]
+            # except:
+            #     pass     
 
-                # Optionally set the object as active and select it
-                bpy.context.view_layer.objects.active = obj_cube
-                #obj_cube.select_set(True)                
+            # Optionally set the object as active and select it
+            bpy.context.view_layer.objects.active = obj_cube
+            #obj_cube.select_set(True)                
 
         #set view
         # if grid_dim == context.scene.view_pg_bspace.grid_dim:
