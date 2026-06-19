@@ -317,11 +317,14 @@ namespace space_converter {
 						px, py, pz, v_orig
 					);
 
-					// Store results
+					// Store results. The atomic counter doubles as a compaction index:
+					// writing at "idx" (the original particle id) would scatter valid
+					// entries across the buffer, leaving update()'s [0, raw_count) sort
+					// range to mix stale/missing slots instead of the actual outputs.
 					if (should_process) {
-						voxel_keys[idx] = packCoord3(px, py, pz);
-						voxel_values[idx] = v_orig;
-						atomicAdd((unsigned long long*)particle_count, 1ULL);
+						uint64_t out_idx = atomicAdd((unsigned long long*)particle_count, 1ULL);
+						voxel_keys[out_idx] = packCoord3(px, py, pz);
+						voxel_values[out_idx] = v_orig;
 					}
 				}
 
