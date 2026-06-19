@@ -212,6 +212,8 @@ namespace space_converter {
 
 					// Get direct access to the NanoVDB grid (for conversion/output)
 					std::shared_ptr<T> getGrid() { return nano_grid; }
+
+					void set_transform(double ts) override;
 				};
 
 				typedef VoxelNanoVDBManager<nanovdb::tools::build::FloatGrid> VoxelNanoVDBManagerFloat;
@@ -263,6 +265,8 @@ namespace space_converter {
 
 					// Get direct access to the OpenVDB grid (for conversion/output)
 					std::shared_ptr<T> getGrid() { return vdb_grid; }
+
+					void set_transform(double ts) override;
 				};
 
 				// Type aliases for commonly used grid types
