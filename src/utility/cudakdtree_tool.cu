@@ -49,6 +49,7 @@ using cukd::divRoundUp;
 #define MAX_MPI_BYTES (INT_MAX - 1024)
 
 #include "utility/dense_utility.h"
+#include "utility/gpu_utility.h"
 
 // cukd float4 traits: (x,y,z)=voxel-unit position, w=bit-cast particle index.
 struct float4_voxel_traits {
@@ -192,9 +193,9 @@ namespace utility {
             float3* d_tree_recv = 0;
             //int N = myPoints.size();
             // alloc N+1 so we can store one more if anytoher rank gets oen more point
-            CUKD_CUDA_CALL(MallocManaged((void**)&d_tree, (maxNumPointsAnybodyHas + 1) * sizeof(float3)));
-            CUKD_CUDA_CALL(MallocManaged((void**)&d_tree_recv, (maxNumPointsAnybodyHas + 1) * sizeof(float3)));
-            CUKD_CUDA_CALL(Memcpy(d_tree, points, (size_t)N * sizeof(float3),
+            CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_tree, (maxNumPointsAnybodyHas + 1) * sizeof(float3)));
+            CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_tree_recv, (maxNumPointsAnybodyHas + 1) * sizeof(float3)));
+            CUDA_CHECK_ERROR(cudaMemcpy(d_tree, points, (size_t)N * sizeof(float3),
                 cudaMemcpyDefault));
 
 
@@ -219,14 +220,19 @@ namespace utility {
 #if 0 //nosplit
             float3* d_queries;            
             uint64_t* d_cand;
-            CUKD_CUDA_CALL(MallocManaged((void**)&d_queries, (size_t)N * sizeof(float3)));
-            CUKD_CUDA_CALL(Memcpy(d_queries, points, N * sizeof(float3), cudaMemcpyDefault));
-            CUKD_CUDA_CALL(MallocManaged((void**)&d_cand, (size_t)N * k * sizeof(uint64_t)));
+            CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_queries, (size_t)N * sizeof(float3)));
+            CUDA_CHECK_ERROR(cudaMemcpy(d_queries, points, N * sizeof(float3), cudaMemcpyDefault));
+            CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_cand, (size_t)N * k * sizeof(uint64_t)));
 
 #else
             //TODO!!!
             // Choose S (number of splits/batches)
             int S = 1;//k; // or make this a parameter
+
+            const char *env_splits = std::getenv("CUDAKDTREE_NUM_SPLITS");
+            if (env_splits) {
+                S = std::atoi(env_splits);
+            }
 
             if (S > N) {
                 S = 1;
@@ -241,10 +247,10 @@ namespace utility {
             //float* d_radius_particles = 0;
             //float* d_rho_particles = 0;
             //float* d_mass_particles = 0;
-            //CUKD_CUDA_CALL(MallocManaged((void**)&d_radius_particles, numPointsThatIHave * sizeof(float)));
-            //CUKD_CUDA_CALL(MallocManaged((void**)&d_rho_particles, numPointsThatIHave * sizeof(float)));
-            //CUKD_CUDA_CALL(MallocManaged((void**)&d_mass_particles, numPointsThatIHave * sizeof(float)));
-            //CUKD_CUDA_CALL(Memcpy(d_mass_particles, mass_particles.data(), numPointsThatIHave * sizeof(float), cudaMemcpyHostToDevice));
+            //CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_radius_particles, numPointsThatIHave * sizeof(float)));
+            //CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_rho_particles, numPointsThatIHave * sizeof(float)));
+            //CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_mass_particles, numPointsThatIHave * sizeof(float)));
+            //CUDA_CHECK_ERROR(cudaMemcpy(d_mass_particles, mass_particles.data(), numPointsThatIHave * sizeof(float), cudaMemcpyHostToDevice));
 #endif            
 
             // -----------------------------------------------------------------------------
@@ -311,7 +317,7 @@ namespace utility {
                         /* query params */d_cand, k, maxRadius,
                         /* query points */d_queries, numQueries,
                         round);
-                CUKD_CUDA_CALL(DeviceSynchronize());
+                CUDA_CHECK_ERROR(cudaDeviceSynchronize());
 #else
                 // Process queries in S batches
                 for (int s = 0; s < S; ++s) {
@@ -323,52 +329,52 @@ namespace utility {
                     if (d_cand_size < this_batch * (size_t)k * sizeof(uint64_t)) {
 
                         if (d_cand != nullptr) {
-							CUKD_CUDA_CALL(Free(d_cand));
+							CUDA_CHECK_ERROR(cudaFree(d_cand));
                         }
 
                         d_cand_size = this_batch * (size_t)k * sizeof(uint64_t);
-                        CUKD_CUDA_CALL(MallocManaged((void**)&d_cand, d_cand_size));
+                        CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_cand, d_cand_size));
                     }
-					CUKD_CUDA_CALL(Memset(d_cand, 0, d_cand_size));
+					CUDA_CHECK_ERROR(cudaMemset(d_cand, 0, d_cand_size));
 
                     // Prepare batch queries
 					if (d_batch_queries_size < this_batch * sizeof(float3)) {
 						if (d_batch_queries != nullptr) {
-							CUKD_CUDA_CALL(Free(d_batch_queries));
+							CUDA_CHECK_ERROR(cudaFree(d_batch_queries));
 						}
 						d_batch_queries_size = this_batch * sizeof(float3);
-                        CUKD_CUDA_CALL(MallocManaged((void**)&d_batch_queries, d_batch_queries_size));
+                        CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_batch_queries, d_batch_queries_size));
 					}
-                    CUKD_CUDA_CALL(Memcpy(d_batch_queries, ((float3*)points) + start, this_batch * sizeof(float3), cudaMemcpyDefault));
+                    CUDA_CHECK_ERROR(cudaMemcpy(d_batch_queries, ((float3*)points) + start, this_batch * sizeof(float3), cudaMemcpyDefault));
 
                     // Prepare batch mass
 					if (d_batch_mass_size < this_batch * sizeof(float)) {
 						if (d_batch_mass != nullptr) {
-							CUKD_CUDA_CALL(Free(d_batch_mass));
+							CUDA_CHECK_ERROR(cudaFree(d_batch_mass));
 						}
 						d_batch_mass_size = this_batch * sizeof(float);
-                        CUKD_CUDA_CALL(MallocManaged((void**)&d_batch_mass, d_batch_mass_size));
+                        CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_batch_mass, d_batch_mass_size));
 					}                   
-                    CUKD_CUDA_CALL(Memcpy(d_batch_mass, mass_particles.data() + start, this_batch * sizeof(float), cudaMemcpyHostToDevice));
+                    CUDA_CHECK_ERROR(cudaMemcpy(d_batch_mass, mass_particles.data() + start, this_batch * sizeof(float), cudaMemcpyHostToDevice));
 
                     // Output for this batch
 					if (d_batch_radius_size < this_batch * sizeof(float)) {
 						if (d_batch_radius != nullptr) {
-							CUKD_CUDA_CALL(Free(d_batch_radius));
+							CUDA_CHECK_ERROR(cudaFree(d_batch_radius));
 						}
 						d_batch_radius_size = this_batch * sizeof(float);
-                        CUKD_CUDA_CALL(MallocManaged((void**)&d_batch_radius, d_batch_radius_size));
+                        CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_batch_radius, d_batch_radius_size));
 					}
-					CUKD_CUDA_CALL(Memset(d_batch_radius, 0, d_batch_radius_size));
+					CUDA_CHECK_ERROR(cudaMemset(d_batch_radius, 0, d_batch_radius_size));
 
 					if (d_batch_rho_size < this_batch * sizeof(float)) {
 						if (d_batch_rho != nullptr) {
-							CUKD_CUDA_CALL(Free(d_batch_rho));
+							CUDA_CHECK_ERROR(cudaFree(d_batch_rho));
 						}
 						d_batch_rho_size = this_batch * sizeof(float);
-                        CUKD_CUDA_CALL(MallocManaged((void**)&d_batch_rho, d_batch_rho_size));
+                        CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_batch_rho, d_batch_rho_size));
 					}
-					CUKD_CUDA_CALL(Memset(d_batch_rho, 0, d_batch_rho_size));
+					CUDA_CHECK_ERROR(cudaMemset(d_batch_rho, 0, d_batch_rho_size));
 
                     // Run query for this batch
                     runQuery << <divRoundUp(this_batch, 256ULL), 256 >> >(
@@ -377,27 +383,27 @@ namespace utility {
                         d_batch_queries, this_batch,
                         round
                     );
-                    CUKD_CUDA_CALL(DeviceSynchronize());
+                    CUDA_CHECK_ERROR(cudaDeviceSynchronize());
 
                     // Extract results for this batch
                     extractFinalResult<<<divRoundUp(this_batch, 256ULL), 256 >>>(
 						d_batch_radius, d_batch_rho, d_batch_mass, this_batch, k, d_cand, rho_kernel
                     );
-                    CUKD_CUDA_CALL(DeviceSynchronize());
+                    CUDA_CHECK_ERROR(cudaDeviceSynchronize());
 
                     // Copy results to the full output arrays
-                    CUKD_CUDA_CALL(Memcpy(radius_particles.data() + start, d_batch_radius, this_batch * sizeof(float), cudaMemcpyDeviceToHost));
-                    CUKD_CUDA_CALL(Memcpy(rho_particles.data() + start, d_batch_rho, this_batch * sizeof(float), cudaMemcpyDeviceToHost));
+                    CUDA_CHECK_ERROR(cudaMemcpy(radius_particles.data() + start, d_batch_radius, this_batch * sizeof(float), cudaMemcpyDeviceToHost));
+                    CUDA_CHECK_ERROR(cudaMemcpy(rho_particles.data() + start, d_batch_rho, this_batch * sizeof(float), cudaMemcpyDeviceToHost));
                 }
 #endif
             }
 
             // Free batch memory
-            CUKD_CUDA_CALL(Free(d_cand));
-            CUKD_CUDA_CALL(Free(d_batch_queries));
-            CUKD_CUDA_CALL(Free(d_batch_mass));
-            CUKD_CUDA_CALL(Free(d_batch_radius));
-            CUKD_CUDA_CALL(Free(d_batch_rho));
+            CUDA_CHECK_ERROR(cudaFree(d_cand));
+            CUDA_CHECK_ERROR(cudaFree(d_batch_queries));
+            CUDA_CHECK_ERROR(cudaFree(d_batch_mass));
+            CUDA_CHECK_ERROR(cudaFree(d_batch_radius));
+            CUDA_CHECK_ERROR(cudaFree(d_batch_rho));
 
             // End timing after computation
             MPI_Barrier(MPI_COMM_WORLD);
@@ -413,21 +419,21 @@ namespace utility {
             float* d_radius_particles = 0;
             float* d_rho_particles = 0;
             float* d_mass_particles = 0;
-            CUKD_CUDA_CALL(MallocManaged((void**)&d_radius_particles, numPointsThatIHave * sizeof(float)));
-            CUKD_CUDA_CALL(MallocManaged((void**)&d_rho_particles, numPointsThatIHave * sizeof(float)));
+            CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_radius_particles, numPointsThatIHave * sizeof(float)));
+            CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_rho_particles, numPointsThatIHave * sizeof(float)));
             
-            CUKD_CUDA_CALL(MallocManaged((void**)&d_mass_particles, numPointsThatIHave * sizeof(float)));
-            CUKD_CUDA_CALL(Memcpy(d_mass_particles, mass_particles.data(), numPointsThatIHave * sizeof(float), cudaMemcpyHostToDevice));
+            CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_mass_particles, numPointsThatIHave * sizeof(float)));
+            CUDA_CHECK_ERROR(cudaMemcpy(d_mass_particles, mass_particles.data(), numPointsThatIHave * sizeof(float), cudaMemcpyHostToDevice));
 
             extractFinalResult << <divRoundUp(numQueries, 1024), 1024 >> >
                 (d_radius_particles, d_rho_particles, d_mass_particles, numQueries, k, d_cand);
 
-            CUKD_CUDA_CALL(DeviceSynchronize());
+            CUDA_CHECK_ERROR(cudaDeviceSynchronize());
 
             radius_particles.resize(numPointsThatIHave);
             rho_particles.resize(numPointsThatIHave);
-            CUKD_CUDA_CALL(Memcpy(radius_particles.data(), d_radius_particles, numPointsThatIHave * sizeof(float), cudaMemcpyDeviceToHost));
-            CUKD_CUDA_CALL(Memcpy(rho_particles.data(), d_rho_particles, numPointsThatIHave * sizeof(float), cudaMemcpyDeviceToHost));
+            CUDA_CHECK_ERROR(cudaMemcpy(radius_particles.data(), d_radius_particles, numPointsThatIHave * sizeof(float), cudaMemcpyDeviceToHost));
+            CUDA_CHECK_ERROR(cudaMemcpy(rho_particles.data(), d_rho_particles, numPointsThatIHave * sizeof(float), cudaMemcpyDeviceToHost));
 
             MPI_Barrier(MPI_COMM_WORLD);
 #endif            
@@ -545,6 +551,11 @@ namespace utility {
 #else
             //TODO!!!
             int S = 1;//k; // for example, or make it a parameter
+
+            const char *env_splits = std::getenv("CUDAKDTREE_NUM_SPLITS");
+            if (env_splits) {
+                S = std::atoi(env_splits);
+            }
 
             if (S > N) {
                 S = 1;
@@ -695,7 +706,7 @@ namespace utility {
 
             // Check available GPU memory
             size_t free_mem, total_mem;
-            CUKD_CUDA_CALL(MemGetInfo(&free_mem, &total_mem));
+            CUDA_CHECK_ERROR(cudaMemGetInfo(&free_mem, &total_mem));
             size_t required_mem = N * sizeof(float4);
             printf("[build_float4_kdtree_gpu] GPU memory - Free: %.2f GB, Total: %.2f GB, Required: %.2f MB\n",
                    free_mem / (1024.0 * 1024.0 * 1024.0),
@@ -708,7 +719,7 @@ namespace utility {
             }
 
             // Allocate GPU memory for the tree
-            CUKD_CUDA_CALL(MallocManaged((void**)d_out_tree, N * sizeof(float4)));
+            CUDA_CHECK_ERROR(CUDA_MALLOC((void**)d_out_tree, N * sizeof(float4)));
             
             // Allocate temporary host memory to prepare nodes
             std::vector<float4> h_tree(N);
@@ -725,7 +736,7 @@ namespace utility {
             }
             
             // Copy prepared nodes to GPU
-            CUKD_CUDA_CALL(Memcpy(*d_out_tree, h_tree.data(), N * sizeof(float4), cudaMemcpyHostToDevice));
+            CUDA_CHECK_ERROR(cudaMemcpy(*d_out_tree, h_tree.data(), N * sizeof(float4), cudaMemcpyHostToDevice));
             
             // Build left-balanced KD-tree in-place on GPU
             printf("[build_float4_kdtree_gpu] Starting buildTree with %zu nodes...\n", N);
@@ -735,12 +746,12 @@ namespace utility {
             cudaError_t build_err = cudaGetLastError();
             if (build_err != cudaSuccess) {
                 printf("[build_float4_kdtree_gpu] ERROR in buildTree: %s\n", cudaGetErrorString(build_err));
-                CUKD_CUDA_CALL(Free(*d_out_tree));
+                CUDA_CHECK_ERROR(cudaFree(*d_out_tree));
                 *d_out_tree = nullptr;
                 throw std::runtime_error(std::string("buildTree failed: ") + cudaGetErrorString(build_err));
             }
             
-            CUKD_CUDA_CALL(DeviceSynchronize());
+            CUDA_CHECK_ERROR(cudaDeviceSynchronize());
             printf("[build_float4_kdtree_gpu] buildTree completed successfully\n");
         }
 
