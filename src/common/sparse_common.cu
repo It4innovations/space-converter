@@ -253,6 +253,18 @@ namespace space_converter {
 					}
 				};
 
+				// Kernel to transform keys to BBox3D
+				__global__ void keysToBBox3D(const uint64_t* keys, BBox3D* bboxes, int n) {
+					int idx = blockIdx.x * blockDim.x + threadIdx.x;
+					if (idx >= n) return;
+					
+					uint64_t key = keys[idx];
+					int x = (int)((key) & COORD_MASK) - COORD_BIAS;
+					int y = (int)((key >> COORD_BITS) & COORD_MASK) - COORD_BIAS;
+					int z = (int)((key >> (2 * COORD_BITS)) & COORD_MASK) - COORD_BIAS;
+					bboxes[idx] = BBox3D(x, y, z);
+				}
+
 				// ---------------------------------------------
 				// Fast manager: per-batch accumulate via sort+reduce
 				// ---------------------------------------------
@@ -720,9 +732,17 @@ namespace space_converter {
 					float index_bbox[6] = { FLT_MAX, FLT_MAX, FLT_MAX, -FLT_MAX, -FLT_MAX, -FLT_MAX };
 
 					if (m_last_count > 0 && d_keys_out) {
-						// Transform iterator: unpack each uint64 key → BBox3D on the fly (no host copy)
-						cub::TransformInputIterator<BBox3D, KeyToBBox3D, uint64_t*>
-							d_iter(d_keys_out, KeyToBBox3D{});
+						// Allocate temporary array for BBox3D values
+						BBox3D* d_bboxes = nullptr;
+						CUDA_CHECK_ERROR(CUDA_MALLOC(&d_bboxes, m_last_count * sizeof(BBox3D)));
+
+						// Transform keys to BBox3D using kernel
+						{
+							int block = 256;
+							int grid = (m_last_count + block - 1) / block;
+							keysToBBox3D<<<grid, block>>>(d_keys_out, d_bboxes, m_last_count);
+							CUDA_CHECK_ERROR(cudaGetLastError());
+						}
 
 						// Allocate output and temp storage
 						BBox3D* d_bbox_out = nullptr;
@@ -732,16 +752,17 @@ namespace space_converter {
 						size_t temp_bytes = 0;
 						BBox3D init_val;
 						CUDA_CHECK_ERROR(cub::DeviceReduce::Reduce(nullptr, temp_bytes,
-							d_iter, d_bbox_out, m_last_count, BBox3DReduceOp{}, init_val));
+							d_bboxes, d_bbox_out, m_last_count, BBox3DReduceOp{}, init_val));
 						CUDA_CHECK_ERROR(CUDA_MALLOC(&d_temp, temp_bytes));
 
 						CUDA_CHECK_ERROR(cub::DeviceReduce::Reduce(d_temp, temp_bytes,
-							d_iter, d_bbox_out, m_last_count, BBox3DReduceOp{}, init_val));
+							d_bboxes, d_bbox_out, m_last_count, BBox3DReduceOp{}, init_val));
 
 						BBox3D h_bbox;
 						CUDA_CHECK_ERROR(cudaMemcpy(&h_bbox, d_bbox_out, sizeof(BBox3D), cudaMemcpyDeviceToHost));
 						cudaFree(d_temp);
 						cudaFree(d_bbox_out);
+						cudaFree(d_bboxes);
 
 						index_bbox[0] = static_cast<float>(h_bbox.min_x);
 						index_bbox[1] = static_cast<float>(h_bbox.min_y);
