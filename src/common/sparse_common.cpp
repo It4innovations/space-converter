@@ -760,7 +760,7 @@ namespace space_converter {
 				//}
 
 				template<typename T>
-				void VoxelNanoVDBManager<T>::set_transform(double ts) {
+				void VoxelOpenVDBManager<T>::set_transform(double ts) {
 					transform_scale = ts;
 					if (transform_scale > 0.0) {
 						openvdb::math::Transform::Ptr transform = openvdb::math::Transform::createLinearTransform(transform_scale);
