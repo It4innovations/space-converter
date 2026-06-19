@@ -702,9 +702,15 @@ namespace space_converter {
 						d_vals_out, d_max_out, m_last_count);
 					GPU_CUB_TIME_END(DeviceReduce_Max);
 
+
+					float min, max;
+
 					// Copy results to host
-					CUDA_CHECK_ERROR(cudaMemcpy(&min_value, d_min_out, sizeof(float), cudaMemcpyDeviceToHost));
-					CUDA_CHECK_ERROR(cudaMemcpy(&max_value, d_max_out, sizeof(float), cudaMemcpyDeviceToHost));
+					CUDA_CHECK_ERROR(cudaMemcpy(&min, d_min_out, sizeof(float), cudaMemcpyDeviceToHost));
+					CUDA_CHECK_ERROR(cudaMemcpy(&max, d_max_out, sizeof(float), cudaMemcpyDeviceToHost));
+
+					min_value = min;
+					max_value = max;
 				}
 
 				void VoxelGPUManagerSortReduce::get_keys_values_from_device(uint64_t* h_keys, float* h_vals) {

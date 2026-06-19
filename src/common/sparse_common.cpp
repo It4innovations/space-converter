@@ -448,6 +448,14 @@ namespace space_converter {
 				//}
 
 				template<typename T>
+				void VoxelNanoVDBManager<T>::set_transform(double ts) {
+					transform_scale = ts;
+					if (transform_scale > 0.0) {
+						nano_grid->setTransform(transform_scale, nanovdb::Vec3d(0, 0, 0));
+					}
+				}
+
+				template<typename T>
 				void VoxelNanoVDBManager<T>::clear() {
 					// Create a new empty grid
 					using BuildType = GridBuildType_t<T>;
@@ -750,6 +758,15 @@ namespace space_converter {
 
 				//	return total_count;
 				//}
+
+				template<typename T>
+				void VoxelOpenVDBManager<T>::set_transform(double ts) {
+					transform_scale = ts;
+					if (transform_scale > 0.0) {
+						openvdb::math::Transform::Ptr transform = openvdb::math::Transform::createLinearTransform(transform_scale);
+						vdb_grid->setTransform(transform);
+					}
+				}
 
 				template<typename T>
 				void VoxelOpenVDBManager<T>::clear() {
