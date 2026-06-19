@@ -557,6 +557,8 @@ namespace space_converter {
 					particles_count = static_cast<size_t>(raw_count);
 					voxel_manager_gpu->update(raw_count);
 
+					particles_count = raw_count;
+
 					// Get min/max using CUB (operates on d_vals_out which contains reduced values)
 					voxel_manager_gpu->find_min_max(min_value, max_value);
 				}

@@ -320,6 +320,10 @@ namespace space_converter {
 							common::vdb::sparse::Voxel voxel(px, py, pz, v_orig);
 							voxel_manager->insertOrUpdate(&voxel, 1);
 						}
+
+						particles_count = particles_count_temp;
+						min_value = min;
+						max_value = max;
 					}
 				}
 

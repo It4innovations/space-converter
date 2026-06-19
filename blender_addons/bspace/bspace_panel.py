@@ -1752,6 +1752,8 @@ class BSPACE:
         #     # bbox_min = (bbox_location[0] - bbox_dims[0] / 2.0, bbox_location[1] - bbox_dims[1] / 2.0, bbox_location[2] - bbox_dims[2] / 2.0)
         #     # bbox_max = (bbox_location[0] + bbox_dims[0] / 2.0, bbox_location[1] + bbox_dims[1] / 2.0, bbox_location[2] + bbox_dims[2] / 2.0)
 
+        # active_object_temp = context.view_layer.objects.active
+
         bbox_location = self.get_bbox_location(context)
         bbox_dims = self.get_bbox_dim(context)
         bbox_size = context.scene.view_pg_bspace.bbox_size #self.get_bbox_size(context)
@@ -1928,21 +1930,11 @@ class BSPACE:
             if file_type != "RAW_PART":
                 # import vdb
                 bpy.ops.object.volume_import(filepath=filename, align='WORLD', location=(0, 0, 0), scale=(1, 1, 1))
+
+            obj_vdb_new = bpy.context.view_layer.objects.active
         else:
             bbox_name = 'BSPACE_INTERACTIVE_BBOX'
-            if bbox_name in bpy.data.objects:
-                obj_cube = bpy.data.objects[bbox_name]
-
-                # if obj_cube.type == 'EMPTY':
-                # If the object is linked to a collection, unlink it first
-                for collection in obj_cube.users_collection:
-                    collection.objects.unlink(obj_cube)
-
-                # Delete the object
-                bpy.data.objects.remove(obj_cube)
-
-            #################### Create a new empty object
-            #bpy.ops.object.empty_add(type='CUBE')
+            
             # Define the vertices for the cube            
             v = context.scene.view_pg_bspace.bbox_size
             vertices = [
@@ -1957,7 +1949,6 @@ class BSPACE:
             ]
 
             # Define the edges for the cube
-            #edges = []
             edges = [
                 (0, 1),
                 (1, 2),
@@ -1974,31 +1965,47 @@ class BSPACE:
             ]
             faces = []
 
-            # Create the new mesh and object
-            mesh = bpy.data.meshes.new(bbox_name)
-            mesh.from_pydata(vertices, edges, faces)
-            mesh.update()
+            # Create or get mesh
+            if bbox_name not in bpy.data.meshes:
+                mesh = bpy.data.meshes.new(bbox_name)
+                mesh.from_pydata(vertices, edges, faces)
+                mesh.update()
+            else:
+                mesh = bpy.data.meshes[bbox_name]
+                # Update vertex positions only
+                if len(mesh.vertices) == len(vertices):
+                    for i, vert in enumerate(mesh.vertices):
+                        vert.co = vertices[i]
+                    mesh.update()
+                else:
+                    # If vertex count doesn't match, recreate mesh data
+                    mesh.clear_geometry()
+                    mesh.from_pydata(vertices, edges, faces)
+                    mesh.update()
 
-            # if hasattr(bpy.types.Scene, 'haystack_scene'):
-            #     context.scene.haystack_scene.create_bbox(context)
-
-            obj_cube = bpy.data.objects.new(bbox_name, mesh)
+            # Create or get object
+            if bbox_name not in bpy.data.objects:
+                obj_cube = bpy.data.objects.new(bbox_name, mesh)
+                # Get the active collection
+                active_collection = bpy.context.view_layer.active_layer_collection.collection
+                # Add the object into the active collection
+                active_collection.objects.link(obj_cube)
+            else:
+                obj_cube = bpy.data.objects[bbox_name]
 
             bbox_size = context.scene.view_pg_bspace.bbox_size
             bbox_size_half = bbox_size / 2.0
 
-            #obj_cube.empty_display_size = bbox_size_half
-            #obj_cube.scale=(bbox_size_half, bbox_size_half, bbox_size_half)
-            obj_cube.location=(bbox_size_half, bbox_size_half, bbox_size_half)                    
+            obj_cube.location = (bbox_size_half, bbox_size_half, bbox_size_half)                    
 
             # Add the object into the scene
             #scene = bpy.context.scene
             #scene.collection.objects.link(obj_cube)
-            # Get the active collection
-            active_collection = bpy.context.view_layer.active_layer_collection.collection
+            # # Get the active collection
+            # active_collection = bpy.context.view_layer.active_layer_collection.collection
 
-            # Add the object into the active collection
-            active_collection.objects.link(obj_cube)
+            # # Add the object into the active collection
+            # active_collection.objects.link(obj_cube)
 
             # # Set the origin to the center of the cube
             # v = context.scene.view_pg_bspace.bbox_size
@@ -2027,15 +2034,9 @@ class BSPACE:
             #     pass     
 
             # Optionally set the object as active and select it
-            bpy.context.view_layer.objects.active = obj_cube
-            #obj_cube.select_set(True)                
-
-        #set view
-        # if grid_dim == context.scene.view_pg_bspace.grid_dim:
-        #     context.scene.bspace.set_view(context)
-        #     bpy.ops.view3d.view_selected(use_all_regions=False)
-
-        obj_vdb_new = bpy.context.view_layer.objects.active
+            #bpy.context.view_layer.objects.active = obj_cube
+            #obj_cube.select_set(True)    
+            obj_vdb_new = obj_cube
 
         if not file_data is None:
             for i in range(3):
@@ -2125,6 +2126,10 @@ class BSPACE:
 
             if context.scene.bspace_list_data_index > len(context.scene.bspace_list_data) - 1:
                 context.scene.bspace_list_data_index = len(context.scene.bspace_list_data) - 1
+
+
+        # if context.scene.view_pg_bspace.register_export:
+        #     context.view_layer.objects.active = active_object_temp
 
     def merge_vdb(self, context):
         # filename_nvdb = pref.local_temp_dir_path + "/" + fvdb + ".nvdb"
