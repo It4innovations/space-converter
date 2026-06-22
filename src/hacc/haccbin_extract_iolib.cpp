@@ -32,7 +32,9 @@
 #include <unistd.h>
 #endif
 
+#ifdef WITH_OPENMP
 #include <omp.h>
+#endif
 
 #include "convert_common.h"
 
@@ -311,7 +313,9 @@ namespace haccbin {
 		int g_smoothlength_blocknr = -1;
 
 		void init_lib(std::string basefile, int world_rank, int world_size) {
+#ifdef WITH_OPENMP
 			steps_time[0] = omp_get_wtime();
+#endif
 
 			//tf_data = new Tipsy::TipsyFile(basefile);
 			//HACCBinReader treader(basefile);
@@ -336,7 +340,9 @@ namespace haccbin {
 			//	}
 			//}
 
+#ifdef WITH_OPENMP
 			steps_time[1] = omp_get_wtime();
+#endif
 		}
 
 		void finish_lib() {

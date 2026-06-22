@@ -21,7 +21,9 @@
 #include <unordered_map>
 #include "convert_vdb.h"
 
+#ifdef WITH_OPENMP
 #include <omp.h>
+#endif
 
 #ifdef WITH_OPENVDB
 #	include <openvdb/openvdb.h>
@@ -109,17 +111,25 @@ namespace space_converter {
 
 					Voxel* h_voxels = (Voxel*)_voxels;
 
+#ifdef WITH_OPENMP
 					auto start_total = omp_get_wtime();
 
 					// OPTIMIZATION: Use thread-local hash maps to pre-aggregate voxels
 					// This drastically reduces hash table contention
 					auto start_preagg = omp_get_wtime();
 					const int thread_count = omp_get_max_threads();
+#else
+					const int thread_count = 1;
+#endif
 					std::vector<std::unordered_map<uint64_t, float>> thread_maps(thread_count);
 
 #pragma omp parallel
 					{
+#ifdef WITH_OPENMP
 						int tid = omp_get_thread_num();
+#else
+						int tid = 0;
+#endif
 						auto& local_map = thread_maps[tid];
 						local_map.reserve((size_t)num_voxels / (size_t)thread_count + 64);
 
@@ -130,10 +140,12 @@ namespace space_converter {
 							local_map[key] += v.value;
 						}
 					}
+#ifdef WITH_OPENMP
 					auto end_preagg = omp_get_wtime();
 
 					// Merge thread-local maps into single map
 					auto start_merge = omp_get_wtime();
+#endif
 					size_t total_local_unique = 0;
 					for (const auto& m : thread_maps) {
 						total_local_unique += m.size();
@@ -146,13 +158,17 @@ namespace space_converter {
 							merged[kv.first] += kv.second;
 						}
 					}
+
+#ifdef WITH_OPENMP
 					auto end_merge = omp_get_wtime();
 
 					// Sequential insertion into hash table (no contention)
 					auto start_hash_insert = omp_get_wtime();
+#endif
 					for (const auto& kv : merged) {
 						insertOrUpdatePackedSequential(kv.first, kv.second);
 					}
+#ifdef WITH_OPENMP
 					auto end_hash_insert = omp_get_wtime();
 					auto end_total = omp_get_wtime();
 					auto preagg_duration = (end_preagg - start_preagg) * 1000.0;
@@ -163,6 +179,7 @@ namespace space_converter {
 					printf("[insertOrUpdate] Pre-agg: %.3f ms, Merge: %.3f ms, Hash insert: %.3f ms, Total: %.3f ms\n",
 						preagg_duration, merge_duration,
 						hash_insert_duration, total_duration);
+#endif
 				}
 
 				// Extract all voxels from hash table using OpenMP
@@ -275,13 +292,21 @@ namespace space_converter {
 						return;
 					}
 
-					// Parallel insertion directly from other's hash table using thread-local maps
+					// Parallel insertion directly from other's hash table using thread-local maps	
+#ifdef WITH_OPENMP
 					const int thread_count = omp_get_max_threads();
+#else
+					const int thread_count = 1;
+#endif
 					std::vector<std::unordered_map<uint64_t, float>> thread_maps(thread_count);
 
 #pragma omp parallel
 					{
+#ifdef WITH_OPENMP
 						int tid = omp_get_thread_num();
+#else
+						int tid = 0;
+#endif
 						auto& local_map = thread_maps[tid];
 
 #pragma omp for schedule(static)

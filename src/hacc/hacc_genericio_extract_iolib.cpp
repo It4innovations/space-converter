@@ -32,7 +32,9 @@
 #include <unistd.h>
 #endif
 
+#ifdef WITH_OPENMP
 #include <omp.h>
+#endif
 
 #include "convert_common.h"
 #include "GenericIO.h"
@@ -644,7 +646,9 @@ namespace genericio {
 			std::string& vel_name_rho,
 			std::string& vel_name_hsml
 		) {
+#ifdef WITH_OPENMP
 			steps_time[0] = omp_get_wtime();
+#endif
 
 			if (pos_names_vec.size() != 3) {
 				pos_names_vec.resize(3);
@@ -691,7 +695,9 @@ namespace genericio {
 				read_multiple_files_per_rank(basefile, world_rank, world_size, pos_names_vec, vel_names_vec, vel_name_mass, vel_name_rho, vel_name_hsml, gio_data, NR);
 			}
 
+#ifdef WITH_OPENMP
 			steps_time[1] = omp_get_wtime();
+#endif
 		}
 
 

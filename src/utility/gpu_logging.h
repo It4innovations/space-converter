@@ -18,7 +18,10 @@
 
 #pragma once
 
+#ifdef WITH_GPU_CUDA
 #include <cuda_runtime.h>
+#endif
+
 #include <stdio.h>
 
 //#define SPACE_CONVERTER_GPU_LOGGING_ENABLED

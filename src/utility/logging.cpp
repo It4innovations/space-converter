@@ -21,7 +21,11 @@
 #endif
 
 #include <map>
+
+#ifdef WITH_OPENMP
 #include <omp.h>
+#endif
+
 #include <cstdio>
 #include <string>
 #include <mpi.h>
@@ -41,7 +45,10 @@ namespace space_converter {
     #endif
 
         MPI_Barrier(MPI_COMM_WORLD); // Ensure all processes start measurement at the same time
+        
+    #ifdef WITH_OPENMP
         logging_measurements[name] = omp_get_wtime();
+    #endif
     }
 
     void LOG_MeasureStop(const char* name) {
@@ -57,7 +64,11 @@ namespace space_converter {
         double start_time = logging_measurements[name];
 
         MPI_Barrier(MPI_COMM_WORLD); // Ensure all processes stop measurement at the same time
-        double end_time = omp_get_wtime();
+    
+        double end_time = 0.0;
+    #ifdef WITH_OPENMP
+        end_time = omp_get_wtime();
+    #endif
 
         if (logging_world_rank == 0) {
             printf("rank #%d: '%s' elapsed time: %f [s]\n", logging_world_rank, name, end_time - start_time);

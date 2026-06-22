@@ -252,7 +252,7 @@ namespace gadget_simple {
 		float get_fvalue(size_t i) {
 			if (num_elements != 1) {
 				if (num_elements != 0)
-				printf("Error: get_fvalue called with num_elements != 1 (num_elements: %lld)\n", num_elements);
+				printf("Error: get_fvalue called with num_elements != 1 (num_elements: %zu)\n", num_elements);
 				return 0;
 			}
 			if (size_of_elem == 8) {
@@ -265,9 +265,10 @@ namespace gadget_simple {
 		}
 
 		int get_ivalue(size_t i) {
+				
 			if (num_elements != 1) {
 				if (num_elements != 0)
-				printf("Error: get_ivalue called with num_elements != 1 (num_elements: %lld)\n", num_elements);
+				printf("Error: get_ivalue called with num_elements != 1 (num_elements: %zu)\n", num_elements);
 				return 0;
 			}
 			if (size_of_elem == 8) {
@@ -282,7 +283,7 @@ namespace gadget_simple {
 		double get_dvalue(size_t i) {
 			if (num_elements != 1) {
 				if (num_elements != 0)
-				printf("Error: get_dvalue called with num_elements != 1 (num_elements: %lld)\n", num_elements);
+				printf("Error: get_dvalue called with num_elements != 1 (num_elements: %zu)\n", num_elements);
 				return 0;
 			}
 			if (size_of_elem == 8) {
@@ -297,7 +298,7 @@ namespace gadget_simple {
 		void get_fvalue3(size_t i, float v[3]) {
 			if (num_elements != 3) {
 				if (i == 0)
-					printf("Error: get_fvalue3 called with num_elements != 3 (%s: %lld)\n", data_name.c_str(), num_elements);
+					printf("Error: get_fvalue3 called with num_elements != 3 (%s: %zu)\n", data_name.c_str(), num_elements);
 
 				v[0] = v[1] = v[2] = 0;
 				return;
@@ -320,7 +321,7 @@ namespace gadget_simple {
 		void get_dvalue3(size_t i, double v[3]) {
 			if (num_elements != 3) {
 				if (i == 0)
-					printf("Error: get_dvalue3 called with num_elements != 3 (%s: %lld)\n", data_name.c_str(), num_elements);
+					printf("Error: get_dvalue3 called with num_elements != 3 (%s: %zu)\n", data_name.c_str(), num_elements);
 
 				v[0] = v[1] = v[2] = 0;
 				return;
@@ -1231,10 +1232,8 @@ namespace gadget_simple {
 
 		io_header snaphead;
 
-		sprintf(buf, "%s.%d", basename.c_str(), 0);
-		sprintf(buf1, "%s", basename.c_str());
-
-		//if (All.ICFormat == 3)
+		snprintf(buf, 200, "%s.%d", basename.c_str(), 0);
+		snprintf(buf1, 200, "%s", basename.c_str());
 		//{
 		//	sprintf(buf, "%s.%d.hdf5", basename.c_str(), 0);
 		//	sprintf(buf1, "%s.hdf5", basename.c_str());
@@ -1824,7 +1823,9 @@ namespace gadget_simple {
 
 		void gadget_init_lib(std::string& fname, int world_rank, int world_size)
 		{
+#ifdef WITH_OPENMP
 			steps_time[0] = omp_get_wtime();
+#endif
 
 			fill_known_blocks();
 
@@ -1835,9 +1836,7 @@ namespace gadget_simple {
 			{
 				if (nfiles == 0)
 					printf("I'm sorry to be unable to find any snapshot "
-						"neither as ./%1$s nor as ./%1$s.x", fname);
-
-				//free(basename);
+					"neither as ./%1$s nor as ./%1$s.x", fname.c_str());
 				exit(-1);
 			}
 
@@ -1855,7 +1854,9 @@ namespace gadget_simple {
 				read_multiple_files_per_rank(fname, world_rank, world_size);
 			}
 
+#ifdef WITH_OPENMP
 			steps_time[1] = omp_get_wtime();
+#endif
 		}
 
 		void gadget_finish_lib()

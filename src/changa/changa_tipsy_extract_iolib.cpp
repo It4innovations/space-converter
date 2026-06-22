@@ -32,7 +32,9 @@
  //#include "tree_xdr.h"
 #include "TipsyFile.h"
 
+#ifdef WITH_OPENMP
 #include <omp.h>
+#endif
 
 #include "convert_common.h"
 
@@ -70,7 +72,9 @@ namespace changa {
 			int g_smoothlength_blocknr = -1;
 
 			void init_lib(std::string basefile, int world_rank, int world_size, std::string filter_in) {
+#ifdef WITH_OPENMP
 				steps_time[0] = omp_get_wtime();
+#endif
 
 				//tf_data = new Tipsy::TipsyFile(basefile);
 				Tipsy::TipsyReader treader(basefile);
@@ -93,7 +97,9 @@ namespace changa {
 					}
 				}
 
+#ifdef WITH_OPENMP
 				steps_time[1] = omp_get_wtime();
+#endif
 			}
 
 			void finish_lib() {

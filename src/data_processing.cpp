@@ -678,7 +678,7 @@ namespace space_converter {
 		MPI_Allreduce(&space_data.particles_count_local, &space_data.particles_count, 1, MPI_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
 
 		if (from_cl.world_rank == 0)
-			printf("rank #%d: find minmax mpi - particles_count: %lld\n", from_cl.world_rank, space_data.particles_count);
+			printf("rank #%d: find minmax mpi - particles_count: %zu\n", from_cl.world_rank, space_data.particles_count);
 
 		LOG_MeasureStop("find_minmax_value");
 	}
@@ -1001,7 +1001,7 @@ namespace space_converter {
 					else if (space_data.extracted_particle_type == common::SpaceData::ExtractedParticleType::eVTP)
 						save_raw_particles_to_vtp(convert_vdb_base, from_cl, space_data, grid_main_sum);
 
-					printf("rank #%d: Particles count: %lld\n", from_cl.world_rank, (size_t)(grid_main_sum.raw_particles.data[0].values.size() / 3));
+					printf("rank #%d: Particles count: %zu\n", from_cl.world_rank, (size_t)(grid_main_sum.raw_particles.data[0].values.size() / 3));
 				}
 				// Convert NanoVDB to binary format
 				else if (from_cl.use_nanovdb) {
@@ -1046,13 +1046,14 @@ namespace space_converter {
 					}
 				}
 				else if (from_cl.use_cub) {
+#ifdef WITH_GPU_CUDA
 					// Convert to CUB format
 					//TODO: Implement CUB conversion and min/max extraction
 					common::vdb::sparse::VoxelGPUManagerSortReduce* gpu_mgr = dynamic_cast<common::vdb::sparse::VoxelGPUManagerSortReduce*>(grid_main_sum.sparse_grid.get());
 					grid_main_final.vector_grid.resize(gpu_mgr->get_header_size() + gpu_mgr->mem_size());
 					gpu_mgr->get_header(grid_main_final.vector_grid.data());
 					gpu_mgr->serializeCPU(grid_main_final.vector_grid.data() + gpu_mgr->get_header_size());
-					
+#endif	
 				}
 				// Convert OpenVDB to binary format
 				else {
@@ -1099,7 +1100,7 @@ namespace space_converter {
 				// CALL_MPI_BARRIER;
 
 				printf("rank #%d: minI: %e, maxI: %e, reduced: minI: %e, maxI: %e\n", from_cl.world_rank, space_data.min_value, space_data.max_value, space_data.min_value_reduced, space_data.max_value_reduced);
-				printf("rank #%d: grid_handle_merged_size: %lld\n", from_cl.world_rank, grid_main_final.vector_grid.size());
+				printf("rank #%d: grid_handle_merged_size: %zu\n", from_cl.world_rank, grid_main_final.vector_grid.size());
 				// printf("rank #%d: final grid time: %f\n", from_cl.world_rank, omp_get_wtime() - t);
 			}
 
@@ -1142,7 +1143,7 @@ namespace space_converter {
 			// Add frame/rank suffix for animation sequences
 			if (!only_rank0 || space_data.anim_type != common::SpaceData::AnimType::eNone && space_data.anim_type != common::SpaceData::AnimType::eAllMerge) {
 				char temp[1024];
-				sprintf(temp, "%d_%05d", space_data.anim_task_counter, from_cl.world_rank);
+				snprintf(temp, sizeof(temp), "%d_%05d", space_data.anim_task_counter, from_cl.world_rank);
 				full_filepath = full_filepath + "_" + std::string(temp);
 			}
 
@@ -1299,7 +1300,7 @@ namespace space_converter {
 				std::string full_filepath = from_cl.output_path + "/" + convert_vdb_base->get_type_name(space_data.particle_type) + "_" + convert_vdb_base->get_dataset_name(space_data.block_name_id);
 				if (!only_rank0 || space_data.anim_type != common::SpaceData::AnimType::eNone && space_data.anim_type != common::SpaceData::AnimType::eAllMerge) {
 					char temp[1024];
-					sprintf(temp, "%d_%05d", space_data.anim_task_counter, from_cl.world_rank);
+					snprintf(temp, sizeof(temp), "%d_%05d", space_data.anim_task_counter, from_cl.world_rank);
 					full_filepath = full_filepath + "_" + std::string(temp);
 				}
 
@@ -1339,7 +1340,7 @@ namespace space_converter {
 				std::string full_filepath = from_cl.output_path + "/" + convert_vdb_base->get_type_name(space_data.particle_type) + "_" + convert_vdb_base->get_dataset_name(space_data.block_name_id);
 				if (!only_rank0 || space_data.anim_type != common::SpaceData::AnimType::eNone && space_data.anim_type != common::SpaceData::AnimType::eAllMerge) {
 					char temp[1024];
-					sprintf(temp, "%d_%05d", space_data.anim_task_counter, from_cl.world_rank);
+					snprintf(temp, sizeof(temp), "%d_%05d", space_data.anim_task_counter, from_cl.world_rank);
 					full_filepath = full_filepath + "_" + std::string(temp);
 				}
 
@@ -1419,7 +1420,7 @@ namespace space_converter {
 
 				if (space_data.anim_type != common::SpaceData::AnimType::eNone && space_data.anim_type != common::SpaceData::AnimType::eAllMerge) {
 					char temp[1024];
-					sprintf(temp, "%d_%05d", space_data.anim_task_counter, from_cl.world_rank);
+					snprintf(temp, sizeof(temp), "%d_%05d", space_data.anim_task_counter, from_cl.world_rank);
 					full_filepath = full_filepath + "_" + std::string(temp);
 					//space_data.anim_task_counter++;
 				}
@@ -1522,7 +1523,7 @@ namespace space_converter {
 
 				if (!only_rank0 || (space_data.anim_type != common::SpaceData::AnimType::eNone && space_data.anim_type != common::SpaceData::AnimType::eAllMerge)) {
 					char temp[1024];
-					sprintf(temp, "%d_%05d", space_data.anim_task_counter, from_cl.world_rank);
+				snprintf(temp, sizeof(temp), "%d_%05d", space_data.anim_task_counter, from_cl.world_rank);
 					full_filepath = full_filepath + "_" + std::string(temp);
 				}
 

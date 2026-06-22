@@ -505,8 +505,10 @@ namespace space_converter {
 	void send_vdb(TcpConnection& tcp_connection, space_converter::FromCL& from_cl, common::SpaceData& space_data, common::vdb::VDBParticles& grid_handle)
 	{
 		if (from_cl.world_rank == 0 && grid_handle.type == common::vdb::VDBParticleType::eVector) {
+#ifdef WITH_OPENMP
 			double t = omp_get_wtime();
-			
+#endif
+
 			// Get grid data size
 			std::size_t size = grid_handle.vector_grid.size();
 
@@ -544,7 +546,9 @@ namespace space_converter {
 
 			int ack;
 			tcp_connection.recv_data_data((char*)&ack, sizeof(ack));
+#ifdef WITH_OPENMP
 			printf("rank #%d: sendOpenVDB time: %f\n", from_cl.world_rank, omp_get_wtime() - t);
+#endif
 			printf("sended: vdb\n");
 		}
 	}
@@ -564,7 +568,9 @@ namespace space_converter {
 	void send_path(TcpConnection& tcp_connection, space_converter::FromCL& from_cl, common::SpaceData& space_data, common::vdb::VDBParticles& grid_handle)
 	{
 		if (from_cl.world_rank == 0 && grid_handle.type == common::vdb::VDBParticleType::eVector) {
+#ifdef WITH_OPENMP
 			double t = omp_get_wtime();
+#endif
 
 			// Send file path type identifier
 			int file_type = common::FTI_PATH;
@@ -593,7 +599,9 @@ namespace space_converter {
 
 			int ack;
 			tcp_connection.recv_data_data((char*)&ack, sizeof(ack));
+#ifdef WITH_OPENMP
 			printf("rank #%d: sendOpenVDB time: %f\n", from_cl.world_rank, omp_get_wtime() - t);
+#endif
 			printf("sended: vdb\n");
 		}
 	}

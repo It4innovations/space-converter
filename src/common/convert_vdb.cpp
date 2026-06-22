@@ -180,7 +180,10 @@ namespace space_converter {
 				cache_manager.particles_id_ordered_per_ptype.resize(ptype_count);
 				cache_manager.particles_ptype_offset.resize(ptype_count + 1, 0);
 
-				int num_threads = omp_get_max_threads();
+				int num_threads = 1;
+#ifdef WITH_OPENMP
+				num_threads = omp_get_max_threads();
+#endif
 
 				for (int ptype = 0; ptype < ptype_count; ptype++) {
 
@@ -201,7 +204,11 @@ namespace space_converter {
 
 #pragma omp parallel num_threads(num_threads) 
 					{
+#ifdef WITH_OPENMP
 						int tid = omp_get_thread_num();
+#else
+						int tid = 0;
+#endif
 
 #pragma omp for
 						for (size_t i = 0; i < no_points; i++) {
@@ -273,7 +280,10 @@ namespace space_converter {
 					return true;
 				}
 
-				int num_threads = omp_get_max_threads();
+				int num_threads = 1;
+#ifdef WITH_OPENMP
+				num_threads = omp_get_max_threads();
+#endif
 
 				// Pre-allocate values_master with known size
 				std::vector<float> values_master(num_particles);
@@ -466,7 +476,11 @@ namespace space_converter {
 					// cache_manager.rho_particles_per_ptype.resize(ptype_count);
 					// cache_manager.particles_ptype_offset.resize(ptype_count + 1, 0);
 
+#ifdef WITH_OPENMP
 					int num_threads = omp_get_max_threads();
+#else
+					int num_threads = 1;
+#endif
 
 					for (int ptype = 0; ptype < ptype_count; ptype++) {
 
@@ -577,10 +591,10 @@ namespace space_converter {
 			)
 			{
 				//printf("===convert_iolib_to_grid: START\n");
-				// #ifdef WITH_OPENMP
+#ifdef WITH_OPENMP
 				double t = omp_get_wtime();
 				// 			double t_step = omp_get_wtime();
-				// #endif   
+#endif   
 
 							// Calculate spatial scaling factors
 							// Compare original cubic bounding box diagonal to actual data bounding box diagonal

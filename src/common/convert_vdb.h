@@ -64,6 +64,7 @@ namespace space_converter {
 				cache::CacheManager cache_manager; ///< Cache manager for storing intermediate data
 
 			public:
+				virtual ~ConvertVDBBase() = default;
 
 				/**
 				 * @brief Convert particle data from I/O library format to VDB grid

@@ -30,7 +30,9 @@
 #endif
 
 #include "tree_xdr.h"
+#ifdef WITH_OPENMP
 #include <omp.h>
+#endif
 #include "convert_common.h"
 
 #define RETURN_NORM_EMPTY return 0; //return std::numeric_limits<float>::quiet_NaN();//0;
@@ -217,7 +219,9 @@ namespace changa {
 
 
 			void init_lib(std::string basedir, int world_rank, int world_size) {
+#ifdef WITH_OPENMP
 				steps_time[0] = omp_get_wtime();
+#endif
 
 				if (nch_data != nullptr)
 					delete nch_data;
@@ -283,7 +287,9 @@ namespace changa {
 
 				//}
 
+#ifdef WITH_OPENMP
 				steps_time[1] = omp_get_wtime();
+#endif
 			}
 
 			void finish_lib() {

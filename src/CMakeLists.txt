@@ -165,6 +165,7 @@ target_link_libraries(
    ${MPI_msmpi_LIBRARY}
    ${MPI_CUSTOM_LIBRARIES}
    ${MERIC_LIBRARIES}
+   ${OpenMP_omp_LIBRARY}
 )
 
 target_link_libraries(space_converter 
