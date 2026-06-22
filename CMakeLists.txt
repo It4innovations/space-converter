@@ -36,7 +36,9 @@ option(WITH_IPIC3D  "Enable IPIC3D" OFF)
 option(WITH_PLUTO  "Enable PLUTO" OFF)
 option(WITH_VTK   "Enable VTK" OFF)
 
-option(GADGET_MAX_HSML  "Enable loading of limited values from gadget files" OFF)
+# option(GADGET_MAX_HSML  "Enable loading of limited values from gadget files" OFF)
+set(GADGET_MAX_HSML  OFF)
+
 option(GADGET_READ_ID  "Enable reading of ID" OFF)
 option(GADGET_READ_ID64  "Enable reading of 64 bit ID" OFF)
 
