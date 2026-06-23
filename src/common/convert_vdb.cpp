@@ -1520,12 +1520,12 @@ namespace space_converter {
 			 * Replaces "{}" placeholders in pattern with formatted number.
 			 * Numbers < 1000 are zero-padded to 3 digits (e.g., "001", "042").
 			 */
-			std::string ConvertVDBBase::format_filename(const std::string& pattern, int number) {
+			std::string ConvertVDBBase::format_filename(const std::string& pattern, int number, int zero_pad) {
 				// Create the formatted number as a string
 				std::ostringstream formattedNumber;
-				if (number < 1000) {
-					// Zero-pad numbers to 3 digits for consistent file sorting
-					formattedNumber << std::setw(3) << std::setfill('0') << number;
+				if (zero_pad > 0) {
+					// Zero-pad numbers to specified width for consistent file sorting
+					formattedNumber << std::setw(zero_pad) << std::setfill('0') << number;
 				}
 				else {
 					// Use longer format for numbers >= 1000

@@ -80,7 +80,7 @@ namespace ipic3d {
 
         // Initialize the iPIC3D library.
         void init_lib(std::string hdf5_file, int world_rank, int world_size,
-            int species_id, int cycle_id);
+            int species_id, int cycle_id, int num_files);
 
         // Finalize and clean up the iPIC3D library.
         void finish_lib();

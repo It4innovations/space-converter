@@ -337,9 +337,10 @@ namespace space_converter {
 				 * @brief Format filename with number substitution
 				 * @param pattern Filename pattern with format specifiers
 				 * @param number Number to substitute into pattern
+				 * @param zero_pad Number of digits for zero-padding
 				 * @return Formatted filename
 				 */
-				std::string format_filename(const std::string& pattern, int number);
+				std::string format_filename(const std::string& pattern, int number, int zero_pad = 0);
 
 			public:
 				// ============================================================

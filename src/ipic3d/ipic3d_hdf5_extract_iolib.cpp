@@ -25,6 +25,7 @@
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
+#include <algorithm>
 
 #ifdef _WIN32
 #include <io.h>
@@ -226,6 +227,40 @@ namespace ipic3d {
             }
         }
 
+        // Replace "{}" placeholders in pattern with the given file number.
+        std::string format_filename(const std::string& pattern, int number) {
+            std::string result = pattern;
+            const std::string placeholder = "{}";
+            size_t pos = result.find(placeholder);
+            while (pos != std::string::npos) {
+                std::string number_str = std::to_string(number);
+                result.replace(pos, placeholder.length(), number_str);
+                pos = result.find(placeholder, pos + number_str.length());
+            }
+            return result;
+        }
+
+        // Split `total` items into `parts` contiguous chunks, returning the start
+        // index and size of chunk `idx` (remainder distributed to the first chunks).
+        void partition_range(size_t total, size_t parts, size_t idx, size_t& start, size_t& count) {
+            size_t base = total / parts;
+            size_t rem = total % parts;
+            count = base + (idx < rem ? 1 : 0);
+            start = idx * base + std::min(idx, rem);
+        }
+
+        // Append a [start, start + count) slice of src's fields onto dst's fields.
+        void append_particle_range(const ParticleData& src, ParticleData& dst, size_t start, size_t count) {
+            dst.x.insert(dst.x.end(), src.x.begin() + start, src.x.begin() + start + count);
+            dst.y.insert(dst.y.end(), src.y.begin() + start, src.y.begin() + start + count);
+            dst.z.insert(dst.z.end(), src.z.begin() + start, src.z.begin() + start + count);
+            dst.u.insert(dst.u.end(), src.u.begin() + start, src.u.begin() + start + count);
+            dst.v.insert(dst.v.end(), src.v.begin() + start, src.v.begin() + start + count);
+            dst.w.insert(dst.w.end(), src.w.begin() + start, src.w.begin() + start + count);
+            dst.q.insert(dst.q.end(), src.q.begin() + start, src.q.begin() + start + count);
+            dst.id.insert(dst.id.end(), src.id.begin() + start, src.id.begin() + start + count);
+        }
+
         // Helper function to read a dataset from HDF5
         template<typename T>
         void read_hdf5_dataset(hid_t file_id, const std::string& dataset_path, std::vector<T>& data) {
@@ -264,8 +299,38 @@ namespace ipic3d {
             }
         }
 
-        void init_lib(std::string hdf5_file, int world_rank, int world_size, 
-                      int species_id, int cycle_id) {
+        // Open one HDF5 file (file_index substituted into the "{}" placeholder of
+        // hdf5_file_pattern) and read all particle datasets for species/cycle into out.
+        void read_particle_file(const std::string& hdf5_file_pattern, int file_index,
+                                 const std::string& species_path, const std::string& cycle_suffix,
+                                 int species_id, ParticleData& out) {
+            std::string file_path = format_filename(hdf5_file_pattern, file_index);
+            hid_t file_id = H5Fopen(file_path.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+            if (file_id < 0) {
+                throw std::runtime_error("Failed to open HDF5 file: " + file_path);
+            }
+
+            try {
+                out.species_type = species_id;
+                read_hdf5_dataset(file_id, species_path + "/x" + cycle_suffix, out.x);
+                read_hdf5_dataset(file_id, species_path + "/y" + cycle_suffix, out.y);
+                read_hdf5_dataset(file_id, species_path + "/z" + cycle_suffix, out.z);
+                read_hdf5_dataset(file_id, species_path + "/u" + cycle_suffix, out.u);
+                read_hdf5_dataset(file_id, species_path + "/v" + cycle_suffix, out.v);
+                read_hdf5_dataset(file_id, species_path + "/w" + cycle_suffix, out.w);
+                read_hdf5_dataset(file_id, species_path + "/q" + cycle_suffix, out.q);
+                read_hdf5_dataset(file_id, species_path + "/ID" + cycle_suffix, out.id);
+                out.count = out.x.size();
+            } catch (const std::exception& e) {
+                H5Fclose(file_id);
+                throw;
+            }
+
+            H5Fclose(file_id);
+        }
+
+        void init_lib(std::string hdf5_file, int world_rank, int world_size,
+                      int species_id, int cycle_id, int num_files) {
 #ifdef WITH_OPENMP
             steps_time[0] = omp_get_wtime();
 #endif
@@ -273,72 +338,59 @@ namespace ipic3d {
             current_cycle_id = cycle_id;
             particle_data.species_type = species_id;
 
+            std::string species_path = "/particles/species_" + std::to_string(species_id);
+            std::string cycle_suffix = "/cycle_" + std::to_string(cycle_id);
+
             if (world_rank == 0) {
-                printf("Reading iPIC3D HDF5 file: %s\n", hdf5_file.c_str());
-                printf("Species: %d, Cycle: %d\n", species_id, cycle_id);
+                printf("Reading iPIC3D HDF5 file(s): %s\n", hdf5_file.c_str());
+                printf("Species: %d, Cycle: %d, num_files: %d, world_size: %d\n", species_id, cycle_id, num_files, world_size);
             }
 
-            // Open HDF5 file
-            hid_t file_id = H5Fopen(hdf5_file.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
-            if (file_id < 0) {
-                throw std::runtime_error("Failed to open HDF5 file: " + hdf5_file);
-            }
+            ParticleData result;
+            result.species_type = species_id;
+            result.count = 0;
 
-            try {
-                // Construct dataset paths
-                std::string species_path = "/particles/species_" + std::to_string(species_id);
-                std::string cycle_suffix = "/cycle_" + std::to_string(cycle_id);
+            if (num_files >= world_size) {
+                // Each rank owns one or more whole files exclusively; concatenate them.
+                size_t file_start, file_count;
+                partition_range((size_t)num_files, (size_t)world_size, (size_t)world_rank, file_start, file_count);
 
-                // Read particle data
-                read_hdf5_dataset(file_id, species_path + "/x" + cycle_suffix, particle_data.x);
-                read_hdf5_dataset(file_id, species_path + "/y" + cycle_suffix, particle_data.y);
-                read_hdf5_dataset(file_id, species_path + "/z" + cycle_suffix, particle_data.z);
-                read_hdf5_dataset(file_id, species_path + "/u" + cycle_suffix, particle_data.u);
-                read_hdf5_dataset(file_id, species_path + "/v" + cycle_suffix, particle_data.v);
-                read_hdf5_dataset(file_id, species_path + "/w" + cycle_suffix, particle_data.w);
-                read_hdf5_dataset(file_id, species_path + "/q" + cycle_suffix, particle_data.q);
-                read_hdf5_dataset(file_id, species_path + "/ID" + cycle_suffix, particle_data.id);
+                for (size_t i = 0; i < file_count; i++) {
+                    ParticleData file_data;
+                    read_particle_file(hdf5_file, (int)(file_start + i), species_path, cycle_suffix, species_id, file_data);
+                    append_particle_range(file_data, result, 0, file_data.count);
+                }
+            } else {
+                // Fewer files than ranks: a group of ranks shares each file and
+                // splits its particles among the group.
+                size_t rank_start = 0, rank_count = 0;
+                int file_index = -1;
+                size_t local_index = 0, group_size = 1;
 
-                particle_data.count = particle_data.x.size();
-                
-                // For simplicity, assume each rank gets equal particles
-                // In a real implementation, you'd want proper domain decomposition
-                size_t particles_per_rank = particle_data.count / world_size;
-                size_t start_idx = world_rank * particles_per_rank;
-                size_t end_idx = (world_rank == world_size - 1) ? particle_data.count : (world_rank + 1) * particles_per_rank;
-                size_t local_count = end_idx - start_idx;
-
-                // Extract local portion
-                if (world_size > 1) {
-                    ParticleData local_data;
-                    local_data.species_type = species_id;
-                    local_data.count = local_count;
-                    local_data.x.assign(particle_data.x.begin() + start_idx, particle_data.x.begin() + end_idx);
-                    local_data.y.assign(particle_data.y.begin() + start_idx, particle_data.y.begin() + end_idx);
-                    local_data.z.assign(particle_data.z.begin() + start_idx, particle_data.z.begin() + end_idx);
-                    local_data.u.assign(particle_data.u.begin() + start_idx, particle_data.u.begin() + end_idx);
-                    local_data.v.assign(particle_data.v.begin() + start_idx, particle_data.v.begin() + end_idx);
-                    local_data.w.assign(particle_data.w.begin() + start_idx, particle_data.w.begin() + end_idx);
-                    local_data.q.assign(particle_data.q.begin() + start_idx, particle_data.q.begin() + end_idx);
-                    local_data.id.assign(particle_data.id.begin() + start_idx, particle_data.id.begin() + end_idx);
-                    
-                    g_total_particles = particle_data.count;
-                    particle_data = local_data;
-                } else {
-                    g_total_particles = particle_data.count;
+                for (int f = 0; f < num_files; f++) {
+                    partition_range((size_t)world_size, (size_t)num_files, (size_t)f, rank_start, rank_count);
+                    if ((size_t)world_rank >= rank_start && (size_t)world_rank < rank_start + rank_count) {
+                        file_index = f;
+                        local_index = (size_t)world_rank - rank_start;
+                        group_size = rank_count;
+                        break;
+                    }
                 }
 
-                if (world_rank == 0) {
-                    printf("Total particles read: %lld\n", (long long)g_total_particles);
-                }
-                printf("Rank %d has %lld particles\n", world_rank, (long long)particle_data.count);
+                ParticleData file_data;
+                read_particle_file(hdf5_file, file_index, species_path, cycle_suffix, species_id, file_data);
 
-            } catch (const std::exception& e) {
-                H5Fclose(file_id);
-                throw;
+                size_t local_start, local_count;
+                partition_range(file_data.count, group_size, local_index, local_start, local_count);
+                append_particle_range(file_data, result, local_start, local_count);
             }
 
-            H5Fclose(file_id);
+            result.count = result.x.size();
+            particle_data = result;
+            g_total_particles = particle_data.count;
+
+            printf("Rank %d has %lld particles\n", world_rank, (long long)particle_data.count);
+
 #ifdef WITH_OPENMP
             steps_time[1] = omp_get_wtime();
 #endif

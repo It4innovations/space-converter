@@ -109,6 +109,7 @@ namespace space_converter {
 		std::cout << "\t--hdf5-file X               : iPIC3D HDF5 format file path" << std::endl;
 		std::cout << "\t--species-id X              : Species ID (0-3) to load" << std::endl;
 		std::cout << "\t--cycle-id X                : Cycle/timestep ID to load" << std::endl;
+		std::cout << "\t--num-files X               : Number of files to load" << std::endl;
 
 		std::cout << "\nPLUTO_VTK args:" << std::endl;
 		std::cout << "\t--vtk-file X                : PLUTO VTK rectilinear grid file path" << std::endl;

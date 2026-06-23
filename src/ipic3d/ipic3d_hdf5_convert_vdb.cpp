@@ -72,6 +72,7 @@ namespace ipic3d {
         std::string hdf5_file;
         int species_id = 0;
         int cycle_id = 0;
+        int num_files = 1;
 
         bool use_anim = false;
         int anim_start = -1;
@@ -95,17 +96,21 @@ namespace ipic3d {
                 anim_end = std::stoi(argv[++i]);
                 anim_step = std::stoi(argv[++i]);
             }
+            else if (arg == "--num-files") {
+                num_files = std::stoi(argv[++i]);
+            }
         }
 
+        // TODO
         // Anim: Use world_rank to select which cycle to load
-        if (use_anim) {
-            cycle_id = anim_start + anim_step * world_rank;
-            std::cout << "Reading timestep cycle: " << cycle_id << std::endl;
-            world_rank = 0;
-            world_size = 1;
-        }
+        // if (use_anim) {
+        //     cycle_id = anim_start + anim_step * world_rank;
+        //     std::cout << "Reading timestep cycle: " << cycle_id << std::endl;
+        //     world_rank = 0;
+        //     world_size = 1;
+        // }
 
-        ipic3d::io::init_lib(hdf5_file, world_rank, world_size, species_id, cycle_id);
+        ipic3d::io::init_lib(hdf5_file, world_rank, world_size, species_id, cycle_id, num_files);
 
         print_CPU_steps();
     }
