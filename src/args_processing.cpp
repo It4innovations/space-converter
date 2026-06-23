@@ -106,10 +106,9 @@ namespace space_converter {
 		std::cout << "\t--haccbin-file X            : HACC binary format file path" << std::endl;
 
 		std::cout << "\nIPIC3D_HDF5 args:" << std::endl;
-		std::cout << "\t--hdf5-file X               : iPIC3D HDF5 format file path" << std::endl;
-		std::cout << "\t--species-id X              : Species ID (0-3) to load" << std::endl;
-		std::cout << "\t--cycle-id X                : Cycle/timestep ID to load" << std::endl;
+		std::cout << "\t--hdf5-file X               : iPIC3D HDF5 format file path (all species, fields and moments at the latest cycle are loaded automatically)" << std::endl;
 		std::cout << "\t--num-files X               : Number of files to load" << std::endl;
+		std::cout << "\t--settings-file X           : Path to companion settings.hdf (grid geometry); defaults to settings.hdf next to --hdf5-file" << std::endl;
 
 		std::cout << "\nPLUTO_VTK args:" << std::endl;
 		std::cout << "\t--vtk-file X                : PLUTO VTK rectilinear grid file path" << std::endl;
@@ -482,14 +481,10 @@ namespace space_converter {
 
 // === IPIC3D_HDF5 Format Examples ===
 
-// iPIC3D HDF5 format with species 0, cycle 0
-//--data-type IPIC3D_HDF5 --hdf5-file /path/to/restart0.hdf --species-id 0 --cycle-id 0 --grid-dim 1000 --output-path /temp/ --info
+// iPIC3D HDF5 format: loads all species, fields and moments at the latest cycle automatically
+//--data-type IPIC3D_HDF5 --hdf5-file /path/to/restart0.hdf --grid-dim 1000 --output-path /temp/ --info
 
-// iPIC3D HDF5 format with species 1, cycle 299
-//--data-type IPIC3D_HDF5 --hdf5-file /path/to/restart0.hdf --species-id 1 --cycle-id 299 --grid-dim 1000 --output-path /temp/ --port 5000
-
-// iPIC3D HDF5 animation sequence (cycling through timesteps)
-//--data-type IPIC3D_HDF5 --hdf5-file /path/to/restart0.hdf --species-id 0 --cycle-id 0 --grid-dim 1000 --output-path /temp/ --anim 0 299 10
+//--data-type IPIC3D_HDF5 --hdf5-file /path/to/restart0.hdf --grid-dim 1000 --output-path /temp/ --port 5000
 
 
 // === PLUTO_VTK Format Examples ===

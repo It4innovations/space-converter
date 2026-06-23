@@ -35,12 +35,23 @@ namespace ipic3d {
         PTMax = 4           // Maximum value for ParticleType (used for validation or iteration)
     };
 
-    // Enum defining block types, representing various attributes of iPIC3D particles.
+    // Enum defining block types, representing various attributes of iPIC3D particles
+    // and structured-grid field/moment data (exposed as synthetic grid-point "particles").
     enum IPIC3DBlockType {
-        Pos = 0,        // Position (x, y, z)
-        Vel = 1,        // Velocity (u, v, w)
-        Charge = 2,     // Charge (q)
+        Pos = 0,        // Particle position (x, y, z)
+        Vel = 1,        // Particle velocity (u, v, w)
+        Charge = 2,     // Particle charge (q)
         ID = 3,         // Particle ID
+
+        EField = 4,     // Electric field (Ex, Ey, Ez) at a grid point, from /fields
+        BField = 5,     // Magnetic field (Bx, By, Bz) at a grid point, from /fields
+        Rho = 6,        // Density at a grid point, from /moments/species_N/rho
+        Pxx = 7,        // Pressure tensor component, from /moments/species_N/pXX
+        Pxy = 8,        // Pressure tensor component, from /moments/species_N/pXY
+        Pxz = 9,        // Pressure tensor component, from /moments/species_N/pXZ
+        Pyy = 10,       // Pressure tensor component, from /moments/species_N/pYY
+        Pyz = 11,       // Pressure tensor component, from /moments/species_N/pYZ
+        Pzz = 12,       // Pressure tensor component, from /moments/species_N/pZZ
 
         BTMax           // Maximum value for BlockType (used for validation or iteration)
     };
@@ -78,9 +89,14 @@ namespace ipic3d {
         // @return The global particle count.
         size_t get_global_num_particles();
 
-        // Initialize the iPIC3D library.
+        // Initialize the iPIC3D library. Every species and the latest cycle present in
+        // the file are discovered and loaded automatically (no species/cycle selection).
+        // @param settings_file: Path to the companion settings.hdf file containing grid
+        //        geometry (/collective/Dx,Dy,Dz,Lx,Ly,Lz,Nxc,Nyc,Nzc and /topology/XLEN,YLEN,ZLEN).
+        //        If empty, "settings.hdf" next to hdf5_file is used; if that cannot be opened,
+        //        grid points are positioned using a unit spacing fallback.
         void init_lib(std::string hdf5_file, int world_rank, int world_size,
-            int species_id, int cycle_id, int num_files);
+            int num_files, std::string settings_file = "");
 
         // Finalize and clean up the iPIC3D library.
         void finish_lib();

@@ -70,47 +70,23 @@ namespace ipic3d {
 
     void ConvertVDBIPIC3DHDF5::init_lib(int argc, char** argv, int world_rank, int world_size) {
         std::string hdf5_file;
-        int species_id = 0;
-        int cycle_id = 0;
+        std::string settings_file;
         int num_files = 1;
-
-        bool use_anim = false;
-        int anim_start = -1;
-        int anim_end = -1;
-        int anim_step = -1;
 
         for (int i = 1; i < argc; i++) {
             const std::string arg = argv[i];
             if (arg == "--hdf5-file") {
                 hdf5_file = argv[++i];
             }
-            else if (arg == "--species-id") {
-                species_id = std::stoi(argv[++i]);
-            }
-            else if (arg == "--cycle-id") {
-                cycle_id = std::stoi(argv[++i]);
-            }
-            else if (arg == "--anim") {
-                use_anim = true;
-                anim_start = std::stoi(argv[++i]);
-                anim_end = std::stoi(argv[++i]);
-                anim_step = std::stoi(argv[++i]);
+            else if (arg == "--settings-file") {
+                settings_file = argv[++i];
             }
             else if (arg == "--num-files") {
                 num_files = std::stoi(argv[++i]);
             }
         }
 
-        // TODO
-        // Anim: Use world_rank to select which cycle to load
-        // if (use_anim) {
-        //     cycle_id = anim_start + anim_step * world_rank;
-        //     std::cout << "Reading timestep cycle: " << cycle_id << std::endl;
-        //     world_rank = 0;
-        //     world_size = 1;
-        // }
-
-        ipic3d::io::init_lib(hdf5_file, world_rank, world_size, species_id, cycle_id, num_files);
+        ipic3d::io::init_lib(hdf5_file, world_rank, world_size, num_files, settings_file);
 
         print_CPU_steps();
     }
