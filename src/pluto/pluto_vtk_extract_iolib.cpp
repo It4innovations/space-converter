@@ -32,7 +32,9 @@
 #include <unistd.h>
 #endif
 
+#ifdef WITH_OPENMP
 #include <omp.h>
+#endif
 
 #include "convert_common.h"
 
@@ -83,7 +85,9 @@ namespace plutovtk {
 			int world_size,
 			std::vector<std::string>& scalar_names_vec
 		) {
+#ifdef WITH_OPENMP
 			steps_time[0] = omp_get_wtime();
+#endif
 
 			scalar_names = scalar_names_vec;
 
@@ -155,7 +159,9 @@ namespace plutovtk {
 			
 			printf("Rank %d: Local cells: %lld\n", world_rank, local_cells);
 
+#ifdef WITH_OPENMP
 			steps_time[1] = omp_get_wtime();
+#endif
 		}
 
 		void finish_lib() {

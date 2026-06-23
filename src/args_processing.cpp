@@ -489,3 +489,10 @@ namespace space_converter {
 
 // iPIC3D HDF5 animation sequence (cycling through timesteps)
 //--data-type IPIC3D_HDF5 --hdf5-file /path/to/restart0.hdf --species-id 0 --cycle-id 0 --grid-dim 1000 --output-path /temp/ --anim 0 299 10
+
+
+// === PLUTO_VTK Format Examples ===
+//--data-type PLUTO_VTK --vtk-file e:\temp\20_new\pluto\data.0000.vtk --output-path e:\temp\20_new\ --export-data 0 1
+
+// == IPIC3D_HDF5 Format Examples ==
+//--data-type IPIC3D_HDF5 --hdf5-file e:\temp\20_new\ipic\restart0.hdf --output-path e:\temp\20_new\ --export-data 0 1

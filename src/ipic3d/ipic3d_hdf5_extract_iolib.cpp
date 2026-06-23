@@ -32,7 +32,10 @@
 #include <unistd.h>
 #endif
 
+#ifdef WITH_OPENMP
 #include <omp.h>
+#endif
+
 #include <hdf5.h>
 
 #include "convert_common.h"
@@ -263,8 +266,9 @@ namespace ipic3d {
 
         void init_lib(std::string hdf5_file, int world_rank, int world_size, 
                       int species_id, int cycle_id) {
+#ifdef WITH_OPENMP
             steps_time[0] = omp_get_wtime();
-
+#endif
             current_species_id = species_id;
             current_cycle_id = cycle_id;
             particle_data.species_type = species_id;
@@ -335,7 +339,9 @@ namespace ipic3d {
             }
 
             H5Fclose(file_id);
+#ifdef WITH_OPENMP
             steps_time[1] = omp_get_wtime();
+#endif
         }
 
         void finish_lib() {
