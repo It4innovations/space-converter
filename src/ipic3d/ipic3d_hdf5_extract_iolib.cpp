@@ -375,21 +375,21 @@ namespace ipic3d {
                 const GridData& g = grid_data_by_species[s];
 
                 if (p.count > 0) {
-                    types_and_blocks[IPIC3DBlockType::BTMax * IPIC3DBlockType::Pos + s] = 1;
-                    types_and_blocks[IPIC3DBlockType::BTMax * IPIC3DBlockType::Vel + s] = 1;
-                    types_and_blocks[IPIC3DBlockType::BTMax * IPIC3DBlockType::Charge + s] = 1;
-                    types_and_blocks[IPIC3DBlockType::BTMax * IPIC3DBlockType::ID + s] = 1;
+                    types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::Pos] = 1;
+                    types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::Vel] = 1;
+                    types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::Charge] = 1;
+                    types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::ID] = 1;
                 }
 
-                if (g.has_efield()) types_and_blocks[IPIC3DBlockType::BTMax * IPIC3DBlockType::EField + s] = 1;
-                if (g.has_bfield()) types_and_blocks[IPIC3DBlockType::BTMax * IPIC3DBlockType::BField + s] = 1;
-                if (g.has_rho()) types_and_blocks[IPIC3DBlockType::BTMax * IPIC3DBlockType::Rho + s] = 1;
-                if (g.has_pxx()) types_and_blocks[IPIC3DBlockType::BTMax * IPIC3DBlockType::Pxx + s] = 1;
-                if (g.has_pxy()) types_and_blocks[IPIC3DBlockType::BTMax * IPIC3DBlockType::Pxy + s] = 1;
-                if (g.has_pxz()) types_and_blocks[IPIC3DBlockType::BTMax * IPIC3DBlockType::Pxz + s] = 1;
-                if (g.has_pyy()) types_and_blocks[IPIC3DBlockType::BTMax * IPIC3DBlockType::Pyy + s] = 1;
-                if (g.has_pyz()) types_and_blocks[IPIC3DBlockType::BTMax * IPIC3DBlockType::Pyz + s] = 1;
-                if (g.has_pzz()) types_and_blocks[IPIC3DBlockType::BTMax * IPIC3DBlockType::Pzz + s] = 1;
+                if (g.has_efield()) types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::EField] = 1;
+                if (g.has_bfield()) types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::BField] = 1;
+                if (g.has_rho()) types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::Rho] = 1;
+                if (g.has_pxx()) types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::Pxx] = 1;
+                if (g.has_pxy()) types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::Pxy] = 1;
+                if (g.has_pxz()) types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::Pxz] = 1;
+                if (g.has_pyy()) types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::Pyy] = 1;
+                if (g.has_pyz()) types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::Pyz] = 1;
+                if (g.has_pzz()) types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::Pzz] = 1;
             }
         }
 
@@ -401,7 +401,7 @@ namespace ipic3d {
             for (int type = 0; type < IPIC3DParticleType::PTMax; type++) {
                 printf("Type: Species_%d (%d)\n", type, type);
                 for (int blocknr = 0; blocknr < IPIC3DBlockType::BTMax; blocknr++) {
-                    if (types_and_blocks[IPIC3DBlockType::BTMax * blocknr + type] > 0) {
+                    if (types_and_blocks[IPIC3DBlockType::BTMax * type + blocknr] > 0) {
                         printf("\t%s (%d)\n", get_dataset_name(blocknr).c_str(), blocknr);
                     }
                 }
@@ -413,7 +413,7 @@ namespace ipic3d {
             for (int type = 0; type < IPIC3DParticleType::PTMax; type++) {
                 printf("Type: Species_%d (%d)\n", type, type);
                 for (int blocknr = 0; blocknr < IPIC3DBlockType::BTMax; blocknr++) {
-                    if (types_and_blocks[IPIC3DBlockType::BTMax * blocknr + type] > 0) {
+                    if (types_and_blocks[IPIC3DBlockType::BTMax * type + blocknr] > 0) {
                         printf("\t%s (%d)\n", get_dataset_name(blocknr).c_str(), blocknr);
                     }
                 }
