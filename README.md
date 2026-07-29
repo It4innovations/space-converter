@@ -19,3 +19,6 @@ SpaceConverter is an application designed for handling simulation data in Astron
 This work was supported by the SPACE project under grant agreement No 101093441. The project is supported by the European High-Performance Computing Joint Undertaking and its members (including top-up funding by the Ministry of Education, Youth and Sports of the Czech Republic ID: MC2304). 
 
 This work was also supported by the Ministry of Education, Youth and Sports of the Czech Republic through the e-INFRA CZ (ID:90254).
+
+## References
+- Jaros, M., Strakos, P., Barbosa, J., Riha, L., and Rizzi, S. (2026). [Visualizing the Cosmos: Bridging Astrophysical Simulations with Volume Rendering](https://doi.org/10.2312/visgap.20261003). VisGap 2026.
