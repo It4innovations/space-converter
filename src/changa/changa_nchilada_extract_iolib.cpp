@@ -204,7 +204,7 @@ namespace changa {
 				//return data;
 			}
 
-			void getData(NChiladaBlockData& bdata, std::string basedir, std::string typedir, std::string type, int world_rank, int world_size)
+			void getData(NChiladaBlockData& bdata, std::string basedir, std::string typedir, std::string type, int world_rank, int world_size, bool optional = false)
 			{
 				std::string filename = basedir + "/" + typedir + "/" + type;
 
@@ -214,6 +214,11 @@ namespace changa {
 				if (access(filename.c_str(), F_OK) == 0)
 #endif
 					readFieldData(filename.c_str(), bdata, world_rank, world_size);
+				else if (!optional && world_rank == 0)
+					// Reads of a block that was never loaded return 0, which is easily mistaken
+					// for real data further down the pipeline - say so instead of staying silent.
+					printf("Warning: NChilada block '%s' not found, values from it will read as 0\n",
+						filename.c_str());
 				//deleteField(fh, data);
 			}
 
@@ -246,23 +251,27 @@ namespace changa {
 				//strncpy(filename, basedir.c_str(), FILELEN, world_rank, world_size);
 				//strcat(filename, "/gas", world_rank, world_size);
 				//getPos(tf_data->gas, filename, world_rank, world_size);
-				getData(nch_data->data_map[ParticleType::Gas][BlockType::Pos], basedir, "/dark", "/pos", world_rank, world_size);
+				getData(nch_data->data_map[ParticleType::Gas][BlockType::Pos], basedir, "/gas", "/pos", world_rank, world_size);
 				//getMass(tf_data->gas, filename, world_rank, world_size);
-				getData(nch_data->data_map[ParticleType::Gas][BlockType::Mass], basedir, "/dark", "/mass", world_rank, world_size);
+				getData(nch_data->data_map[ParticleType::Gas][BlockType::Mass], basedir, "/gas", "/mass", world_rank, world_size);
 				//getVel(tf_data->gas, filename, world_rank, world_size);
-				getData(nch_data->data_map[ParticleType::Gas][BlockType::Vel], basedir, "/dark", "/vel", world_rank, world_size);
+				getData(nch_data->data_map[ParticleType::Gas][BlockType::Vel], basedir, "/gas", "/vel", world_rank, world_size);
 				//getPhi(tf_data->gas, filename, world_rank, world_size);
-				getData(nch_data->data_map[ParticleType::Gas][BlockType::Phi], basedir, "/dark", "/phi", world_rank, world_size);
+				getData(nch_data->data_map[ParticleType::Gas][BlockType::Phi], basedir, "/gas", "/phi", world_rank, world_size);
 				//getHSmooth(tf_data->gas, filename, world_rank, world_size);
-				getData(nch_data->data_map[ParticleType::Gas][BlockType::HSmooth], basedir, "/dark", "/soft", world_rank, world_size);
+				// NChilada snapshots store the gas smoothing length in "smoothlength" when
+				// present; "soft" (the gravitational softening) is the usual fallback.
+				getData(nch_data->data_map[ParticleType::Gas][BlockType::HSmooth], basedir, "/gas", "/smoothlength", world_rank, world_size, true);
+				if (nch_data->data_map[ParticleType::Gas][BlockType::HSmooth].data == nullptr)
+					getData(nch_data->data_map[ParticleType::Gas][BlockType::HSmooth], basedir, "/gas", "/soft", world_rank, world_size);
 				//getRho(tf_data->gas, filename, world_rank, world_size);
-				getData(nch_data->data_map[ParticleType::Gas][BlockType::Rho], basedir, "/dark", "/GasDensity", world_rank, world_size);
+				getData(nch_data->data_map[ParticleType::Gas][BlockType::Rho], basedir, "/gas", "/GasDensity", world_rank, world_size);
 				//getTemp(tf_data->gas, filename, world_rank, world_size);
-				getData(nch_data->data_map[ParticleType::Gas][BlockType::Temp], basedir, "/dark", "/temperature", world_rank, world_size);
+				getData(nch_data->data_map[ParticleType::Gas][BlockType::Temp], basedir, "/gas", "/temperature", world_rank, world_size);
 				//getMetalsOx(tf_data->gas, filename, world_rank, world_size);
-				getData(nch_data->data_map[ParticleType::Gas][BlockType::MetalsOx], basedir, "/dark", "/OxMassFrac", world_rank, world_size);
+				getData(nch_data->data_map[ParticleType::Gas][BlockType::MetalsOx], basedir, "/gas", "/OxMassFrac", world_rank, world_size);
 				//getMetalsFe(tf_data->gas, filename, world_rank, world_size);
-				getData(nch_data->data_map[ParticleType::Gas][BlockType::MetalsFe], basedir, "/dark", "/FeMassFrac", world_rank, world_size);
+				getData(nch_data->data_map[ParticleType::Gas][BlockType::MetalsFe], basedir, "/gas", "/FeMassFrac", world_rank, world_size);
 				//}
 
 				//if (nStar > 0) {
@@ -321,8 +330,8 @@ namespace changa {
 				uint64_t offset = get_particle_type_offset(pt);
 
 				BlockType bt = (BlockType)blocknr;
-				float value;
-				float vector3[3];
+				float value = 0.0f;
+				float vector3[3] = { 0.0f, 0.0f, 0.0f };
 
 				switch (pt) {
 				case ParticleType::Gas: {
@@ -387,8 +396,8 @@ namespace changa {
 				uint64_t offset = get_particle_type_offset(pt);
 
 				BlockType bt = (BlockType)blocknr;
-				float value;
-				float vector3[3];
+				float value = 0.0f;
+				float vector3[3] = { 0.0f, 0.0f, 0.0f };
 
 				switch (pt) {
 				case ParticleType::Gas: {
@@ -591,7 +600,7 @@ namespace changa {
 				ParticleType pt = (ParticleType)get_particle_type(id);
 				uint64_t offset = get_particle_type_offset(pt);
 
-				float vector3[3];
+				float vector3[3] = { 0.0f, 0.0f, 0.0f };
 				nch_data->get_vector3(pt, BlockType::Pos, id - offset, vector3);
 
 				pos[0] = vector3[0];
@@ -611,7 +620,16 @@ namespace changa {
 			//}
 
 			double get_particle_hsml(uint64_t id) {
-				return 0;
+				// Gas carries a smoothing length; for dark matter and stars the gravitational
+				// softening is the closest equivalent and is what the other readers use as the
+				// particle extent. Returning 0 here would collapse every particle onto a single
+				// voxel, because fill_voxels() truncates the radius to whole voxels.
+				ParticleType pt = (ParticleType)get_particle_type(id);
+
+				if (pt == ParticleType::Gas)
+					return get_particle_norm_value(BlockType::HSmooth, id);
+
+				return get_particle_norm_value(BlockType::Soft, id);
 			}
 
 			double get_particle_mass(uint64_t id) {

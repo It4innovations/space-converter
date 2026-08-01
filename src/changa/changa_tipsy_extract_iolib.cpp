@@ -666,10 +666,21 @@ namespace changa {
 			//}
 
 			double get_particle_hsml(uint64_t id) {
+				// An auxiliary "smoothlength" field, when the snapshot carries one, wins over
+				// the native fields.
 				if (g_smoothlength_blocknr != -1)
 					return get_particle_norm_value(g_smoothlength_blocknr, id);
 
-				return 0.0;
+				// Otherwise fall back to what the Tipsy format always stores: the gas smoothing
+				// length, and the gravitational softening for dark matter and stars. Returning 0
+				// would collapse every particle onto a single voxel, since fill_voxels()
+				// truncates the radius to whole voxels.
+				ParticleType pt = (ParticleType)get_particle_type(id);
+
+				if (pt == ParticleType::Gas)
+					return get_particle_norm_value(BlockType::HSmooth, id);
+
+				return get_particle_norm_value(BlockType::Soft, id);
 			}
 
 			double get_particle_mass(uint64_t id) {
