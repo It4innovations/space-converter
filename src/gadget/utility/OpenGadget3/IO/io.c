@@ -3310,7 +3310,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
       break;
 
     case IO_Zs:
-#ifdef GADGET3_IO_LIB //def LT_STELLAREVOLUTION
+#if defined(GADGET3_IO_LIB) && defined(LT_STELLAREVOLUTION)
       if(mode)
 	bytes_per_blockelement = LT_NMetP * sizeof(MyInputFloat);
       else
@@ -3323,7 +3323,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
     case IO_ContribII:
     case IO_ContribIa:
     case IO_ContribAGB:
-#ifdef GADGET3_IO_LIB //def LT_TRACK_CONTRIBUTES
+#if defined(GADGET3_IO_LIB) && defined(LT_STELLAREVOLUTION)
       if(mode)
 	bytes_per_blockelement = LT_NMetP * sizeof(MyInputFloat);
       else
@@ -3334,7 +3334,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
       break;
 
     case IO_allZSMOOTH:
-#ifdef GADGET3_IO_LIB //def LT_SMOOTH_ALLMETALS
+#if defined(GADGET3_IO_LIB) && defined(LT_STELLAREVOLUTION)
       if(mode)
 	bytes_per_blockelement = LT_NMetP * sizeof(MyInputFloat);
       else
@@ -3423,7 +3423,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
       break;
 
     case IO_DUSTL:
-#ifdef GADGET3_IO_LIB // defined(LT_STELLAREVOLUTION) && defined(GL_CR_DUST)
+#if defined(GADGET3_IO_LIB) && defined(LT_STELLAREVOLUTION)
       if(mode)
 	bytes_per_blockelement = LT_NMetP * sizeof(MyInputFloat);
       else
@@ -3433,7 +3433,7 @@ int get_bytes_per_blockelement(enum iofields blocknr, int mode)
 #endif
       break;
     case IO_DUSTS:
-#ifdef GADGET3_IO_LIB // defined(LT_STELLAREVOLUTION) && defined(GL_CR_DUST)
+#if defined(GADGET3_IO_LIB) && defined(LT_STELLAREVOLUTION)
       if(mode)
 	bytes_per_blockelement = LT_NMetP * sizeof(MyInputFloat);
       else
@@ -3670,7 +3670,7 @@ int get_values_per_blockelement(enum iofields blocknr)
       break;
 
     case IO_Zs:
-#ifdef GADGET3_IO_LIB //def LT_STELLAREVOLUTION
+#if defined(GADGET3_IO_LIB) && defined(LT_STELLAREVOLUTION)
       values = LT_NMetP;
 #else
       values = 0;
@@ -3680,7 +3680,7 @@ int get_values_per_blockelement(enum iofields blocknr)
     case IO_ContribII:
     case IO_ContribIa:
     case IO_ContribAGB:
-#ifdef GADGET3_IO_LIB //def LT_TRACK_CONTRIBUTES
+#if defined(GADGET3_IO_LIB) && defined(LT_STELLAREVOLUTION)
       values = LT_NMetP;
 #else
       values = 0;
@@ -3688,7 +3688,7 @@ int get_values_per_blockelement(enum iofields blocknr)
       break;
 
     case IO_allZSMOOTH:
-#ifdef GADGET3_IO_LIB //def LT_SMOOTH_ALLMETALS
+#if defined(GADGET3_IO_LIB) && defined(LT_STELLAREVOLUTION)
       values = LT_NMetP;
 #else
       values = 0;
@@ -3803,14 +3803,14 @@ int get_values_per_blockelement(enum iofields blocknr)
       break;
 
     case IO_DUSTL:
-#ifdef GADGET3_IO_LIB //defined(LT_STELLAREVOLUTION) && defined(GL_CR_DUST)
+#if defined(GADGET3_IO_LIB) && defined(LT_STELLAREVOLUTION)
       values = LT_NMetP;
 #else
       values = 0;
 #endif
       break;
     case IO_DUSTS:
-#ifdef GADGET3_IO_LIB //defined(LT_STELLAREVOLUTION) && defined(GL_CR_DUST)
+#if defined(GADGET3_IO_LIB) && defined(LT_STELLAREVOLUTION)
       values = LT_NMetP;
 #else
       values = 0;
@@ -4043,7 +4043,7 @@ int get_particles_in_block(enum iofields blocknr, int *typelist)
       nngb = ngas;
       for(i = 1; i < 4; i++)
 	typelist[i] = 0;
-#ifdef GADGET3_IO_LIB //def LT_STELLAREVOLUTION
+#if defined(GADGET3_IO_LIB) && defined(LT_STELLAREVOLUTION)
       nngb += header.npart[4];
 #else
       typelist[4] = 0;
@@ -4292,7 +4292,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_ACRS:
-#ifdef GADGET3_IO_LIB //def LT_STELLAREVOLUTION
+#if defined(GADGET3_IO_LIB) && defined(LT_STELLAREVOLUTION)
       return 1;
 #else
       return 0;
@@ -4941,7 +4941,7 @@ int blockpresent(enum iofields blocknr)
 
     case IO_Zs:
     case IO_iMass:
-#ifdef GADGET3_IO_LIB //def LT_STELLAREVOLUTION
+#if defined(GADGET3_IO_LIB) && defined(LT_STELLAREVOLUTION)
       return 1;
 #else
       return 0;
@@ -4951,7 +4951,7 @@ int blockpresent(enum iofields blocknr)
     case IO_ContribII:
     case IO_ContribIa:
     case IO_ContribAGB:
-#ifdef GADGET3_IO_LIB //def LT_TRACK_CONTRIBUTES
+#if defined(GADGET3_IO_LIB) && defined(LT_STELLAREVOLUTION)
       return 1;
 #else
       return 0;
@@ -4999,7 +4999,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_CONTRIB:
-#ifdef GADGET3_IO_LIB //def LT_TRACK_CONTRIBUTES
+#if defined(GADGET3_IO_LIB) && defined(LT_STELLAREVOLUTION)
       return 1;
 #else
       return 0;
@@ -5015,7 +5015,7 @@ int blockpresent(enum iofields blocknr)
       break;
 
     case IO_allZSMOOTH:
-#ifdef GADGET3_IO_LIB //def LT_SMOOTH_ALLMETALS
+#if defined(GADGET3_IO_LIB) && defined(LT_STELLAREVOLUTION)
       return 1;
 #else
       return 0;

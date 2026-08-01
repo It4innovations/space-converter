@@ -80,7 +80,7 @@ namespace space_converter {
                             norm = 8.0 / M_PI;
                         }
                         else {
-#ifndef __CUDA_ARCH__
+#ifndef SPACE_GPU_DEVICE_COMPILE
                             throw std::invalid_argument("Cubic not defined for dimension!");
 #endif
                         }
@@ -91,7 +91,7 @@ namespace space_converter {
                     }
 
                     CUDA_CALLABLE double kernel_norm(double h_inv) const override {
-#ifdef __CUDA_ARCH__
+#ifdef SPACE_GPU_DEVICE_COMPILE
                         return norm * powf(h_inv, static_cast<float>(dim));
 #else
                         return norm * std::pow(h_inv, static_cast<double>(dim));
@@ -151,7 +151,7 @@ namespace space_converter {
                             norm = 2187.0 / (40.0 * M_PI);
                         }
                         else {
-#ifndef __CUDA_ARCH__
+#ifndef SPACE_GPU_DEVICE_COMPILE
                             throw std::invalid_argument("Quintic not defined for dimension!");
 #endif
                         }
@@ -162,7 +162,7 @@ namespace space_converter {
                     }
 
                     CUDA_CALLABLE double kernel_norm(double h_inv) const override {
-#ifdef __CUDA_ARCH__
+#ifdef SPACE_GPU_DEVICE_COMPILE
                         return norm * powf(h_inv, static_cast<float>(dim));
 #else
                         return norm * std::pow(h_inv, static_cast<double>(dim));
@@ -254,7 +254,7 @@ namespace space_converter {
                             norm = 21.0 / (2.0 * M_PI);
                         }
                         else {
-#ifndef __CUDA_ARCH__
+#ifndef SPACE_GPU_DEVICE_COMPILE
                             throw std::invalid_argument("WendlandC2 not defined for dimension!");
 #endif
                         }
@@ -265,7 +265,7 @@ namespace space_converter {
                     }
 
                     CUDA_CALLABLE double kernel_norm(double h_inv) const override {
-#ifdef __CUDA_ARCH__
+#ifdef SPACE_GPU_DEVICE_COMPILE
                         return norm * powf(h_inv, static_cast<float>(dim));
 #else
                         return norm * std::pow(h_inv, static_cast<double>(dim));
@@ -297,7 +297,7 @@ namespace space_converter {
                     CUDA_CALLABLE double bias_correction(double density, double m, double h_inv, int n_neighbours) const override {
                         double n = kernel_norm(h_inv);
 
-#ifdef __CUDA_ARCH__
+#ifdef SPACE_GPU_DEVICE_COMPILE
                         double wc_correction = 0.0294 *
                             powf(n_neighbours * 0.01f, -0.977f) *
                             m * n;
@@ -330,7 +330,7 @@ namespace space_converter {
                             norm = 495.0 / (32.0 * M_PI);
                         }
                         else {
-#ifndef __CUDA_ARCH__
+#ifndef SPACE_GPU_DEVICE_COMPILE
                             throw std::invalid_argument("WendlandC4 not defined for dimension!");
 #endif
                         }
@@ -341,7 +341,7 @@ namespace space_converter {
                     }
 
                     CUDA_CALLABLE double kernel_norm(double h_inv) const override {
-#ifdef __CUDA_ARCH__
+#ifdef SPACE_GPU_DEVICE_COMPILE
                         return norm * powf(h_inv, static_cast<float>(dim));
 #else
                         return norm * std::pow(h_inv, static_cast<double>(dim));
@@ -378,7 +378,7 @@ namespace space_converter {
                     CUDA_CALLABLE double bias_correction(double density, double m, double h_inv, int n_neighbours) const override {
                         double n = kernel_norm(h_inv);
 
-#ifdef __CUDA_ARCH__
+#ifdef SPACE_GPU_DEVICE_COMPILE
                         double wc_correction = 0.01342 *
                             powf(n_neighbours * 0.01f, -1.579f) *
                             m * n;
@@ -411,7 +411,7 @@ namespace space_converter {
                             norm = 1365.0 / (64.0 * M_PI);
                         }
                         else {
-#ifndef __CUDA_ARCH__
+#ifndef SPACE_GPU_DEVICE_COMPILE
                             throw std::invalid_argument("WendlandC6 not defined for dimension!");
 #endif
                         }
@@ -422,7 +422,7 @@ namespace space_converter {
                     }
 
                     CUDA_CALLABLE double kernel_norm(double h_inv) const override {
-#ifdef __CUDA_ARCH__
+#ifdef SPACE_GPU_DEVICE_COMPILE
                         return norm * powf(h_inv, static_cast<float>(dim));
 #else
                         return norm * std::pow(h_inv, static_cast<double>(dim));
@@ -459,7 +459,7 @@ namespace space_converter {
                     CUDA_CALLABLE double bias_correction(double density, double m, double h_inv, int n_neighbours) const override {
                         double n = kernel_norm(h_inv);
 
-#ifdef __CUDA_ARCH__
+#ifdef SPACE_GPU_DEVICE_COMPILE
                         double wc_correction = 0.0116 *
                             powf(n_neighbours * 0.01f, -2.236f) *
                             m * n;
@@ -496,7 +496,7 @@ namespace space_converter {
                             norm = 357.0 / (64.0 * M_PI);
                         }
                         else {
-#ifndef __CUDA_ARCH__
+#ifndef SPACE_GPU_DEVICE_COMPILE
                             throw std::invalid_argument("WendlandC8 not defined for dimension!");
 #endif
                         }
@@ -507,7 +507,7 @@ namespace space_converter {
                     }
 
                     CUDA_CALLABLE double kernel_norm(double h_inv) const override {
-#ifdef __CUDA_ARCH__
+#ifdef SPACE_GPU_DEVICE_COMPILE
                         return norm * powf(h_inv, static_cast<float>(dim));
 #else
                         return norm * std::pow(h_inv, static_cast<double>(dim));

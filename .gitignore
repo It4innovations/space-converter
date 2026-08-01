@@ -137,5 +137,9 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-# skip core
-core*
+# Crash dumps. A vLLM worker segfaulting leaves a core file the size of its
+# resident set -- the one from 2026-08-01 was 1.87 GB and reached a commit.
+core
+core.[0-9]*
+vgcore.*
+*.core

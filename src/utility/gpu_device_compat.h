@@ -50,6 +50,19 @@
 #    define SPACE_GPU_USE_CUDA 1
 #endif
 
+/* Set while compiling the device pass, whichever backend is in use.
+ *
+ * Use this - never __CUDA_ARCH__ - to pick the device variant of code shared between
+ * host and device (atomics, math intrinsics). hipcc does not define __CUDA_ARCH__ when
+ * targeting AMD, so a bare "#ifdef __CUDA_ARCH__" silently selects the host branch
+ * inside a kernel: "#pragma omp atomic" is ignored in device code, turning a guarded
+ * accumulation into a racy one. We deliberately do not define __CUDA_ARCH__ ourselves,
+ * because rocPRIM/rocThrust key their own CUDA-vs-HIP branches off it.
+ */
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
+#    define SPACE_GPU_DEVICE_COMPILE 1
+#endif
+
 // ==============================================================================
 // CUDA Backend
 // ==============================================================================

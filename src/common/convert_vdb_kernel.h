@@ -186,7 +186,7 @@ namespace space_converter {
 
 								double dx = dpx - sx;
 
-#ifdef __CUDA_ARCH__
+#ifdef SPACE_GPU_DEVICE_COMPILE
 								double distance_norm = sqrt(dx * dx + dy2 + dz2);
 #else                        
 								double distance_norm = std::sqrt(dx * dx + dy2 + dz2);
@@ -216,7 +216,7 @@ namespace space_converter {
 								size_t gindex = yz_offset + osx;
 
 								if (!near_zero(d)) {
-#ifdef __CUDA_ARCH__
+#ifdef SPACE_GPU_DEVICE_COMPILE
 									atomicAdd(data_density + gindex, d);
 #else
 #pragma omp atomic
@@ -225,7 +225,7 @@ namespace space_converter {
 							}
 
 								if (has_data_temp && !near_zero(n)) {
-#ifdef __CUDA_ARCH__
+#ifdef SPACE_GPU_DEVICE_COMPILE
 									atomicAdd(data_temp + gindex, n);
 #else
 #pragma omp atomic
