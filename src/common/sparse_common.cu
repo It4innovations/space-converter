@@ -17,8 +17,7 @@
  */
 
 #include "sparse_common.h"
-#include <cuda_runtime.h>
-#include <cub/cub.cuh>
+#include "../utility/gpu_device_compat.h"
 
 #include "data_common.h"
 #include "../utility/gpu_utility.h"
@@ -430,7 +429,7 @@ namespace space_converter {
 						int block = 256;
 						int grid = (num_voxels + block - 1) / block;
 						GPU_KERNEL_TIME_START(voxelsToKeyValue);
-						voxelsToKeyValue << <grid, block >> > (d_inVoxels, num_voxels, d_keys, d_vals);
+						voxelsToKeyValue <<<grid, block >>> (d_inVoxels, num_voxels, d_keys, d_vals);
 						GPU_KERNEL_TIME_END(voxelsToKeyValue);
 					}
 
@@ -505,7 +504,7 @@ namespace space_converter {
 				//		{
 				//			int block = 256;
 				//			int grid = (n + block - 1) / block;
-				//			keyValueToVoxels << <grid, block >> > (d_keys_out, d_vals_out, n, d_out_voxels);
+				//			keyValueToVoxels <<<grid, block >>> (d_keys_out, d_vals_out, n, d_out_voxels);
 				//		}
 
 				//		*h_output_voxels = new Voxel[n];
@@ -843,13 +842,22 @@ namespace space_converter {
 				// GPU-side serialization: allocate device memory and write serialized data
 				void VoxelGPUManagerSortReduce::serializeGPU(uint8_t* d_data) {
 
+					// The count occupies an 8-byte slot so that the uint64_t key array starts at
+					// an 8-byte aligned offset. Device copies of 8-byte-typed data from a merely
+					// 4-byte aligned address return garbage on AMD GPUs, so the padding is required
+					// for correctness here, not just for tidiness. Buffer size: gpu_mem_size().
+					int64_t count = m_last_count;
 					uint8_t* ptr = d_data;
-					CUDA_CHECK_ERROR(cudaMemcpy(ptr, &m_last_count, sizeof(int), cudaMemcpyHostToDevice));
-					ptr += sizeof(int);
+					CUDA_CHECK_ERROR(cudaMemcpy(ptr, &count, sizeof(int64_t), cudaMemcpyHostToDevice));
+					ptr += sizeof(int64_t);
 					CUDA_CHECK_ERROR(cudaMemcpy(ptr, d_keys_out, m_last_count * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
 					ptr += m_last_count * sizeof(uint64_t);
 					CUDA_CHECK_ERROR(cudaMemcpy(ptr, d_vals_out, m_last_count * sizeof(float), cudaMemcpyDeviceToDevice));
 
+					// The caller hands this buffer straight to MPI (GPU-aware / RDMA path).
+					// Device-to-device copies are not ordered against the network transfer, so
+					// without this sync MPI can read the buffer before the copies land.
+					CUDA_SYNC_CHECK();
 				}
 
 				// GPU-side deserialization: read from device memory
@@ -859,13 +867,19 @@ namespace space_converter {
 						return; // Invalid data
 					}
 
+					// d_data was just filled by MPI (GPU-aware / RDMA path); make sure the
+					// incoming transfer is visible to the device copies below.
+					CUDA_SYNC_CHECK();
+
 					// int    m_last_count = 0;
 					// uint64_t* d_keys_out = nullptr;
 					// float* d_vals_out = nullptr;
+					int64_t count = 0;
 					uint8_t* ptr = d_data;
-					CUDA_CHECK_ERROR(cudaMemcpy(&m_last_count, ptr, sizeof(int), cudaMemcpyDeviceToHost));
+					CUDA_CHECK_ERROR(cudaMemcpy(&count, ptr, sizeof(int64_t), cudaMemcpyDeviceToHost));
+					m_last_count = (int)count;
 					m_max = m_last_count;
-					ptr += sizeof(int);
+					ptr += sizeof(int64_t);
 
 					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys_out, m_last_count * sizeof(uint64_t)));
 					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals_out, m_last_count * sizeof(float)));
@@ -874,6 +888,7 @@ namespace space_converter {
 					ptr += m_last_count * sizeof(uint64_t);
 					CUDA_CHECK_ERROR(cudaMemcpy(d_vals_out, ptr, m_last_count * sizeof(float), cudaMemcpyDeviceToDevice));
 
+					CUDA_SYNC_CHECK();
 				}
 
 				// GPU-side merge: combine with another manager without using host memory

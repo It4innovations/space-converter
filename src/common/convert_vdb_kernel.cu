@@ -23,8 +23,7 @@
 #include "dense_common.h"
 #include "data_common.h"
 #include <float.h>
-#include <cuda_runtime.h>
-#include <device_launch_parameters.h>
+#include "../utility/gpu_device_compat.h"
 #include <unordered_map>
 #include <vector>
 #include <stdexcept>
@@ -188,7 +187,7 @@ namespace space_converter {
 					numBlocks = min(numBlocks, 1024); // Limit grid size
 
 					GPU_KERNEL_TIME_START(find_bbox_kernel_cuda);
-					find_bbox_kernel_cuda << <numBlocks, blockSize >> > (
+					find_bbox_kernel_cuda <<<numBlocks, blockSize >>> (
 						d_pos_particles,
 						num_particles,
 						d_offset,
@@ -515,7 +514,7 @@ namespace space_converter {
 					int numBlocks = (num_particles + blockSize - 1) / blockSize;
 
 					GPU_KERNEL_TIME_START(convert_to_sparse_grid_kernel_cuda);
-					convert_to_sparse_grid_kernel_cuda << <numBlocks, blockSize >> > (
+					convert_to_sparse_grid_kernel_cuda <<<numBlocks, blockSize >>> (
 						pos_particles,
 						particle_ids,
 						radius_particles,
@@ -669,7 +668,7 @@ namespace space_converter {
 					int numBlocks = (num_particles + blockSize - 1) / blockSize;
 
 					GPU_KERNEL_TIME_START(convert_to_dense_grid_kernel_cuda);
-					convert_to_dense_grid_kernel_cuda << <numBlocks, blockSize >> > (
+					convert_to_dense_grid_kernel_cuda <<<numBlocks, blockSize >>> (
 						pos_particles, //    const float* pos_particles,
 						particle_ids, //const size_t* particle_ids
 						radius_particles, //    const float* radius_particles,
@@ -1182,19 +1181,19 @@ namespace space_converter {
 						size_t this_batch = std::min(batch_size, total_voxels - vox_start);
 
 						double inv_l2p = bbox_size_orig * scale_space_diagonal / (double)bbox_dim;
-						fill_voxel_queries_kernel << <divRoundUp(this_batch, 256ULL), 256 >> > (
+						fill_voxel_queries_kernel <<<divRoundUp(this_batch, 256ULL), 256 >>> (
 							d_queries, vox_start, this_batch, dim0, dim1, off0, off1, off2,
 							(float)bbox_min_orig[0], (float)bbox_min_orig[1], (float)bbox_min_orig[2],
 							inv_l2p);
 						CUDA_SYNC_CHECK();
 
-						runQuery_float4_kernel << <divRoundUp(this_batch, 256ULL), 256 >> > (
+						runQuery_float4_kernel <<<divRoundUp(this_batch, 256ULL), 256 >>> (
 							d_tree, tree_N,
 							d_cand, k, std::numeric_limits<float>::infinity(),
 							d_queries, (int)this_batch);
 						CUDA_SYNC_CHECK();
 
-						accumulate_voxel_sph_kernel << <divRoundUp(this_batch, 256ULL), 256 >> > (
+						accumulate_voxel_sph_kernel <<<divRoundUp(this_batch, 256ULL), 256 >>> (
 							d_tree, d_cand, k,
 							vox_start, this_batch,
 							dim0, dim1, dim2,

@@ -22,7 +22,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <cstring>
-#include <cuda_runtime.h>
+#include "../utility/gpu_device_compat.h"
 #include <stdexcept>
 #include <string>
 
@@ -297,7 +297,7 @@ namespace space_converter {
 						std::min<size_t>((n + THREADS - 1) / THREADS, 1024));
 
 					GPU_KERNEL_TIME_START(find_min_max_kernel);
-					find_min_max_kernel << <blocks, THREADS >> > (d_data_density, n, d_min, d_max);
+					find_min_max_kernel <<<blocks, THREADS >>> (d_data_density, n, d_min, d_max);
 					GPU_KERNEL_TIME_END(find_min_max_kernel);
 					CUDA_CHECK_ERROR(cudaGetLastError());
 					CUDA_CHECK_ERROR(cudaDeviceSynchronize());

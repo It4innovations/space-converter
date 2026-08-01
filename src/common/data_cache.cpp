@@ -41,7 +41,7 @@ namespace space_converter {
 
                 // Initialize scalar values
                 particle_radius_const = 0.0;
-                use_gpu_cuda = false;
+                use_gpu = false;
             }
 
             CacheManager::~CacheManager() {

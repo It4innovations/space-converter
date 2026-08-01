@@ -21,6 +21,8 @@
 
 #include <iostream>
 
+#include "gpu_device_compat.h"
+
 /**
  * @brief Check CUDA error and print detailed message if error occurred
  * 

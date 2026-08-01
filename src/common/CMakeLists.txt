@@ -74,6 +74,23 @@ if(WITH_GPU_CUDA)
     )
 endif()
 
+if(WITH_GPU_HIP)
+    add_definitions(-DWITH_GPU_HIP)
+    # Legacy guard macro: the GPU code paths in the sources are guarded by
+    # WITH_GPU_CUDA; gpu_device_compat.h remaps the CUDA runtime API to HIP.
+    add_definitions(-DWITH_GPU_CUDA)
+    # The hip/*.cpp files wrap the .cu sources so they can be compiled as HIP
+    # (same pattern as braas-hpc-gpujpeg: the .cpp only includes the .cu file).
+    set(SRC_COMMON_HIP
+        hip/data_cache.cpp
+        hip/convert_vdb_kernel.cpp
+        hip/sparse_common.cpp
+        hip/dense_common.cpp
+    )
+    set_source_files_properties(${SRC_COMMON_HIP} PROPERTIES LANGUAGE HIP)
+    list(APPEND SRC_COMMON ${SRC_COMMON_HIP})
+endif()
+
 if(WITH_OPENMP)
     add_definitions(-DWITH_OPENMP)
 endif()
@@ -127,6 +144,16 @@ if(WITH_CUDA_MALLOCMANAGED)
     add_definitions(-DWITH_CUDA_MALLOCMANAGED)
 endif()
 
+if(WITH_HIP_AWARE_MPI)
+    add_definitions(-DWITH_HIP_AWARE_MPI)
+    add_definitions(-DWITH_CUDA_AWARE_MPI)
+endif()
+
+if(WITH_HIP_MALLOCMANAGED)
+    add_definitions(-DWITH_HIP_MALLOCMANAGED)
+    add_definitions(-DWITH_CUDA_MALLOCMANAGED)
+endif()
+
 include_directories(${INC})
 ########################################################
 add_library(space_common ${SRC_COMMON})
@@ -159,8 +186,16 @@ if(WITH_GPU_CUDA)
     endif()
 endif()
 
+if(WITH_GPU_HIP)
+    set_target_properties(space_common PROPERTIES
+        HIP_STANDARD 17
+        HIP_STANDARD_REQUIRED ON
+    )
+    target_link_libraries(space_common hip::host)
+endif()
+
 target_link_libraries(
-   space_common 
+   space_common
    $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>
    $<IF:$<CONFIG:Debug>,${TBB_LIBRARIES_DEBUG},${TBB_LIBRARIES}>
    ${MPI_LIBRARIES}

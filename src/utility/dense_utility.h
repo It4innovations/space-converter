@@ -28,8 +28,8 @@
 #include <utility>
 #include "data_common.h"
 
-#ifdef __CUDACC__
-#include <cuda_runtime.h>
+#if defined(__CUDACC__) || defined(__HIPCC__)
+#include "gpu_device_compat.h"
 #define CUDA_CALLABLE __host__ __device__
 #else
 #define CUDA_CALLABLE

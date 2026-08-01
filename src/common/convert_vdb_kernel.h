@@ -35,7 +35,7 @@ namespace space_converter {
 
 			namespace kernel {
 
-#ifdef __CUDACC__
+#if defined(__CUDACC__) || defined(__HIPCC__)
 				__host__ __device__
 #endif
 					inline bool near_zero(float x)
@@ -43,7 +43,7 @@ namespace space_converter {
 					return fabsf(x) <= FDATA_EPSILON;
 				}
 
-#ifdef __CUDACC__
+#if defined(__CUDACC__) || defined(__HIPCC__)
 				__host__ __device__
 #endif
 					inline bool near_zero_norm3(float x, float y, float z)
@@ -51,7 +51,7 @@ namespace space_converter {
 					return x * x + y * y + z * z <= 1e-12f;
 				}
 
-#ifdef __CUDACC__
+#if defined(__CUDACC__) || defined(__HIPCC__)
 				__host__ __device__
 #endif            
 					inline double get_particle_radius(
@@ -95,7 +95,7 @@ namespace space_converter {
 					return radiusxyz_max;
 				}
 
-#ifdef __CUDACC__
+#if defined(__CUDACC__) || defined(__HIPCC__)
 				__host__ __device__
 #endif            
 					inline void fill_voxels(
@@ -243,7 +243,7 @@ namespace space_converter {
 				 * This function can be called from both CPU and CUDA kernels.
 				 * Returns true if particle should be processed, false if it should be skipped.
 				 */
-#ifdef __CUDACC__
+#if defined(__CUDACC__) || defined(__HIPCC__)
 				__host__ __device__
 #endif
 					inline bool process_particle(

@@ -272,7 +272,7 @@ namespace space_converter {
 				 * @param bbox_min Output minimum coordinates
 				 * @param bbox_max Output maximum coordinates
 				 * @param offset_position Optional position offset
-				 * @param use_gpu_cuda Flag to use GPU (true) or CPU (false) implementation
+				 * @param use_gpu Flag to use GPU (true) or CPU (false) implementation
 				 */
 				virtual void iolib_find_bbox(
 					int particle_type,

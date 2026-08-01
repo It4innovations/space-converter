@@ -56,6 +56,13 @@ if(WITH_GPU_CUDA)
     add_definitions(-DWITH_GPU_CUDA)
 endif()
 
+if(WITH_GPU_HIP)
+    add_definitions(-DWITH_GPU_HIP)
+    # Legacy guard macro: the GPU code paths in the sources are guarded by
+    # WITH_GPU_CUDA; gpu_device_compat.h remaps the CUDA runtime API to HIP.
+    add_definitions(-DWITH_GPU_CUDA)
+endif()
+
 if(WITH_CUDAKDTREE)
     add_definitions(-DWITH_CUDAKDTREE)
     if(CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES)
@@ -68,6 +75,16 @@ if(WITH_CUDA_AWARE_MPI)
 endif()
 
 if(WITH_CUDA_MALLOCMANAGED)
+    add_definitions(-DWITH_CUDA_MALLOCMANAGED)
+endif()
+
+if(WITH_HIP_AWARE_MPI)
+    add_definitions(-DWITH_HIP_AWARE_MPI)
+    add_definitions(-DWITH_CUDA_AWARE_MPI)
+endif()
+
+if(WITH_HIP_MALLOCMANAGED)
+    add_definitions(-DWITH_HIP_MALLOCMANAGED)
     add_definitions(-DWITH_CUDA_MALLOCMANAGED)
 endif()
 
@@ -182,6 +199,13 @@ endif()
 
 if(NOT WIN32 AND NOT APPLE)
     target_link_libraries(space_converter stdc++fs)
+endif()
+
+if(WITH_GPU_HIP)
+    target_link_libraries(space_converter hip::host)
+    # Link with the C++ compiler (Cray wrapper): it adds libgomp/MPI/GTL for the
+    # g++-compiled objects; the non-RDC HIP objects only need libamdhip64.
+    set_target_properties(space_converter PROPERTIES LINKER_LANGUAGE CXX)
 endif()
 
 if(WITH_IPIC3D)

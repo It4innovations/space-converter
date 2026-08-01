@@ -26,7 +26,7 @@
 
 #ifdef WITH_GPU_CUDA
 #include "utility/gpu_logging.h"
-#include <cuda_runtime.h>
+#include "utility/gpu_device_compat.h"
 #endif
 
 #ifdef WITH_OPENMP

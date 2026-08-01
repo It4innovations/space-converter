@@ -19,7 +19,7 @@
 #pragma once
 
 #ifdef WITH_GPU_CUDA
-#include <cuda_runtime.h>
+#include "gpu_device_compat.h"
 #endif
 
 #include <stdio.h>

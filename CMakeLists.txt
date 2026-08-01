@@ -49,6 +49,10 @@ option(WITH_GPU_CUDA "Enable GPU CUDA" OFF)
 option(WITH_CUDA_AWARE_MPI "Enable CUDA-aware MPI for RDMA GPU-direct transfers (requires UCX/RDMA-capable MPI)" OFF)
 option(WITH_CUDA_MALLOCMANAGED "Enable CUDA unified memory (managed memory)" OFF)
 
+option(WITH_GPU_HIP "Enable GPU HIP (AMD ROCm)" OFF)
+option(WITH_HIP_AWARE_MPI "Enable GPU-aware MPI for direct device-buffer transfers (e.g. Cray MPICH with GTL on LUMI)" OFF)
+option(WITH_HIP_MALLOCMANAGED "Enable HIP unified memory (managed memory)" OFF)
+
 option(WITH_MERIC  "Enable MERIC" OFF)
 ########################################################
 
@@ -136,6 +140,26 @@ if(WITH_GPU_CUDA OR WITH_CUDAKDTREE)
     set(CMAKE_CUDA_ARCHITECTURES ${CUKD_CUDA_ARCHITECTURES})
     
     enable_language(CUDA)
+endif()
+
+if(WITH_GPU_HIP)
+    # ==================================================================
+    # configure and enable HIP (AMD ROCm)
+    # ==================================================================
+    if(WITH_GPU_CUDA)
+        message(FATAL_ERROR "WITH_GPU_HIP and WITH_GPU_CUDA are mutually exclusive")
+    endif()
+
+    # gfx90a = AMD MI250X (LUMI-G)
+    if(NOT CMAKE_HIP_ARCHITECTURES)
+        set(CMAKE_HIP_ARCHITECTURES gfx90a)
+    endif()
+
+    enable_language(HIP)
+
+    # hip::host carries the HIP include dirs and libamdhip64 for plain C++ TUs;
+    # hipCUB/rocPRIM/rocThrust are header-only and live in the same ROCm prefix.
+    find_package(hip REQUIRED CONFIG HINTS "$ENV{ROCM_PATH}/lib/cmake/hip")
 endif()
 
 if(WITH_HACC)

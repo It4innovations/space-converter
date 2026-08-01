@@ -24,8 +24,8 @@
 #ifdef WITH_CUDAKDTREE
 // float4 used for voxel KD-tree nodes.  Include CUDA runtime when available;
 // otherwise provide a plain-C fallback (IDE / non-CUDA builds).
-#  if defined(__CUDACC__) || defined(WITH_GPU_CUDA)
-#    include <cuda_runtime.h>
+#  if defined(__CUDACC__) || defined(__HIPCC__) || defined(WITH_GPU_CUDA)
+#    include "../utility/gpu_device_compat.h"
 #  else
 // Fallback definition for builds without CUDA
 struct float4 { float x, y, z, w; };
@@ -76,7 +76,7 @@ namespace space_converter {
                 double particle_radius_const = 0.0; ///< Constant particle radius value
 
                 // Flag to enable GPU acceleration for CUDA-based computations
-                bool use_gpu_cuda = false;
+                bool use_gpu = false;
 
 #ifdef WITH_CUDAKDTREE
                 /// Voxel-centric dense loop: loop over voxels, query particles via KD-tree

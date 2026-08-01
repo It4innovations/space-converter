@@ -27,13 +27,13 @@
 #include <memory>
 #include "data_common.h"
 
-// CUDA includes
+// CUDA/HIP includes
 #ifdef WITH_GPU_CUDA
-#include <cuda_runtime.h>
+#include "../utility/gpu_device_compat.h"
 #endif
 
 // NanoVDB includes
-#if defined(WITH_NANOVDB) && !defined(__CUDACC__)
+#if defined(WITH_NANOVDB) && !defined(__CUDACC__) && !defined(__HIPCC__)
 #define NANOVDB_USE_TBB
 #define NANOVDB_USE_INTRINSICS
 //#define NANOVDB_USE_OPENVDB
@@ -41,7 +41,7 @@
 #endif
 
 // OpenVDB includes
-#if defined(WITH_OPENVDB) && !defined(__CUDACC__)
+#if defined(WITH_OPENVDB) && !defined(__CUDACC__) && !defined(__HIPCC__)
 #include <openvdb/openvdb.h>
 #include <openvdb/tools/Composite.h>
 #endif
@@ -67,12 +67,12 @@ namespace space_converter {
 					int k;         ///< Z coordinate (voxel index)
 					float value;   ///< Voxel value (density, temperature, etc.)
 
-#ifdef __CUDACC__
+#if defined(__CUDACC__) || defined(__HIPCC__)
 					__host__ __device__
 #endif
 						Voxel() : i(0), j(0), k(0), value(0.0f) {}
 
-#ifdef __CUDACC__
+#if defined(__CUDACC__) || defined(__HIPCC__)
 					__host__ __device__
 #endif					
 						Voxel(int _i, int _j, int _k, float _value)
@@ -80,7 +80,7 @@ namespace space_converter {
 					}
 				};
 
-#ifdef __CUDACC__
+#if defined(__CUDACC__) || defined(__HIPCC__)
 				__host__ __device__
 #endif			
 					inline uint64_t packCoord3(int x, int y, int z)
@@ -93,7 +93,7 @@ namespace space_converter {
 					return (ux) | (uy << COORD_BITS) | (uz << (2 * COORD_BITS));
 				}
 
-#ifdef __CUDACC__			
+#if defined(__CUDACC__) || defined(__HIPCC__)
 				__host__ __device__
 #endif			
 					inline void unpackCoord3(uint64_t key, int& x, int& y, int& z)
@@ -166,7 +166,7 @@ namespace space_converter {
 					void clear() override;
 				};
 
-#if defined(WITH_NANOVDB) && !defined(__CUDACC__)
+#if defined(WITH_NANOVDB) && !defined(__CUDACC__) && !defined(__HIPCC__)
 				// ---------------------------------------------
 				// NanoVDB-based CPU voxel manager
 				// nanovdb::tools::build::FloatGrid
@@ -221,7 +221,7 @@ namespace space_converter {
 
 #endif // WITH_NANOVDB
 
-#if defined(WITH_OPENVDB) && !defined(__CUDACC__)
+#if defined(WITH_OPENVDB) && !defined(__CUDACC__) && !defined(__HIPCC__)
 				// ---------------------------------------------
 				// OpenVDB-based CPU voxel manager
 				// ---------------------------------------------
@@ -344,6 +344,13 @@ namespace space_converter {
 						VoxelGPUManagerSortReduce temp_manager;
 						temp_manager.deserializeCPU(bin_data);
 						this->mergeCPU(&temp_manager);
+					}
+
+					// Size of the buffer serializeGPU()/deserializeGPU() operate on.
+					// Differs from mem_size() by using an 8-byte count slot, which keeps the
+					// uint64_t key array 8-byte aligned inside the device buffer.
+					size_t gpu_mem_size() const {
+						return sizeof(int64_t) + (sizeof(uint64_t) + sizeof(float)) * (size_t)m_last_count;
 					}
 
 					// GPU-side serialization: write to device memory (device-to-device)

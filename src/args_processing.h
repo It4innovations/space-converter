@@ -99,7 +99,7 @@ namespace space_converter {
 
 #ifdef WITH_GPU_CUDA
 		/// Flag to enable GPU acceleration for CUDA-based computations
-		bool use_gpu_cuda = false;
+		bool use_gpu = false;
 #endif
 
 		bool use_sort_by_radius = false;

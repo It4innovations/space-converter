@@ -143,8 +143,18 @@ The release adds:
 | `WITH_GPU_CUDA` | OFF | Compile CUDA dense/sparse conversion kernels |
 | `WITH_CUDA_AWARE_MPI` | OFF | Use CUDA-aware MPI for direct GPU-buffer communication |
 | `WITH_CUDA_MALLOCMANAGED` | OFF | Use CUDA unified/managed memory |
+| `WITH_GPU_HIP` | OFF | Compile the same kernels for AMD GPUs via HIP/ROCm |
+| `WITH_HIP_AWARE_MPI` | OFF | Use GPU-aware MPI for direct device-buffer communication |
+| `WITH_HIP_MALLOCMANAGED` | OFF | Use HIP unified/managed memory |
 
 `WITH_CUDAKDTREE` remains available for neighbor search. It is separate from `WITH_GPU_CUDA`: KD-tree acceleration can be built without enabling the complete GPU voxelization pipeline.
+
+`WITH_GPU_HIP` and `WITH_GPU_CUDA` are mutually exclusive. Enabling the HIP backend also
+defines `WITH_GPU_CUDA` internally, because the GPU code paths are guarded by that macro;
+`src/utility/gpu_device_compat.h` remaps the CUDA runtime API onto HIP and aliases
+`cub` to `hipcub`, so the `.cu` sources compile unchanged for both vendors. The AMD build
+compiles them through thin `src/common/hip/*.cpp` wrappers that only `#include` the
+matching `.cu` file, so no source is duplicated.
 
 ### 3.2 CUDA language level and compiler options
 
@@ -491,7 +501,7 @@ Tipsy and NChilada adapters were migrated to the shared namespace and manager in
 --dense-file X
 --radius-const X
 --dense-loop-over-voxels
---gpu-cuda
+--gpu
 --sort-by-radius
 --sort-by-non-overlap
 --num-files X
@@ -806,7 +816,19 @@ For complete GPU conversion:
 -DWITH_GPU_CUDA=ON
 ```
 
-Add `WITH_CUDA_AWARE_MPI` only when the MPI installation explicitly supports device buffers.
+or, for AMD GPUs (e.g. MI250X / gfx90a on LUMI-G):
+
+```cmake
+-DWITH_GPU_HIP=ON -DCMAKE_HIP_ARCHITECTURES=gfx90a
+```
+
+Add `WITH_CUDA_AWARE_MPI` / `WITH_HIP_AWARE_MPI` only when the MPI installation explicitly
+supports device buffers. On LUMI that means Cray MPICH with the GTL library (loaded by
+`partition/G`) and `MPICH_GPU_SUPPORT_ENABLED=1` in the job environment.
+
+Ready-made LUMI scripts live in `scripts/space_converter/lumi/`:
+`build_lumi.sh` (LUMI/25.09, partition/G, PrgEnv-gnu, rocm/6.4.4), `run_lumi.sh`, and
+`gpu.sh`, which pins one MPI rank per GCD via `ROCR_VISIBLE_DEVICES`.
 
 ### 16.2 Required CLI migration
 

@@ -75,7 +75,7 @@ namespace space_converter {
 		std::cout << "\t--bbox x1 y1 z1 x2 y2 z2           : Define axis-aligned bounding box" << std::endl;
 		std::cout << "\t--save-mpi-rank                    : Save MPI rank information" << std::endl;
 #ifdef WITH_GPU_CUDA
-		std::cout << "\t--gpu-cuda                         : Enable GPU acceleration for CUDA-based computations" << std::endl;
+		std::cout << "\t--gpu                         : Enable GPU acceleration (CUDA or HIP, depending on the build)" << std::endl;
 #endif
 		std::cout << "\t-h, --help                         : Display usage information" << std::endl;
 
@@ -308,9 +308,9 @@ namespace space_converter {
 			}
 #endif		
 #ifdef WITH_GPU_CUDA
-			else if (arg == "--gpu-cuda") {
+			else if (arg == "--gpu") {
 				// Enable GPU acceleration for CUDA-based computations
-				from_cl.use_gpu_cuda = true;
+				from_cl.use_gpu = true;
 			}
 #endif
 			else if (arg == "--sort-by-radius") {
@@ -347,7 +347,7 @@ namespace space_converter {
 		std::cout << "use_nanoflann: " << (use_nanoflann ? "true" : "false") << std::endl;
 #endif
 #ifdef WITH_GPU_CUDA
-		std::cout << "use_gpu_cuda: " << (use_gpu_cuda ? "true" : "false") << std::endl;
+		std::cout << "use_gpu: " << (use_gpu ? "true" : "false") << std::endl;
 #endif
 		std::cout << "use_sort_by_radius: " << (use_sort_by_radius ? "true" : "false") << std::endl;
 		std::cout << "use_sort_by_non_overlap: " << (use_sort_by_non_overlap ? "true" : "false") << std::endl;
@@ -389,7 +389,7 @@ namespace space_converter {
 // Accretion disk simulation
 //--data-type CHANGA_TIPSY --grid-dim 1000 --output-path e:\temp\changa\tmp\ --tipsy-file e:\temp\changa\tipsy\accretiondisklowresstd --output-path f:\temp\ --port 5000
 
-//--data-type CHANGA_TIPSY --tipsy-file e:\temp\21\LOW_512XLARGEMHDVERTDENSWend64FBSB64AB05.00995 --output-path e:\temp\21\ --grid-dim 100 --export-data 0 1 --bbox 452.542480 506.425049 478.175903 510.356018 564.238525 535.989380 --gpu-cuda --dense-type 6 # --cudakdtree --calc-radius-neigh 10 
+//--data-type CHANGA_TIPSY --tipsy-file e:\temp\21\LOW_512XLARGEMHDVERTDENSWend64FBSB64AB05.00995 --output-path e:\temp\21\ --grid-dim 100 --export-data 0 1 --bbox 452.542480 506.425049 478.175903 510.356018 564.238525 535.989380 --gpu --dense-type 6 # --cudakdtree --calc-radius-neigh 10 
 
 // === GADGET Format Examples ===
 
@@ -462,7 +462,7 @@ namespace space_converter {
 // GADGET_SIMPLE with CUDA KDTree
 //--data-type GADGET_SIMPLE --gadget-file e:\temp\gadget\very_small_example\snap_081 --output-path e:\temp\ --port 5000 --calc-radius-neigh 32 --cudakdtree
 
-//--data-type GADGET_SIMPLE --gadget-file e:\temp\gadget\very_small_example\snap_081 --output-path e:\temp\20_new\ --export-data 0 1 --dense-type 6 --gpu-cuda  --sort-by-radius --nanovdb
+//--data-type GADGET_SIMPLE --gadget-file e:\temp\gadget\very_small_example\snap_081 --output-path e:\temp\20_new\ --export-data 0 1 --dense-type 6 --gpu  --sort-by-radius --nanovdb
 
 // === HACC_GenericIO Format Examples ===
 

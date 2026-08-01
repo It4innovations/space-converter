@@ -178,10 +178,10 @@ namespace space_converter {
 
 		// Other params
 #ifdef WITH_GPU_CUDA
-		if (from_cl.use_gpu_cuda && from_cl.world_rank == 0) {
+		if (from_cl.use_gpu && from_cl.world_rank == 0) {
 			printf("Using GPU CUDA for computations\n");
 		}
-		convert_vdb_base->cache_manager.use_gpu_cuda = from_cl.use_gpu_cuda;
+		convert_vdb_base->cache_manager.use_gpu = from_cl.use_gpu;
 #endif
 #ifdef WITH_CUDAKDTREE
 		convert_vdb_base->cache_manager.use_dense_loop_over_voxels = from_cl.use_dense_loop_over_voxels;
@@ -256,7 +256,7 @@ namespace space_converter {
 		convert_vdb_base->find_particle_positions();
 
 #ifdef WITH_GPU_CUDA
-		if (convert_vdb_base->cache_manager.use_gpu_cuda) {
+		if (convert_vdb_base->cache_manager.use_gpu) {
 			convert_vdb_base->cache_manager.copy_particles_to_gpu();
 		}
 #endif		
@@ -315,7 +315,7 @@ namespace space_converter {
 			//void sort_particles_by_radius_gpu();                        ///< Sort particle IDs by radius on GPU (ascending)
 			//void sort_particles_by_radius_gpu_inplace();                ///< Sort particle IDs by radius on GPU using device pointers (no CPU<->GPU copy)
 
-			if (convert_vdb_base->cache_manager.use_gpu_cuda) {
+			if (convert_vdb_base->cache_manager.use_gpu) {
 				convert_vdb_base->cache_manager.sort_particles_by_radius_gpu_inplace();
 			}
 			else {
@@ -329,7 +329,7 @@ namespace space_converter {
 			// This minimizes overlapping voxel regions, significantly reducing atomic operation overhead
 			// Can reduce GPU processing time from 20s to ~0.005s by eliminating atomic contention
 			
-			if (convert_vdb_base->cache_manager.use_gpu_cuda) {
+			if (convert_vdb_base->cache_manager.use_gpu) {
 				convert_vdb_base->cache_manager.sort_particles_by_nonoverlap_gpu_inplace();
 			}
 			else {
@@ -496,7 +496,7 @@ namespace space_converter {
 			grid_main.type = common::vdb::VDBParticleType::eDense;
 
 #ifdef WITH_GPU_CUDA
-			if (from_cl.use_gpu_cuda) 
+			if (from_cl.use_gpu) 
 			{
 				grid_main.dense_grid = std::make_shared<common::vdb::dense::VoxelGPUDenseManager>();
 			}
@@ -534,7 +534,7 @@ namespace space_converter {
 			}
 
 #ifdef WITH_GPU_CUDA			
-			if (from_cl.use_gpu_cuda) {
+			if (from_cl.use_gpu) {
 				grid_main.sparse_grid = std::make_shared<common::vdb::sparse::VoxelGPUManagerSortReduce>();
 				grid_main.sparse_grid->init(convert_vdb_base->get_local_num_particles()); // TODO: convert_vdb_base->get_local_num_particles()
 			} 
@@ -733,7 +733,7 @@ namespace space_converter {
 			grid_main_sum.type = common::vdb::VDBParticleType::eDense;
 
 #ifdef WITH_GPU_CUDA
-			if (from_cl.use_gpu_cuda)
+			if (from_cl.use_gpu)
 			{
 				grid_main_sum.dense_grid = std::make_shared<common::vdb::dense::VoxelGPUDenseManager>();
 			}
@@ -891,7 +891,7 @@ namespace space_converter {
 							if (auto* gpu_mgr = dynamic_cast<common::vdb::sparse::VoxelGPUManagerSortReduce*>(grid_main_sum.sparse_grid.get())) {
 								// RDMA path: serialize directly into device buffer, send via GPU-direct
 								uint8_t* d_buf = nullptr;
-								size_t ns = grid_main_sum.sparse_grid->mem_size();
+								size_t ns = gpu_mgr->gpu_mem_size();
 								CUDA_CHECK_ERROR(CUDA_MALLOC(&d_buf, ns));
 								gpu_mgr->serializeGPU(d_buf);
 								mpi_send(&ns, sizeof(ns), MPI_BYTE, from_cl.world_rank - step, 0);

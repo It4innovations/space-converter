@@ -394,7 +394,7 @@ namespace space_converter {
 				cache_manager.voxel_kdtree_per_ptype.resize(ptype_count);
 
 #ifdef WITH_GPU_CUDA
-				if (cache_manager.use_gpu_cuda) {
+				if (cache_manager.use_gpu) {
 					// GPU path: build directly on GPU, store in d_voxel_kdtree_per_ptype
 					cache_manager.d_voxel_kdtree_per_ptype.resize(ptype_count, nullptr);
 
@@ -684,7 +684,7 @@ namespace space_converter {
 				//printf("===convert_iolib_to_grid: FIND: %f [s]\n", omp_get_wtime() - t);
 
 #ifdef WITH_GPU_CUDA
-				if (cache_manager.use_gpu_cuda) {
+				if (cache_manager.use_gpu) {
 
 					if (new_values) {
 						// Upload values_particles to GPU if they were newly computed
@@ -927,7 +927,7 @@ namespace space_converter {
 					}
 
 #ifdef WITH_GPU_CUDA
-					if (cache_manager.use_gpu_cuda) {
+					if (cache_manager.use_gpu) {
 						// Use GPU kernel with cached GPU particle positions
 						const float* d_pos_particles = cache_manager.d_pos_particles_per_ptype[ptype];
 						kernel::find_bbox_gpu(d_pos_particles, num_particles, offset_position, bbox_min, bbox_max);
