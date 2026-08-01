@@ -105,6 +105,11 @@ namespace space_converter {
 		bool use_sort_by_radius = false;
 		bool use_sort_by_non_overlap = false;
 
+		/// Stream particles straight from the reader instead of caching them.
+		/// Trades a second pass over the snapshot for not holding a per-particle copy
+		/// of positions, radii, values and ids in memory. CPU path only.
+		bool skip_cache_manager = false;
+
 #ifdef WITH_CUDAKDTREE
 		/// Flag to use voxel-centric loop for dense grid conversion (loop over voxels, query particles via KD-tree)
 		bool use_dense_loop_over_voxels = false;

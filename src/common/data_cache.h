@@ -78,6 +78,15 @@ namespace space_converter {
                 // Flag to enable GPU acceleration for CUDA-based computations
                 bool use_gpu = false;
 
+                /// Stream particles from the reader instead of caching them. The per-ptype
+                /// vectors above stay empty; the conversion pulls particles in chunks, which
+                /// removes a per-particle copy of positions, radii, values and ids (~32 B each).
+                bool skip_cache = false;
+
+                /// Particle count per type. Always maintained, also when skip_cache is set and
+                /// the vectors above are therefore empty.
+                std::vector<size_t> num_particles_per_ptype;
+
 #ifdef WITH_CUDAKDTREE
                 /// Voxel-centric dense loop: loop over voxels, query particles via KD-tree
                 bool use_dense_loop_over_voxels = false;

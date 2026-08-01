@@ -124,6 +124,15 @@ Field lookup was optimized to reduce repeated virtual reader calls during voxeli
 
 The new `--sort-by-radius` option sorts particle identifiers by effective particle radius. CPU and GPU implementations preserve the mapping back to original particle data.
 
+`--skip-cache-manager` turns the particle cache off on the CPU path. Instead of materialising
+positions, radii, values and identifiers for every particle (about 32 bytes each), the
+conversion pulls particles from the reader in chunks of 1 M and splats each chunk with the
+same kernel, so results are unchanged. It costs a second pass over the snapshot and is what
+makes snapshots larger than memory tractable — `cosmo25.2304g.nc` (547 GB, 12.2 G particles
+per type) needs 4 LUMI-G nodes with the cache but fits on 2 without it. The option is ignored,
+with a note on rank 0, when something needs random access to all particles at once: `--gpu`,
+`--sort-by-radius`, `--sort-by-non-overlap`, `--calc-radius-neigh`, or raw particle export.
+
 This ordering is intended to improve memory locality and conversion behavior when support radii differ significantly.
 
 ### 2.4 Non-overlap sorting
@@ -502,6 +511,7 @@ Tipsy and NChilada adapters were migrated to the shared namespace and manager in
 --radius-const X
 --dense-loop-over-voxels
 --gpu
+--skip-cache-manager
 --sort-by-radius
 --sort-by-non-overlap
 --num-files X

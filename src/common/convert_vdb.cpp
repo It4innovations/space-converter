@@ -185,6 +185,25 @@ namespace space_converter {
 				num_threads = omp_get_max_threads();
 #endif
 
+				cache_manager.num_particles_per_ptype.assign(ptype_count, 0);
+
+				if (cache_manager.skip_cache) {
+					// Streaming mode: only the per-type counts are needed here, the particle
+					// data itself is pulled from the reader again during conversion. This is
+					// what keeps the ~32 bytes per particle of cache from being allocated.
+					for (size_t i = 0; i < no_points; i++) {
+						int ptype = get_particle_type(i);
+						if (ptype >= 0 && ptype < ptype_count)
+							cache_manager.num_particles_per_ptype[ptype]++;
+					}
+
+					for (int ptype = 0; ptype < ptype_count; ptype++)
+						cache_manager.particles_ptype_offset[ptype + 1] =
+							cache_manager.particles_ptype_offset[ptype] + cache_manager.num_particles_per_ptype[ptype];
+
+					return;
+				}
+
 				for (int ptype = 0; ptype < ptype_count; ptype++) {
 
 					std::vector<float> points_master;
@@ -251,6 +270,7 @@ namespace space_converter {
 					cache_manager.rho_particles_per_ptype[ptype] = std::move(rho_master);
 					cache_manager.particles_id_ordered_per_ptype[ptype] = std::move(particles_id_master);
 					cache_manager.particles_ptype_offset[ptype + 1] = cache_manager.particles_ptype_offset[ptype] + cache_manager.pos_particles_per_ptype[ptype].size() / 3;
+					cache_manager.num_particles_per_ptype[ptype] = cache_manager.pos_particles_per_ptype[ptype].size() / 3;
 				}
 
 				// if (cache_manager.world_rank == 0) {
@@ -260,6 +280,10 @@ namespace space_converter {
 
 			bool ConvertVDBBase::find_particle_values(int ptype, int block_name_id)
 			{
+				// Streaming mode reads the values per chunk during conversion
+				if (cache_manager.skip_cache)
+					return false;
+
 				//int cached_value_ptype = -1; ///< Cached particle type for values_particles (to track which type's values are currently cached)
 				//int cached_value_block_name_id = -1; ///< Cached block name ID for values_particles (to track which block's values are currently cached)
 				if (cache_manager.cached_value_ptype == ptype && cache_manager.cached_value_block_name_id == block_name_id) {
@@ -670,7 +694,9 @@ namespace space_converter {
 					return;
 				}
 
-				size_t num_particles = cache_manager.pos_particles_per_ptype[particle_type].size() / 3;
+				size_t num_particles = cache_manager.skip_cache
+					? cache_manager.num_particles_per_ptype[particle_type]
+					: cache_manager.pos_particles_per_ptype[particle_type].size() / 3;
 				if (num_particles == 0) {
 					particles_count = 0;
 					return;
@@ -767,6 +793,93 @@ namespace space_converter {
 				else
 #endif
 				{
+				if (cache_manager.skip_cache) {
+					// Streaming mode: pull the particles of this type from the reader in
+					// chunks and splat each chunk with the very same kernel the cached path
+					// uses, so the result is identical. The grid accumulates across calls,
+					// but min/max and the particle count are per-call outputs and are
+					// therefore combined here.
+					const size_t CHUNK = size_t(1) << 20;
+					const size_t no_points = get_local_num_particles();
+
+					std::vector<float>  pos_chunk(3 * CHUNK);
+					std::vector<float>  radius_chunk(CHUNK);
+					std::vector<float>  value_chunk(CHUNK);
+					std::vector<size_t> ids_chunk(CHUNK);
+					std::vector<size_t> reader_idx(CHUNK);
+
+					// The kernel indexes the arrays through particle_ids; here they are
+					// already laid out in chunk order, so the mapping is the identity.
+					for (size_t j = 0; j < CHUNK; j++)
+						ids_chunk[j] = j;
+
+					float  min_total = FLT_MAX, max_total = -FLT_MAX;
+					size_t count_total = 0;
+					size_t compacted = 0;   // running index within this particle type
+					size_t n = 0;
+
+					auto flush_chunk = [&]() {
+#ifdef WITH_OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+						for (long long k = 0; k < (long long)n; k++) {
+							const size_t src = reader_idx[k];
+							double Pos[3];
+							get_particle_position(src, Pos);
+							pos_chunk[3 * k + 0] = (float)Pos[0];
+							pos_chunk[3 * k + 1] = (float)Pos[1];
+							pos_chunk[3 * k + 2] = (float)Pos[2];
+							radius_chunk[k] = (float)get_particle_hsml(src);
+							// The cached path indexes values by the position within the type
+							value_chunk[k] = get_particle_norm_value(block_name_id, compacted + k);
+						}
+
+						float  min_c = FLT_MAX, max_c = -FLT_MAX;
+						size_t count_c = 0;
+
+						kernel::convert_iolib_to_grid_cpu(
+							pos_chunk.data(), ids_chunk.data(), radius_chunk.data(), value_chunk.data(),
+							n,
+							particle_radius_multiplier, grid_name, grid_transform,
+							bbox_min, bbox_max, bbox_dim, bbox_min_orig, bbox_size_orig,
+							extracted_type, extracted_particle_type, dense_type, dense_norm,
+							block_name_id, object_size,
+							min_c, max_c, min_value_global, max_value_global, count_c,
+							grid, transform_scale,
+							filter_min, filter_max, min_rho, max_rho,
+							anim_type, frame_req, frame,
+							bbox_sphere_pos, bbox_sphere_r, use_simple_density,
+							cache_manager.particle_radius_const,
+							bbox_x_min_norm, bbox_x_max_norm,
+							bbox_y_min_norm, bbox_y_max_norm,
+							bbox_z_min_norm, bbox_z_max_norm,
+							scale_space_diagonal, offset_position,
+							false, 16, nullptr, 0);
+
+						if (min_c < min_total) min_total = min_c;
+						if (max_c > max_total) max_total = max_c;
+						count_total += count_c;
+						compacted += n;
+						n = 0;
+					};
+
+					for (size_t i = 0; i < no_points; i++) {
+						if (get_particle_type(i) != particle_type)
+							continue;
+
+						reader_idx[n++] = i;
+						if (n == CHUNK)
+							flush_chunk();
+					}
+					if (n > 0)
+						flush_chunk();
+
+					min_value = min_total;
+					max_value = max_total;
+					particles_count = count_total;
+					return;
+				}
+
 					// Use CPU kernel with cached CPU particle positions
 					const float* pos_particles = cache_manager.pos_particles_per_ptype[particle_type].data();
 					const size_t* particle_ids = cache_manager.particles_id_ordered_per_ptype[particle_type].data();
@@ -909,6 +1022,40 @@ namespace space_converter {
 					printf("Warning: Invalid particle type %d in iolib_find_bbox\n", particle_type);
 					bbox_min[0] = bbox_min[1] = bbox_min[2] = 0.0f;
 					bbox_max[0] = bbox_max[1] = bbox_max[2] = 0.0f;
+					return;
+				}
+
+				if (cache_manager.skip_cache) {
+					// Streaming mode: positions are not cached, so walk the reader once. Same
+					// reduction as find_bbox_cpu, just fed straight from the snapshot.
+					const size_t no_points = get_local_num_particles();
+					float mnx = FLT_MAX, mny = FLT_MAX, mnz = FLT_MAX;
+					float mxx = -FLT_MAX, mxy = -FLT_MAX, mxz = -FLT_MAX;
+
+#ifdef WITH_OPENMP
+#pragma omp parallel for reduction(min : mnx, mny, mnz) reduction(max : mxx, mxy, mxz) schedule(dynamic, 4096)
+#endif
+					for (size_t i = 0; i < no_points; i++) {
+						if (particle_type != -1 && get_particle_type(i) != particle_type)
+							continue;
+
+						double Pos[3];
+						get_particle_position(i, Pos);
+
+						const float x = (float)Pos[0] - offset_position[0];
+						const float y = (float)Pos[1] - offset_position[1];
+						const float z = (float)Pos[2] - offset_position[2];
+
+						if (x < mnx) mnx = x;
+						if (y < mny) mny = y;
+						if (z < mnz) mnz = z;
+						if (x > mxx) mxx = x;
+						if (y > mxy) mxy = y;
+						if (z > mxz) mxz = z;
+					}
+
+					bbox_min[0] = mnx; bbox_min[1] = mny; bbox_min[2] = mnz;
+					bbox_max[0] = mxx; bbox_max[1] = mxy; bbox_max[2] = mxz;
 					return;
 				}
 

@@ -70,6 +70,7 @@ namespace space_converter {
 #endif
 	
 		// === Advanced Options ===
+		std::cout << "\t--skip-cache-manager               : Stream particles from the reader instead of caching them (CPU only, lower memory)" << std::endl;
 		std::cout << "\t--sort-by-radius                   : Sort particles by radius" << std::endl;
 		std::cout << "\t--sort-by-non-overlap              : Sort particles spatially to avoid atomic operations" << std::endl;
 		std::cout << "\t--bbox x1 y1 z1 x2 y2 z2           : Define axis-aligned bounding box" << std::endl;
@@ -313,6 +314,10 @@ namespace space_converter {
 				from_cl.use_gpu = true;
 			}
 #endif
+			else if (arg == "--skip-cache-manager") {
+				// Stream particles from the reader instead of caching them (CPU only)
+				from_cl.skip_cache_manager = true;
+			}
 			else if (arg == "--sort-by-radius") {
 				from_cl.use_sort_by_radius = true;
 			}
@@ -349,6 +354,7 @@ namespace space_converter {
 #ifdef WITH_GPU_CUDA
 		std::cout << "use_gpu: " << (use_gpu ? "true" : "false") << std::endl;
 #endif
+		std::cout << "skip_cache_manager: " << (skip_cache_manager ? "true" : "false") << std::endl;
 		std::cout << "use_sort_by_radius: " << (use_sort_by_radius ? "true" : "false") << std::endl;
 		std::cout << "use_sort_by_non_overlap: " << (use_sort_by_non_overlap ? "true" : "false") << std::endl;
 		std::cout << "world_rank: " << world_rank << std::endl;

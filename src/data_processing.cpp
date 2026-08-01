@@ -189,6 +189,40 @@ namespace space_converter {
 			convert_vdb_base->cache_manager.calc_radius_neigh = space_data.calc_radius_neigh;
 		}
 #endif
+
+		// Streaming mode. It only replaces the cached CPU grid conversion, so anything that
+		// needs random access to all particles at once keeps the cache: the GPU path reads
+		// device copies of these arrays, k-NN radius search builds a KD-tree over them, the
+		// sorts permute their ids, and raw-particle export writes them out directly.
+		{
+			bool skip = from_cl.skip_cache_manager;
+#ifdef WITH_GPU_CUDA
+			if (skip && from_cl.use_gpu) {
+				if (from_cl.world_rank == 0)
+					printf("Note: --skip-cache-manager is a CPU-only option, ignored because --gpu is set\n");
+				skip = false;
+			}
+#endif
+			if (skip && (from_cl.use_sort_by_radius || from_cl.use_sort_by_non_overlap)) {
+				if (from_cl.world_rank == 0)
+					printf("Note: --skip-cache-manager ignored, particle sorting needs the cached particle arrays\n");
+				skip = false;
+			}
+			if (skip && space_data.calc_radius_neigh > 0) {
+				if (from_cl.world_rank == 0)
+					printf("Note: --skip-cache-manager ignored, --calc-radius-neigh needs the cached particle arrays\n");
+				skip = false;
+			}
+			if (skip && space_data.extracted_type == common::SpaceData::ExtractedType::eParticle) {
+				if (from_cl.world_rank == 0)
+					printf("Note: --skip-cache-manager ignored, raw particle export needs the cached particle arrays\n");
+				skip = false;
+			}
+			if (skip && from_cl.world_rank == 0)
+				printf("Streaming particles from the reader (--skip-cache-manager), particle cache disabled\n");
+
+			convert_vdb_base->cache_manager.skip_cache = skip;
+		}
 		// MPI
 		convert_vdb_base->cache_manager.world_rank = from_cl.world_rank;
 		convert_vdb_base->cache_manager.world_size = from_cl.world_size;
