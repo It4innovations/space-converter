@@ -586,6 +586,68 @@ namespace space_converter {
                     return W;
                 }
 
+                // Split evaluation of W = kernel_norm(h_inv) * kernel_value(u):
+                // kernel_norm is constant per particle (contains pow(h_inv, dim)), so callers that
+                // splat one particle over many voxels should evaluate W_norm once and W_value per voxel.
+
+                inline CUDA_CALLABLE double W_norm(common::SpaceData::DenseType& dense_type, double h_inv) {
+                    double n = 0.0;
+                    if (dense_type == common::SpaceData::DenseType::eCubic) {
+                        utility::dense::sph_kernel::Cubic kernel_cubic;
+                        n = kernel_cubic.kernel_norm(h_inv);
+                    }
+                    else if (dense_type == common::SpaceData::DenseType::eQuintic) {
+                        utility::dense::sph_kernel::Quintic kernel_quintic;
+                        n = kernel_quintic.kernel_norm(h_inv);
+                    }
+                    else if (dense_type == common::SpaceData::DenseType::eWendlandC2) {
+                        utility::dense::sph_kernel::WendlandC2 kernel_wendland;
+                        n = kernel_wendland.kernel_norm(h_inv);
+                    }
+                    else if (dense_type == common::SpaceData::DenseType::eWendlandC4) {
+                        utility::dense::sph_kernel::WendlandC4 kernel_wendland;
+                        n = kernel_wendland.kernel_norm(h_inv);
+                    }
+                    else if (dense_type == common::SpaceData::DenseType::eWendlandC6) {
+                        utility::dense::sph_kernel::WendlandC6 kernel_wendland;
+                        n = kernel_wendland.kernel_norm(h_inv);
+                    }
+                    else if (dense_type == common::SpaceData::DenseType::eWendlandC8) {
+                        utility::dense::sph_kernel::WendlandC8 kernel_wendland;
+                        n = kernel_wendland.kernel_norm(h_inv);
+                    }
+                    return n;
+                }
+
+                inline CUDA_CALLABLE double W_value(common::SpaceData::DenseType& dense_type, double u) {
+                    double v = 0.0;
+                    if (dense_type == common::SpaceData::DenseType::eCubic) {
+                        utility::dense::sph_kernel::Cubic kernel_cubic;
+                        v = kernel_cubic.kernel_value(u);
+                    }
+                    else if (dense_type == common::SpaceData::DenseType::eQuintic) {
+                        utility::dense::sph_kernel::Quintic kernel_quintic;
+                        v = kernel_quintic.kernel_value(u);
+                    }
+                    else if (dense_type == common::SpaceData::DenseType::eWendlandC2) {
+                        utility::dense::sph_kernel::WendlandC2 kernel_wendland;
+                        v = kernel_wendland.kernel_value(u);
+                    }
+                    else if (dense_type == common::SpaceData::DenseType::eWendlandC4) {
+                        utility::dense::sph_kernel::WendlandC4 kernel_wendland;
+                        v = kernel_wendland.kernel_value(u);
+                    }
+                    else if (dense_type == common::SpaceData::DenseType::eWendlandC6) {
+                        utility::dense::sph_kernel::WendlandC6 kernel_wendland;
+                        v = kernel_wendland.kernel_value(u);
+                    }
+                    else if (dense_type == common::SpaceData::DenseType::eWendlandC8) {
+                        utility::dense::sph_kernel::WendlandC8 kernel_wendland;
+                        v = kernel_wendland.kernel_value(u);
+                    }
+                    return v;
+                }
+
                 inline CUDA_CALLABLE double bias_correction(common::SpaceData::DenseType& dense_type, double density, double m, double h_inv, int n_neighbours) {
                     double bc = 0.0;
                     if (dense_type == common::SpaceData::DenseType::eCubic) {

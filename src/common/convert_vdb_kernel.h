@@ -53,6 +53,24 @@ namespace space_converter {
 
 #if defined(__CUDACC__) || defined(__HIPCC__)
 				__host__ __device__
+#endif
+					inline int ifloor(double v)
+				{
+					int i = static_cast<int>(v);
+					return (static_cast<double>(i) > v) ? i - 1 : i;
+				}
+
+#if defined(__CUDACC__) || defined(__HIPCC__)
+				__host__ __device__
+#endif
+					inline int iceil(double v)
+				{
+					int i = static_cast<int>(v);
+					return (static_cast<double>(i) < v) ? i + 1 : i;
+				}
+
+#if defined(__CUDACC__) || defined(__HIPCC__)
+				__host__ __device__
 #endif            
 					inline double get_particle_radius(
 						uint64_t pid,
@@ -138,9 +156,7 @@ namespace space_converter {
 						particle_radius_const
 					);
 
-					int iradiusx = static_cast<int>(hsml);
-					int iradiusy = static_cast<int>(hsml);
-					int iradiusz = static_cast<int>(hsml);
+					int iradius = static_cast<int>(hsml);
 
 					///////////////////////////////////////////////////////////////////////////////
 					double dpx = ((double)pos[0] - (double)bbox_min_orig[0]) * len2pix;
@@ -163,57 +179,97 @@ namespace space_converter {
 					const int off2 = offset[2];
 
 					const bool has_data_temp = (data_temp != nullptr);
+					const bool add_count = has_data_temp && (dense_norm == common::SpaceData::DenseNorm::eCount);
+					const bool add_sph = has_data_temp && (dense_norm == common::SpaceData::DenseNorm::eSPHInterpolation);
 
-					for (int sz = pz - iradiusz; sz <= pz + iradiusz; sz++) {
-						int osz = sz - off2;
-						if (osz < 0 || osz >= dim2) continue;
+					// Fast path: kernel support below one voxel -> deposit the whole value into a single voxel (W = 1)
+					if (iradius == 0) {
+						int osx = px - off0;
+						int osy = py - off1;
+						int osz = pz - off2;
+						if (osx < 0 || osx >= (int)dim0 || osy < 0 || osy >= (int)dim1 || osz < 0 || osz >= (int)dim2)
+							return;
 
-						size_t z_offset = osz * slice_size;
+						size_t gindex = (size_t)osz * slice_size + (size_t)osy * dim0 + (size_t)osx;
+
+						if (!near_zero(value)) {
+#ifdef SPACE_GPU_DEVICE_COMPILE
+							atomicAdd(data_density + gindex, value);
+#else
+#pragma omp atomic
+							data_density[gindex] += value;
+#endif
+						}
+
+						if (add_count || add_sph) {
+							float n = 1.0f;
+#ifdef SPACE_GPU_DEVICE_COMPILE
+							atomicAdd(data_temp + gindex, n);
+#else
+#pragma omp atomic
+							data_temp[gindex] += n;
+#endif
+						}
+						return;
+					}
+
+					const double h = hsml;
+					const double h_inv = 1.0 / h;
+					const double h2 = h * h;
+
+					// Kernel normalization is constant per particle (contains pow(h_inv, 3)) -> hoist it out of the voxel loops
+					const double W_norm = utility::dense::sph_kernel::W_norm(dense_type, h_inv);
+
+					// Iterate only the intersection of the kernel support sphere with the allocated grid window.
+					// For zoomed-in extractions (small bbox) the support can span thousands of voxels while the
+					// particle sits mostly outside the grid - clamping the ranges avoids walking all of that.
+					int sz_lo = ifloor(dpz - h); if (sz_lo < off2) sz_lo = off2;
+					int sz_hi = iceil(dpz + h); if (sz_hi > off2 + (int)dim2 - 1) sz_hi = off2 + (int)dim2 - 1;
+					int sy_lo = ifloor(dpy - h); if (sy_lo < off1) sy_lo = off1;
+					int sy_hi = iceil(dpy + h); if (sy_hi > off1 + (int)dim1 - 1) sy_hi = off1 + (int)dim1 - 1;
+					const int sx_min = off0;
+					const int sx_max = off0 + (int)dim0 - 1;
+
+					for (int sz = sz_lo; sz <= sz_hi; sz++) {
 						double dz = dpz - sz;
 						double dz2 = dz * dz;
+						if (dz2 >= h2) continue;
 
-						for (int sy = py - iradiusy; sy <= py + iradiusy; sy++) {
-							int osy = sy - off1;
-							if (osy < 0 || osy >= dim1) continue;
+						size_t z_offset = (size_t)(sz - off2) * slice_size;
 
-							size_t yz_offset = z_offset + osy * dim0;
+						for (int sy = sy_lo; sy <= sy_hi; sy++) {
 							double dy = dpy - sy;
 							double dy2 = dy * dy;
+							double rem = h2 - dz2 - dy2;
+							if (rem <= 0.0) continue; // whole row outside kernel support (W = 0)
 
-							for (int sx = px - iradiusx; sx <= px + iradiusx; sx++) {
-								int osx = sx - off0;
-								if (osx < 0 || osx >= dim0) continue;
+							// Limit x to the kernel support: |dpx - sx| < sqrt(rem)
+#ifdef SPACE_GPU_DEVICE_COMPILE
+							double xr = sqrt(rem);
+#else
+							double xr = std::sqrt(rem);
+#endif
+							int sx_lo = iceil(dpx - xr); if (sx_lo < sx_min) sx_lo = sx_min;
+							int sx_hi = ifloor(dpx + xr); if (sx_hi > sx_max) sx_hi = sx_max;
 
+							size_t yz_offset = z_offset + (size_t)(sy - off1) * dim0;
+							double dyz2 = dy2 + dz2;
+
+							for (int sx = sx_lo; sx <= sx_hi; sx++) {
 								double dx = dpx - sx;
 
 #ifdef SPACE_GPU_DEVICE_COMPILE
-								double distance_norm = sqrt(dx * dx + dy2 + dz2);
-#else                        
-								double distance_norm = std::sqrt(dx * dx + dy2 + dz2);
+								double distance_norm = sqrt(dx * dx + dyz2);
+#else
+								double distance_norm = std::sqrt(dx * dx + dyz2);
 #endif
 
-								double W = 0.0;
-								double h = hsml;
-
-								if (iradiusx == 0 && iradiusy == 0 && iradiusz == 0) {
-									W = 1.0;
-								}
-								else {
-									double q = distance_norm / h;
-									W = utility::dense::sph_kernel::W(dense_type, q, 1.0 / h);
-								}
+								double q = distance_norm * h_inv;
+								double W = W_norm * utility::dense::sph_kernel::W_value(dense_type, q);
 
 								float d = static_cast<float>(W * value);
 
-								float n = 0.0f;
-								if (dense_norm == common::SpaceData::DenseNorm::eCount) {
-									n = 1.0f;
-								}
-								else if (dense_norm == common::SpaceData::DenseNorm::eSPHInterpolation) {
-									n = static_cast<float>(W);
-								}
-
-								size_t gindex = yz_offset + osx;
+								size_t gindex = yz_offset + (size_t)(sx - off0);
 
 								if (!near_zero(d)) {
 #ifdef SPACE_GPU_DEVICE_COMPILE
@@ -222,19 +278,22 @@ namespace space_converter {
 #pragma omp atomic
 									data_density[gindex] += d;
 #endif
-							}
+								}
 
-								if (has_data_temp && !near_zero(n)) {
+								if (add_count || add_sph) {
+									float n = add_count ? 1.0f : static_cast<float>(W);
+									if (!near_zero(n)) {
 #ifdef SPACE_GPU_DEVICE_COMPILE
-									atomicAdd(data_temp + gindex, n);
+										atomicAdd(data_temp + gindex, n);
 #else
 #pragma omp atomic
-									data_temp[gindex] += n;
+										data_temp[gindex] += n;
 #endif
+									}
+								}
+							}
 						}
 					}
-				}
-				}
 				}
 
 				/**
