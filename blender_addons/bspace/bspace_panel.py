@@ -71,10 +71,11 @@ particle_btype_items = [
     ("PC", "Point Cloud", ""),
 ]
 
-dense_norm_items = [    
+dense_norm_items = [
     ("0", "NONE", ""),
     ("1", "Count", ""),
     ("2", "SPHInterpolation", ""),
+    ("3", "VoxelVolume", "Divide by voxel world volume -> physical density, consistent across zoom/bbox changes"),
 ]
 
 file_type_items = [
@@ -163,9 +164,21 @@ class BSPACE_PG_SETTINGS(bpy.types.PropertyGroup):
         )# type: ignore
     
     density: bpy.props.FloatProperty(
-        name="Density", 
+        name="Density",
         default=1.0
-        )# type: ignore 
+        )# type: ignore
+
+    shader_from_min: bpy.props.FloatProperty(
+        name="Shader From Min",
+        description="Fixed Map Range 'From Min' used with the VoxelVolume norm; captured from the first extraction when both min and max are 0",
+        default=0.0
+        )# type: ignore
+
+    shader_from_max: bpy.props.FloatProperty(
+        name="Shader From Max",
+        description="Fixed Map Range 'From Max' used with the VoxelVolume norm; captured from the first extraction when both min and max are 0",
+        default=0.0
+        )# type: ignore
 
     anim_type : bpy.props.EnumProperty(
         items=anim_items, 
@@ -2103,15 +2116,35 @@ class BSPACE:
 
         #set new shader
         if file_type != "RAW_PART" and (not file_data is None or len(obj_vdb_new.data.materials) == 0):
-            self.set_vdb_shader(context, obj_vdb_new)
+            # VoxelVolume norm: reuse one shared material across extractions so the shader
+            # (color ramp, tweaks) stays identical for every zoom step of the animation
+            mat_shared = bpy.data.materials.get("VolumeMat_VoxelVolume") if context.scene.view_pg_bspace.dense_norm == '3' else None
+            if mat_shared is not None:
+                obj_vdb_new.data.materials.clear()
+                obj_vdb_new.data.materials.append(mat_shared)
+            else:
+                self.set_vdb_shader(context, obj_vdb_new)
+                if context.scene.view_pg_bspace.dense_norm == '3' and len(obj_vdb_new.data.materials) > 0:
+                    obj_vdb_new.data.materials[0].name = "VolumeMat_VoxelVolume"
 
         # Update shader nodes for all object types
         if len(obj_vdb_new.data.materials) > 0:
             mat_node_tree = obj_vdb_new.data.materials[0].node_tree
 
             if "Map Range" in mat_node_tree.nodes:
-                mat_node_tree.nodes["Map Range"].inputs['From Min'].default_value = obj_vdb_new['MIN_VALUE_REDUCED']
-                mat_node_tree.nodes["Map Range"].inputs['From Max'].default_value = obj_vdb_new['MAX_VALUE_REDUCED']
+                if context.scene.view_pg_bspace.dense_norm == '3': # VoxelVolume
+                    # Keep a fixed value range across extractions so intensity stays consistent
+                    # while zooming; captured from the first extraction, editable in the panel
+                    # (set both to 0 to re-capture on the next extraction)
+                    pg = context.scene.view_pg_bspace
+                    if pg.shader_from_min == 0.0 and pg.shader_from_max == 0.0:
+                        pg.shader_from_min = obj_vdb_new['MIN_VALUE_REDUCED']
+                        pg.shader_from_max = obj_vdb_new['MAX_VALUE_REDUCED']
+                    mat_node_tree.nodes["Map Range"].inputs['From Min'].default_value = pg.shader_from_min
+                    mat_node_tree.nodes["Map Range"].inputs['From Max'].default_value = pg.shader_from_max
+                else:
+                    mat_node_tree.nodes["Map Range"].inputs['From Min'].default_value = obj_vdb_new['MIN_VALUE_REDUCED']
+                    mat_node_tree.nodes["Map Range"].inputs['From Max'].default_value = obj_vdb_new['MAX_VALUE_REDUCED']
 
             if "Math" in mat_node_tree.nodes:
                 mat_node_tree.nodes["Math"].inputs[1].default_value = context.scene.view_pg_bspace.density
@@ -2505,6 +2538,9 @@ class BSPACE_PT_extract(BSpacePanel, bpy.types.Panel):
         if context.scene.view_pg_bspace.extracted_type == '1': # DENSE
             col.prop(scene.view_pg_bspace, "dense_type")
             col.prop(scene.view_pg_bspace, "dense_norm")
+            if context.scene.view_pg_bspace.dense_norm == '3': # VoxelVolume
+                col.prop(scene.view_pg_bspace, "shader_from_min")
+                col.prop(scene.view_pg_bspace, "shader_from_max")
 
         if context.scene.view_pg_bspace.extracted_type == '2': # PARTICLE
             col.prop(scene.view_pg_bspace, "particle_btype")

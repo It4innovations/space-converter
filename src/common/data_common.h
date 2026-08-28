@@ -199,6 +199,7 @@ namespace space_converter {
 				eNone = 0,              // No normalization
 				eCount = 1,             // Normalize by particle count
 				eSPHInterpolation = 2,  // SPH interpolation normalization
+				eVoxelVolume = 3,       // Divide by voxel world volume -> physical density (zoom/resolution invariant)
 			};
 
 			/**

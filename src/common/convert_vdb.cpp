@@ -1114,8 +1114,18 @@ namespace space_converter {
 					dense_manager_gpu->from_device();
 				}
 #endif
+				// eVoxelVolume: convert per-voxel accumulated mass to physical density (value / voxel world volume).
+				// Result is independent of bbox size and grid resolution -> consistent intensity across zoom levels.
+				if (dense_norm == common::SpaceData::DenseNorm::eVoxelVolume && transform_scale > 0.0) {
+					const float inv_voxel_volume = (float)(1.0 / (transform_scale * transform_scale * transform_scale));
+#pragma omp parallel for
+					for (long long i = 0; i < (long long)dense_manager->data_density.size(); i++) {
+						float density = dense_manager->data_density[i] * inv_voxel_volume;
+						dense_manager->data_density[i] = std::isfinite(density) ? density : 0.0f;
+					}
+				}
 				// Normalize density values using temp buffer if available
-				if (!dense_manager->data_temp.empty()) {
+				else if (!dense_manager->data_temp.empty()) {
 #pragma omp parallel for
 					for (int z = 0; z < dense_manager->z(); z++) {
 						for (int y = 0; y < dense_manager->y(); y++) {
@@ -1313,8 +1323,18 @@ namespace space_converter {
 				}
 #endif
 
+				// eVoxelVolume: convert per-voxel accumulated mass to physical density (value / voxel world volume).
+				// Result is independent of bbox size and grid resolution -> consistent intensity across zoom levels.
+				if (dense_norm == common::SpaceData::DenseNorm::eVoxelVolume && transform_scale > 0.0) {
+					const float inv_voxel_volume = (float)(1.0 / (transform_scale * transform_scale * transform_scale));
+#pragma omp parallel for
+					for (long long i = 0; i < (long long)dense_manager->data_density.size(); i++) {
+						float density = dense_manager->data_density[i] * inv_voxel_volume;
+						dense_manager->data_density[i] = std::isfinite(density) ? density : 0.0f;
+					}
+				}
 				// Normalize density values using temp buffer if available
-				if (!dense_manager->data_temp.empty()) {
+				else if (!dense_manager->data_temp.empty()) {
 #pragma omp parallel for
 					for (int z = 0; z < dense_manager->z(); z++) {
 						for (int y = 0; y < dense_manager->y(); y++) {

@@ -542,8 +542,10 @@ namespace space_converter {
 				grid_main.dense_grid = std::make_shared<common::vdb::dense::VoxelCPUDenseManager>();
 			}
 
-			// Allocate data_temp only if normalization is needed (must match grid_main_sum in reduction())
-			bool allocate_data_temp = (space_data.dense_norm != common::SpaceData::DenseNorm::eNone);
+			// Allocate data_temp only if per-voxel weight normalization is needed (must match grid_main_sum in reduction());
+			// eVoxelVolume divides by a constant at finalize and needs no weight buffer
+			bool allocate_data_temp = (space_data.dense_norm == common::SpaceData::DenseNorm::eCount ||
+				space_data.dense_norm == common::SpaceData::DenseNorm::eSPHInterpolation);
 			grid_main.dense_grid->create(space_data.bbox_dim, space_data.bbox_dim, space_data.bbox_dim, allocate_data_temp);
 		}
 		//Raw particle data
@@ -782,8 +784,9 @@ namespace space_converter {
 			}
 
 			if (from_cl.world_rank == 0 || space_data.anim_type != common::SpaceData::AnimType::eNone) {
-				// Allocate data_temp only if normalization is needed
-				bool allocate_data_temp = (space_data.dense_norm != common::SpaceData::DenseNorm::eNone);
+				// Allocate data_temp only if per-voxel weight normalization is needed (eVoxelVolume needs none)
+				bool allocate_data_temp = (space_data.dense_norm == common::SpaceData::DenseNorm::eCount ||
+					space_data.dense_norm == common::SpaceData::DenseNorm::eSPHInterpolation);
 				grid_main_sum.dense_grid->create(space_data.bbox_dim, space_data.bbox_dim, space_data.bbox_dim, allocate_data_temp);
 				memcpy(grid_main_sum.dense_grid->offset, grid_main.dense_grid->offset, sizeof(grid_main.dense_grid->offset));
 			}
