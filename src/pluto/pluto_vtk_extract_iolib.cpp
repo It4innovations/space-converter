@@ -45,17 +45,17 @@
 #include <vtkCellData.h>
 #include <vtkPointData.h>
 
-#define RETURN_NORM_EMPTY return 0;
-#define RETURN_NORM_VALUE(v) return (float)(v);
-#define RETURN_NORM_VECTOR3(v) return (float)space_converter::common::calculate_dmagnitude3(v[0], v[1], v[2]);
+#include "reader_return_macros.h"
 
-#define RETURN_COMP_EMPTY return 0;
-#define RETURN_COMP_VALUE(v) return 1;
-#define RETURN_COMP_VECTOR3(v) return 3;
-
-#define RETURN_ORIG_EMPTY RETURN_COMP_EMPTY
-#define RETURN_ORIG_VALUE(v) out_value[0] = (float)v; RETURN_COMP_VALUE(v)
-#define RETURN_ORIG_VECTOR3(v) out_value[0] = (float)v[0]; out_value[1] = (float)v[1]; out_value[2] = (float)v[2]; RETURN_COMP_VECTOR3(v)
+// Reader data contract (see docs/SpaceConverter_Code_Analysis_2026-08.md §7):
+//   get_particle_mass(id) -> density of the cell times the actual local cell volume
+//                            (code units of the PLUTO run), for the single PLUTO type
+//   get_particle_rho(id)  -> value of the first selected cell scalar array (usually "rho"),
+//                            in the code units stored in the VTK file
+//   get_particle_hsml(id) -> maximum of the local grid spacings (dx, dy, dz) of the cell
+//   particle id space     -> global cell index space [0, total_cells), decomposed per rank
+//                            as [g_start_cell, g_start_cell + local_cells); local id + g_start_cell
+//                            gives the global (i, j, k) cell index (x fastest)
 
 namespace plutovtk {
 	namespace io {
@@ -63,12 +63,18 @@ namespace plutovtk {
 		// VTK data storage
 		vtkSmartPointer<vtkRectilinearGrid> vtk_grid = nullptr;
 		std::vector<std::string> scalar_names;
-		
+
+		// VTK cell-array indices of the scalars in use
+		// (order given by --scalar-names, or file order when no names were given)
+		std::vector<int> selected_scalars;
+
 		// Grid dimensions
 		int grid_dims[3] = {0, 0, 0};
+		int cell_dims[3] = {1, 1, 1};
 		int64_t total_cells = 0;
 		int64_t local_cells = 0;
-		
+		int64_t g_start_cell = 0;	// first global cell index owned by this rank
+
 		// Coordinate arrays
 		std::vector<float> x_coords;
 		std::vector<float> y_coords;
@@ -104,27 +110,52 @@ namespace plutovtk {
 
 			// Get grid dimensions
 			vtk_grid->GetDimensions(grid_dims);
-			
-			// Calculate number of cells (dimensions - 1 for cells)
-			//int cell_dims[3] = {
-			//	grid_dims[0] - 1,
-			//	grid_dims[1] - 1,
-			//	grid_dims[2] - 1
-			//};
 
-			int cell_dims[3] = {
-				grid_dims[0],
-				grid_dims[1],
-				grid_dims[2]
-			};
-			
+			// Calculate number of cells (point dimensions - 1 per axis; degenerate axes keep 1)
+			for (int i = 0; i < 3; i++) {
+				cell_dims[i] = (grid_dims[i] > 1) ? grid_dims[i] - 1 : 1;
+			}
+
 			total_cells = (int64_t)cell_dims[0] * cell_dims[1] * cell_dims[2];
-			
+
 			// Distribute cells across MPI ranks
 			int64_t cells_per_rank = total_cells / world_size;
-			int64_t start_cell = world_rank * cells_per_rank;
-			local_cells = (world_rank == world_size - 1) ? total_cells - start_cell : cells_per_rank;
-			
+			g_start_cell = world_rank * cells_per_rank;
+			local_cells = (world_rank == world_size - 1) ? total_cells - g_start_cell : cells_per_rank;
+
+			// Select the scalar cell arrays to expose
+			selected_scalars.clear();
+			int num_arrays = vtk_grid->GetCellData()->GetNumberOfArrays();
+			if (!scalar_names.empty()) {
+				// Only the named cell arrays, in the given order
+				for (size_t n = 0; n < scalar_names.size(); n++) {
+					int found = -1;
+					for (int a = 0; a < num_arrays; a++) {
+						const char* aname = vtk_grid->GetCellData()->GetArrayName(a);
+						if (aname && scalar_names[n] == aname) {
+							found = a;
+							break;
+						}
+					}
+					if (found >= 0) {
+						selected_scalars.push_back(found);
+					}
+					else if (world_rank == 0) {
+						printf("Warning: scalar '%s' not found in VTK file. Available cell arrays:", scalar_names[n].c_str());
+						for (int a = 0; a < num_arrays; a++) {
+							const char* aname = vtk_grid->GetCellData()->GetArrayName(a);
+							printf(" %s", aname ? aname : "(unnamed)");
+						}
+						printf("\n");
+					}
+				}
+			}
+			else {
+				for (int a = 0; a < num_arrays; a++) {
+					selected_scalars.push_back(a);
+				}
+			}
+
 			// Extract coordinate arrays
 			vtkFloatArray* xCoords = vtkFloatArray::SafeDownCast(vtk_grid->GetXCoordinates());
 			vtkFloatArray* yCoords = vtkFloatArray::SafeDownCast(vtk_grid->GetYCoordinates());
@@ -169,6 +200,33 @@ namespace plutovtk {
 			x_coords.clear();
 			y_coords.clear();
 			z_coords.clear();
+			selected_scalars.clear();
+		}
+
+		// Convert a local particle id to the global cell index of this rank.
+		static int64_t get_global_cell_id(uint64_t id) {
+			return g_start_cell + (int64_t)id;
+		}
+
+		// Decode a global cell index into (i, j, k) cell indices (x fastest).
+		static void decode_cell_id(int64_t gid, int& i, int& j, int& k) {
+			k = (int)(gid / ((int64_t)cell_dims[0] * cell_dims[1]));
+			j = (int)((gid % ((int64_t)cell_dims[0] * cell_dims[1])) / cell_dims[0]);
+			i = (int)(gid % cell_dims[0]);
+		}
+
+		// Local grid spacing of cell index i along one coordinate axis (0 for degenerate axes).
+		static double local_spacing(const std::vector<float>& coords, int i) {
+			if (i + 1 < (int)coords.size())
+				return (double)coords[i + 1] - (double)coords[i];
+			return 0.0;
+		}
+
+		// Cell data array for the given index into the selected scalar list (nullptr if out of range).
+		static vtkDataArray* get_selected_scalar_array(int scalar_idx) {
+			if (!vtk_grid || scalar_idx < 0 || scalar_idx >= (int)selected_scalars.size())
+				return nullptr;
+			return vtk_grid->GetCellData()->GetArray(selected_scalars[scalar_idx]);
 		}
 
 		uint64_t get_particle_type_offset(PlutoVTKParticleType pt) {
@@ -188,22 +246,21 @@ namespace plutovtk {
 			uint64_t offset = get_particle_type_offset(pt);
 
 			if (blocknr >= PlutoVTKBlockType::BTMax && vtk_grid) {
-				// Access scalar data from cell data
+				// Access scalar data from cell data (selected scalar list)
 				int scalar_idx = blocknr - PlutoVTKBlockType::BTMax;
-				
-				if (scalar_idx < vtk_grid->GetCellData()->GetNumberOfArrays()) {
-					vtkDataArray* array = vtk_grid->GetCellData()->GetArray(scalar_idx);
-					if (array && id - offset < array->GetNumberOfTuples()) {
-						if (array->GetNumberOfComponents() == 1) {
-							RETURN_NORM_VALUE(array->GetComponent(id - offset, 0));
-						}
-						else if (array->GetNumberOfComponents() == 3) {
-							float v[3];
-							v[0] = array->GetComponent(id - offset, 0);
-							v[1] = array->GetComponent(id - offset, 1);
-							v[2] = array->GetComponent(id - offset, 2);
-							RETURN_NORM_VECTOR3(v);
-						}
+
+				vtkDataArray* array = get_selected_scalar_array(scalar_idx);
+				int64_t gid = get_global_cell_id(id - offset);
+				if (array && gid < array->GetNumberOfTuples()) {
+					if (array->GetNumberOfComponents() == 1) {
+						RETURN_NORM_VALUE(array->GetComponent(gid, 0));
+					}
+					else if (array->GetNumberOfComponents() == 3) {
+						float v[3];
+						v[0] = array->GetComponent(gid, 0);
+						v[1] = array->GetComponent(gid, 1);
+						v[2] = array->GetComponent(gid, 2);
+						RETURN_NORM_VECTOR3(v);
 					}
 				}
 			}
@@ -216,22 +273,21 @@ namespace plutovtk {
 			uint64_t offset = get_particle_type_offset(pt);
 
 			if (blocknr >= PlutoVTKBlockType::BTMax && vtk_grid) {
-				// Access scalar data from cell data
+				// Access scalar data from cell data (selected scalar list)
 				int scalar_idx = blocknr - PlutoVTKBlockType::BTMax;
-				
-				if (scalar_idx < vtk_grid->GetCellData()->GetNumberOfArrays()) {
-					vtkDataArray* array = vtk_grid->GetCellData()->GetArray(scalar_idx);
-					if (array && id - offset < array->GetNumberOfTuples()) {
-						if (array->GetNumberOfComponents() == 1) {
-							RETURN_ORIG_VALUE(array->GetComponent(id - offset, 0));
-						}
-						else if (array->GetNumberOfComponents() == 3) {
-							float v[3];
-							v[0] = array->GetComponent(id - offset, 0);
-							v[1] = array->GetComponent(id - offset, 1);
-							v[2] = array->GetComponent(id - offset, 2);
-							RETURN_ORIG_VECTOR3(v);
-						}
+
+				vtkDataArray* array = get_selected_scalar_array(scalar_idx);
+				int64_t gid = get_global_cell_id(id - offset);
+				if (array && gid < array->GetNumberOfTuples()) {
+					if (array->GetNumberOfComponents() == 1) {
+						RETURN_ORIG_VALUE(array->GetComponent(gid, 0));
+					}
+					else if (array->GetNumberOfComponents() == 3) {
+						float v[3];
+						v[0] = array->GetComponent(gid, 0);
+						v[1] = array->GetComponent(gid, 1);
+						v[2] = array->GetComponent(gid, 2);
+						RETURN_ORIG_VECTOR3(v);
 					}
 				}
 			}
@@ -244,14 +300,13 @@ namespace plutovtk {
 			uint64_t offset = get_particle_type_offset(pt);
 
 			if (blocknr >= PlutoVTKBlockType::BTMax && vtk_grid) {
-				// Access scalar data from cell data
+				// Access scalar data from cell data (selected scalar list)
 				int scalar_idx = blocknr - PlutoVTKBlockType::BTMax;
-				
-				if (scalar_idx < vtk_grid->GetCellData()->GetNumberOfArrays()) {
-					vtkDataArray* array = vtk_grid->GetCellData()->GetArray(scalar_idx);
-					if (array && id - offset < array->GetNumberOfTuples()) {
-						return array->GetNumberOfComponents();
-					}
+
+				vtkDataArray* array = get_selected_scalar_array(scalar_idx);
+				int64_t gid = get_global_cell_id(id - offset);
+				if (array && gid < array->GetNumberOfTuples()) {
+					return array->GetNumberOfComponents();
 				}
 			}
 
@@ -264,27 +319,15 @@ namespace plutovtk {
 		}
 
 		void get_particle_position(uint64_t id, double* pos) {
-			// Convert linear cell ID to (i, j, k) indices
-			//int cell_dims[3] = {
-			//	grid_dims[0] - 1,
-			//	grid_dims[1] - 1,
-			//	grid_dims[2] - 1
-			//};
-			int cell_dims[3] = {
-				grid_dims[0],
-				grid_dims[1],
-				grid_dims[2]
-			};
-			
-			int k = id / (cell_dims[0] * cell_dims[1]);
-			int j = (id % (cell_dims[0] * cell_dims[1])) / cell_dims[0];
-			int i = id % cell_dims[0];
-			
-			// Get cell center position
-			if (i < x_coords.size() /* - 1*/ && j < y_coords.size() /* - 1 */ && k < z_coords.size() /* - 1 */) {
-				pos[0] = x_coords[i]; // (x_coords[i] + x_coords[i + 1]) * 0.5;
-				pos[1] = y_coords[j]; // (y_coords[j] + y_coords[j + 1]) * 0.5;
-				pos[2] = z_coords[k]; // (z_coords[k] + z_coords[k + 1]) * 0.5;
+			// Convert linear global cell ID to (i, j, k) cell indices
+			int i, j, k;
+			decode_cell_id(get_global_cell_id(id), i, j, k);
+
+			// Get cell center position (node coordinate on degenerate axes)
+			if (i < (int)x_coords.size() && j < (int)y_coords.size() && k < (int)z_coords.size()) {
+				pos[0] = (i + 1 < (int)x_coords.size()) ? (x_coords[i] + x_coords[i + 1]) * 0.5 : x_coords[i];
+				pos[1] = (j + 1 < (int)y_coords.size()) ? (y_coords[j] + y_coords[j + 1]) * 0.5 : y_coords[j];
+				pos[2] = (k + 1 < (int)z_coords.size()) ? (z_coords[k] + z_coords[k + 1]) * 0.5 : z_coords[k];
 			}
 			else {
 				pos[0] = pos[1] = pos[2] = 0.0;
@@ -300,24 +343,43 @@ namespace plutovtk {
 		}
 
 		double get_particle_hsml(uint64_t id) {
-			// Return cell size as smoothing length
-			return cell_size;
+			// Return the maximum of the local grid spacings of this cell as smoothing length
+			int i, j, k;
+			decode_cell_id(get_global_cell_id(id), i, j, k);
+
+			double dx = local_spacing(x_coords, i);
+			double dy = local_spacing(y_coords, j);
+			double dz = local_spacing(z_coords, k);
+
+			double h = dx;
+			if (dy > h) h = dy;
+			if (dz > h) h = dz;
+
+			return (h > 0.0) ? h : cell_size;
 		}
 
 		double get_particle_mass(uint64_t id) {
-			// Calculate mass from density and cell volume
+			// Calculate mass from density and the actual local cell volume
+			int i, j, k;
+			decode_cell_id(get_global_cell_id(id), i, j, k);
+
+			double dx = local_spacing(x_coords, i);
+			double dy = local_spacing(y_coords, j);
+			double dz = local_spacing(z_coords, k);
+
+			// Degenerate axes (a single coordinate plane) contribute a unit extent
+			double volume = ((dx > 0.0) ? dx : 1.0) * ((dy > 0.0) ? dy : 1.0) * ((dz > 0.0) ? dz : 1.0);
+
 			double rho = get_particle_rho(id);
-			double volume = cell_size * cell_size * cell_size;
 			return rho * volume;
 		}
 
 		double get_particle_rho(uint64_t id) {
-			// Get density from first scalar field (usually "rho")
-			if (vtk_grid && vtk_grid->GetCellData()->GetNumberOfArrays() > 0) {
-				vtkDataArray* array = vtk_grid->GetCellData()->GetArray(0);
-				if (array && id < array->GetNumberOfTuples()) {
-					return array->GetComponent(id, 0);
-				}
+			// Get density from the first selected scalar field (usually "rho")
+			vtkDataArray* array = get_selected_scalar_array(0);
+			int64_t gid = get_global_cell_id(id);
+			if (array && gid < array->GetNumberOfTuples()) {
+				return array->GetComponent(gid, 0);
 			}
 			return 1.0; // Default density
 		}
@@ -328,12 +390,13 @@ namespace plutovtk {
 		}
 
 		void get_types_and_blocks(std::vector<int>& types_and_blocks) {
-			int num_scalars = vtk_grid ? vtk_grid->GetCellData()->GetNumberOfArrays() : 0;
-			
-			types_and_blocks.resize(PlutoVTKParticleType::PTMax * num_scalars, 0);
-			
-			// Mark all scalar fields as available for PLUTO type
-			for (int i = 0; i < num_scalars; i++) {
+			int num_scalars = (int)selected_scalars.size();
+
+			// Blocks 0..num_scalars: block 0 is the rho alias (handled through
+			// get_particle_rho_blocknr()), block b >= BTMax maps to selected scalar b - BTMax.
+			types_and_blocks.resize(PlutoVTKParticleType::PTMax * (num_scalars + PlutoVTKBlockType::BTMax), 0);
+
+			for (int i = 0; i < num_scalars + PlutoVTKBlockType::BTMax; i++) {
 				types_and_blocks[PlutoVTKParticleType::PTMax * i + PlutoVTKParticleType::PLUTO] = 1;
 			}
 		}
@@ -344,13 +407,10 @@ namespace plutovtk {
 
 			printf("\n");
 			printf("Type: PLUTO (0)\n");
-			
-			if (vtk_grid) {
-				int num_scalars = vtk_grid->GetCellData()->GetNumberOfArrays();
-				for (int i = 0; i < num_scalars; i++) {
-					const char* name = vtk_grid->GetCellData()->GetArrayName(i);
-					printf("\t%s (%d)\n", name, i);
-				}
+
+			int num_blocks = (int)types_and_blocks.size() / PlutoVTKParticleType::PTMax;
+			for (int i = 0; i < num_blocks; i++) {
+				printf("\t%s (%d)\n", get_dataset_name(i).c_str(), i);
 			}
 		}
 
@@ -360,10 +420,14 @@ namespace plutovtk {
 		}
 
 		std::string get_dataset_name(int blocknr) {
+			if (blocknr == PlutoVTKBlockType::Rho) {
+				// Block 0 is the rho alias (first selected scalar, see get_particle_rho)
+				return "Rho";
+			}
 			if (vtk_grid && blocknr >= PlutoVTKBlockType::BTMax) {
 				int scalar_idx = blocknr - PlutoVTKBlockType::BTMax;
-				if (scalar_idx < vtk_grid->GetCellData()->GetNumberOfArrays()) {
-					const char* name = vtk_grid->GetCellData()->GetArrayName(scalar_idx);
+				if (scalar_idx < (int)selected_scalars.size()) {
+					const char* name = vtk_grid->GetCellData()->GetArrayName(selected_scalars[scalar_idx]);
 					return name ? name : "unknown";
 				}
 			}

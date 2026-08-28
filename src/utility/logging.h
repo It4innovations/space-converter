@@ -44,12 +44,22 @@ namespace space_converter {
 
     /**
      * @brief Stop a named performance measurement section and log results.
-     * 
+     *
      * This function marks the end of a code section for performance measurement.
      * It calculates the elapsed time and logs it along with the section name.
-     * 
+     *
      * @param name Name of the measurement section (should match the name used in LOG_MeasureStart)
      */
     void LOG_MeasureStop(const char* name);
+
+    /**
+     * @brief Whether verbose diagnostic output is enabled.
+     *
+     * Controlled by the SPACE_CONVERTER_VERBOSE environment variable (any
+     * non-empty value other than "0" enables it). Per-chunk/per-merge timing
+     * printfs are guarded with this so large MPI runs stay quiet by default.
+     * The value is read once and cached.
+     */
+    bool LOG_Verbose();
 
 } // namespace space_converter

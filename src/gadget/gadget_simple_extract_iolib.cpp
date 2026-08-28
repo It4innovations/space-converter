@@ -102,23 +102,18 @@ extern "C"
 #define BNDRY 5
 
 
-#define RETURN_NORM_EMPTY return 0; //return std::numeric_limits<float>::quiet_NaN();//0;
-#define RETURN_NORM_VALUE(v) return (float)(v);
-#define RETURN_NORM_VECTOR3(v) return (float)space_converter::common::calculate_dmagnitude3(v[0], v[1], v[2]);
-#define RETURN_NORM_DVECTORN(v,n) return (float)space_converter::common::calculate_dmagnituden(v,n);
-#define RETURN_NORM_FVECTORN(v,n) return (float)space_converter::common::calculate_fmagnituden(v,n);
+#include "reader_return_macros.h"
 
-#define RETURN_COMP_EMPTY return 0;
-#define RETURN_COMP_VALUE(v) return 1;
-#define RETURN_COMP_VECTOR3(v) return 3;
-#define RETURN_COMP_DVECTORN(v,n) return n;
-#define RETURN_COMP_FVECTORN(v,n) return n;
-
-#define RETURN_ORIG_EMPTY RETURN_COMP_EMPTY
-#define RETURN_ORIG_VALUE(v) out_value[0] = (float)v; RETURN_COMP_VALUE(v)
-#define RETURN_ORIG_VECTOR3(v) out_value[0] = (float)v[0]; out_value[1] = (float)v[1]; out_value[2] = (float)v[2]; RETURN_COMP_VECTOR3(v)
-#define RETURN_ORIG_DVECTORN(v,n) for(int iv=0;iv<n;iv++) out_value[iv] = (float)v[iv]; RETURN_COMP_DVECTORN(v,n)
-#define RETURN_ORIG_FVECTORN(v,n) for(int iv=0;iv<n;iv++) out_value[iv] = (float)v[iv]; RETURN_COMP_FVECTORN(v,n)
+// Reader data contract (see docs/SpaceConverter_Code_Analysis_2026-08.md §7):
+//   get_particle_mass(id) -> per-particle mass, all 6 types: taken from the MASS block
+//                            for types with header.mass[type] == 0, otherwise replicated
+//                            from the header mass table (units: 1e10 Msun/h)
+//   get_particle_rho(id)  -> gas density from the RHO block (GADGET code units);
+//                            0 for types the RHO block does not cover
+//   get_particle_hsml(id) -> gas smoothing length from the HSML block; 0 for types the
+//                            HSML block does not cover
+//   particle id space     -> rank-local, grouped by type: [type0..., type1..., ..., type5...]
+//                            (this rank's slice of the snapshot)
 
 #ifdef GADGET_MAX_HSML
 #	define GADGET_MAX_BLOCKS IO_SFR //(IO_HSML+1)
@@ -128,6 +123,9 @@ extern "C"
 
 namespace gadget_simple {
 
+	// Endianness helpers (defined below, used by the block readers above them)
+	extern int gadget_simple_swap_file;
+	void gadget_simple_swap_Nbyte(char* data, int n, int m);
 
 	typedef float float_t;                 // the floating type for reading the data
 
@@ -233,11 +231,11 @@ namespace gadget_simple {
 	} blockdata_t;
 
 	int check_number_of_files(std::string& basename, int world_rank);              // check the consistency of the files number
-	int  seek_block(FILE*, const blockname_t);                         // seek a specific block in a specific file
+	int64_t seek_block(FILE*, const blockname_t);                      // seek a specific block in a specific file
 	int  get_particles_num(io_header* snaphead, nparts_t* nparts_file, nparts_t* nparts_all);              // get how many particles are in a snapshot
 	//int  get_known_block_list(const char*, blockdata_t**);
 	int  get_knownblock_idx(blockdata_t*, int, const blockname_t);
-	int position_and_skip_particles(blockdata_t*, int, const blockname_t, int, nparts_t*, FILE*);
+	int position_and_skip_particles(blockdata_t*, int, const blockname_t, int, nparts_t*, io_header*, FILE*);
 
 	//int extract_data(std::string& basename);
 	void gadget_simple_read_snaphead(FILE* fd, io_header* snaphead);
@@ -542,10 +540,24 @@ namespace gadget_simple {
 
 	int read_part_file_per_rank(std::string& basename, int world_rank, int world_size)
 	{
-		// More ranks than files: split each file among  world_size / nfiles ranks
-		int ranks_per_file = world_size / nfiles;
-		int file_rank_id = world_rank / ranks_per_file;
-		int local_rank = world_rank % ranks_per_file;
+		// More ranks than files: split each file among a group of ranks.
+		// Fair partition (like partition_range in the iPIC3D reader): the first
+		// world_size % nfiles files get one extra rank, so no rank is mapped past
+		// the last file when world_size is not a multiple of nfiles.
+		int base_ranks_per_file = world_size / nfiles;
+		int extra_ranks = world_size % nfiles;
+		int ranks_per_file, file_rank_id, local_rank;
+		if (world_rank < (base_ranks_per_file + 1) * extra_ranks) {
+			ranks_per_file = base_ranks_per_file + 1;
+			file_rank_id = world_rank / ranks_per_file;
+			local_rank = world_rank % ranks_per_file;
+		}
+		else {
+			int rest_rank = world_rank - (base_ranks_per_file + 1) * extra_ranks;
+			ranks_per_file = base_ranks_per_file;
+			file_rank_id = extra_ranks + rest_rank / ranks_per_file;
+			local_rank = rest_rank % ranks_per_file;
+		}
 
 		//size_t tot_count = 0;
 		nparts_t orig_count;// gio_data.readNumElems(gio_data_rank_id);
@@ -615,23 +627,8 @@ namespace gadget_simple {
 		//std::string name;     // the name of this file
 
 
-		// open the fth sub-file
-		//
-		//if (nfiles > 1)
-		//	//name = std::format("{}.{}", basename, f);
-		//	name = std::string(basename) + "." + std::to_string(f);
-		//else
-		//	//name = std::format("{}", basename);
-		//	name = std::string(basename);
-
-		file = fopen(name.c_str(), "rb");
-		if (file == NULL)
-		{
-			// that should not happen, but deal with it
-			//
-			printf("I cannot open the file %s\n", name.c_str());
-			exit(-1);
-		}
+		// the file is already open (and positioned after the header); every block
+		// read below rewinds through seek_block, so no reopen is needed here
 
 		// get how many particles are in this file
 		//
@@ -695,9 +692,9 @@ namespace gadget_simple {
 				{
 					// set the file position at the right place
 					//
-					block_idx = position_and_skip_particles(knownblocks.data(), knownblocks.size(), label, type, &orig_count, file);
+					block_idx = position_and_skip_particles(knownblocks.data(), knownblocks.size(), label, type, &orig_count, &snaphead, file);
 
-					if (block_idx < 0) { //not found
+					if (block_idx < 0) { //not found, or the block does not cover this type
 						continue;
 					}
 
@@ -711,9 +708,26 @@ namespace gadget_simple {
 					//data = (float_t*)malloc(npart_local[type] * knownblocks[block_idx].fact * knownblocks[block_idx].datasize);
 					//memset(data, -1, npart_local[type] * knownblocks[block_idx].fact * knownblocks[block_idx].datasize);
 					//load the positions for this type
+					// (seek_block already consumed the 4-byte record-length tag, so this
+					// seek starts at the payload)
 
 					FSEEKO(file, knownblocks[block_idx].fact * knownblocks[block_idx].datasize * offset[type], SEEK_CUR);
-					fread((void*)gd.data.data(), knownblocks[block_idx].fact * knownblocks[block_idx].datasize, npart_local_rank[type], file);
+					size_t nread = fread((void*)gd.data.data(), knownblocks[block_idx].fact * knownblocks[block_idx].datasize, npart_local_rank[type], file);
+					if (nread != (size_t)npart_local_rank[type]) {
+						printf("Error: short read of block %.4s from %s (%llu of %llu entries); skipping this block\n",
+							label, name.c_str(),
+							(unsigned long long)nread,
+							(unsigned long long)npart_local_rank[type]);
+						continue;
+					}
+
+#ifdef AUTO_SWAP_ENDIAN_READIC
+					// byte-swap the payload if the file was detected as byte-swapped
+					// (gadget_simple_swap_Nbyte is a no-op for native files)
+					gadget_simple_swap_Nbyte((char*)gd.data.data(),
+						(int)(npart_local_rank[type] * knownblocks[block_idx].fact),
+						(int)knownblocks[block_idx].datasize);
+#endif
 
 					//printf("data type: %d - %d\n", knownblocks[block_idx].fact, knownblocks[block_idx].datasize);
 
@@ -743,7 +757,9 @@ namespace gadget_simple {
 					}
 
 					if (gadget_datas[type][q].data.size() == 0) {
-						gadget_datas[type][q].reserve_memory(knownblocks[block_idx].fact * knownblocks[block_idx].datasize * npart_local_rank[type]);
+						// size by this GadgetData's own element layout: block_idx belongs to
+						// the previously processed block here, not to MASS
+						gadget_datas[type][q].reserve_memory(sizeof(float_t) * npart_local_rank[type]);
 					}
 
 					gadget_datas[type][q].merge_data(gd, npart_local_rank[type]);
@@ -914,9 +930,9 @@ namespace gadget_simple {
 					{
 						// set the file position at the right place
 						//
-						block_idx = position_and_skip_particles(knownblocks.data(), knownblocks.size(), label, type, &npart_local, file);
+						block_idx = position_and_skip_particles(knownblocks.data(), knownblocks.size(), label, type, &npart_local, &snaphead, file);
 
-						if (block_idx < 0) { //not found
+						if (block_idx < 0) { //not found, or the block does not cover this type
 							continue;
 						}
 
@@ -930,12 +946,25 @@ namespace gadget_simple {
 						//data = (float_t*)malloc(npart_local[type] * knownblocks[block_idx].fact * knownblocks[block_idx].datasize);
 						//memset(data, -1, npart_local[type] * knownblocks[block_idx].fact * knownblocks[block_idx].datasize);
 						//load the positions for this type
+						// (the 4-byte record-length tag has already been consumed by
+						// seek_block, so the file is positioned at the payload)
 
-						//format 2 - skip 4 bytes
-						int blksize = 0;
-						fread(&blksize, sizeof(int), 1, file);
+						size_t nread = fread((void*)gd.data.data(), knownblocks[block_idx].fact * knownblocks[block_idx].datasize, npart_local[type], file);
+						if (nread != (size_t)npart_local[type]) {
+							printf("Error: short read of block %.4s from %s (%llu of %llu entries); skipping this block\n",
+								label, name.c_str(),
+								(unsigned long long)nread,
+								(unsigned long long)npart_local[type]);
+							continue;
+						}
 
-						fread((void*)gd.data.data(), knownblocks[block_idx].fact * knownblocks[block_idx].datasize, npart_local[type], file);
+#ifdef AUTO_SWAP_ENDIAN_READIC
+						// byte-swap the payload if the file was detected as byte-swapped
+						// (gadget_simple_swap_Nbyte is a no-op for native files)
+						gadget_simple_swap_Nbyte((char*)gd.data.data(),
+							(int)(npart_local[type] * knownblocks[block_idx].fact),
+							(int)knownblocks[block_idx].datasize);
+#endif
 
 						//printf("data type: %d - %d\n", knownblocks[block_idx].fact, knownblocks[block_idx].datasize);
 
@@ -965,7 +994,9 @@ namespace gadget_simple {
 						}
 
 						if (gadget_datas[type][q].data.size() == 0) {
-							gadget_datas[type][q].reserve_memory(knownblocks[block_idx].fact * knownblocks[block_idx].datasize * npart_local_rank[type]);
+							// size by this GadgetData's own element layout: block_idx belongs to
+							// the previously processed block here, not to MASS
+							gadget_datas[type][q].reserve_memory(sizeof(float_t) * npart_local_rank[type]);
 						}
 
 						gadget_datas[type][q].merge_data(gd, npart_local[type]);
@@ -1403,15 +1434,15 @@ namespace gadget_simple {
 		return 0;
 	}
 
-	int seek_block(FILE* file, const blockname_t name)
+	int64_t seek_block(FILE* file, const blockname_t name)
 		/*
 		 * This function get to the block specified by name
 		 * in a format-2 file pointed by *file.
 		 *
 		 * RETURN VALUE:
-		 * 0 if the seeking is not successful, otherwise
+		 * -1 if the seeking is not successful, otherwise
 		 * the 4-bytes long tag at the begin of the data block
-		 * (i.e. the block's length in bytes).
+		 * (i.e. the block's payload length in bytes).
 		 * The file position is set to the begin of the data
 		 * block, right after the length tag.
 		 *
@@ -1552,12 +1583,29 @@ namespace gadget_simple {
 		}
 		if (feof(file))
 		{
-			printf("Block '%c%c%c%c' not found !\n", name[0], name[1], name[2], name[3]);
+			// A snapshot is not required to contain every known block — report it
+			// and let the caller skip the block instead of killing all MPI ranks
+			// (a previous version called exit(1890) here).
+			printf("Block '%c%c%c%c' not found in this snapshot, skipping\n", name[0], name[1], name[2], name[3]);
 			fflush(stdout);
-			exit(1890);
+			clearerr(file);
+			return -1;
 		}
 
-		return (blocksize == 0) ? -1 : 1;
+		if (blocksize == 0)
+			return -1;
+
+		// Consume the 4-byte record-length tag that opens the data record, so the
+		// caller is positioned directly at the payload, and return the payload size
+		// in bytes as read from that tag.
+		FBSKIP;
+#ifdef AUTO_SWAP_ENDIAN_READIC
+		gadget_simple_swap_Nbyte((char*)&blksize, 1, 4);
+#endif
+		if (ret != 1)
+			return -1;
+
+		return (int64_t)blksize;
 #endif
 
 	}
@@ -1598,14 +1646,18 @@ namespace gadget_simple {
 	}
 
 
-	int position_and_skip_particles(blockdata_t* knownblocks, int n_knownblocks, const blockname_t name, int current_type, nparts_t* npart, FILE* file)
+	int position_and_skip_particles(blockdata_t* knownblocks, int n_knownblocks, const blockname_t name, int current_type, nparts_t* npart, io_header* snaphead, FILE* file)
 		//
-		// this routine sets the file position so that to skip the particles of type < current_type,
-		// for the block with name <name>
-		// it returns the block index in the array of blocks metadata
+		// this routine sets the file position so that to skip the particles stored in
+		// the block <name> before those of current_type.
+		// Which types a block covers is inferred from the actual record length: many
+		// blocks (RHO, HSML, U, ...) contain only gas entries, MASS contains only the
+		// types whose header mass-table entry is 0, and e.g. AGE contains only stars.
+		// it returns the block index in the array of blocks metadata, or a negative
+		// value when the block does not exist or does not cover current_type.
 		//
 	{
-		// retrieve the index of "POS " block in the array of blocks metadata
+		// retrieve the index of the block in the array of blocks metadata
 		//
 		int idx = get_knownblock_idx(knownblocks, n_knownblocks, name);
 		if (idx < 0)
@@ -1615,28 +1667,69 @@ namespace gadget_simple {
 			return idx;
 		}
 
-		// positioning at the begin of the block
-		int ret = seek_block(file, name);
-		if (ret < 0)
+		// positioning at the begin of the block payload; blksize is the payload
+		// size in bytes read from the record-length tag
+		int64_t blksize = seek_block(file, name);
+		if (blksize < 0)
 		{
 			// some error occurred (either a block with that name has not been found
 			// or the block is corrupted )
 			//
-			return ret;
+			return -1;
 		}
 
-		// skip the positions for types < current type;
-		// to_skip contains the cumulative nr. of particles
-		// having types < current type
-		uint to_skip = 0;
-		for (int t = 0; t < current_type; t++)
-			to_skip += (*npart)[t];
+		// number of entries actually stored in this block
+		uint64_t elem_size = (uint64_t)knownblocks[idx].fact * knownblocks[idx].datasize;
+		uint64_t n_block = (elem_size > 0) ? (uint64_t)blksize / elem_size : 0;
+
+		// infer which types the block covers from the entry count, and compute
+		// to_skip, the cumulative nr. of covered entries stored before current_type
+		uint64_t to_skip = 0;
+		bool covers_current_type = false;
+
+		if (n_block == (*npart)[NALL]) {
+			// block covers all types
+			covers_current_type = true;
+			for (int t = 0; t < current_type; t++)
+				to_skip += (*npart)[t];
+		}
+		else if (n_block == (*npart)[GAS]) {
+			// gas-only block (RHO, HSML, U, ...)
+			covers_current_type = (current_type == GAS);
+		}
+		else if (strncmp(name, "MASS", 4) == 0) {
+			// MASS holds entries only for types whose header mass-table entry is 0
+			// (types with a nonzero header mass are not stored in the MASS block)
+			covers_current_type = (snaphead->mass[current_type] == 0);
+			for (int t = 0; t < current_type; t++)
+				if (snaphead->mass[t] == 0)
+					to_skip += (*npart)[t];
+		}
+		else if (n_block == (*npart)[STARS]) {
+			// stars-only block (AGE, ...)
+			covers_current_type = (current_type == STARS);
+		}
+		else {
+			printf("Warning: block %.4s holds %llu entries, which matches neither all types (%llu), gas (%llu) nor stars (%llu); treating it as gas-only\n",
+				name,
+				(unsigned long long)n_block,
+				(unsigned long long)(*npart)[NALL],
+				(unsigned long long)(*npart)[GAS],
+				(unsigned long long)(*npart)[STARS]);
+			covers_current_type = (current_type == GAS);
+		}
+
+		if (!covers_current_type)
+		{
+			// the block stores no entries for current_type: reading npart[type]
+			// entries anyway would return other types' (or other blocks') bytes
+			//
+			return -2;
+		}
 
 		// actual positioning in the file
 		//
-		int64_t size = to_skip *         // how many particles are to be skipped     
-			knownblocks[idx].fact *       // how many data per particle
-			knownblocks[idx].datasize;    // the single data size
+		int64_t size = (int64_t)(to_skip * elem_size);
 
 		// repositioning
 		//

@@ -92,7 +92,10 @@ namespace space_converter {
 
                     CUDA_CALLABLE double kernel_norm(double h_inv) const override {
 #ifdef SPACE_GPU_DEVICE_COMPILE
-                        return norm * powf(h_inv, static_cast<float>(dim));
+                        // double-precision pow also in device code so CPU and GPU
+                        // kernel normalizations match bit-for-bit closely (powf in
+                        // single precision diverged noticeably for small h in voxel units)
+                        return norm * pow(h_inv, static_cast<double>(dim));
 #else
                         return norm * std::pow(h_inv, static_cast<double>(dim));
 #endif
@@ -163,7 +166,10 @@ namespace space_converter {
 
                     CUDA_CALLABLE double kernel_norm(double h_inv) const override {
 #ifdef SPACE_GPU_DEVICE_COMPILE
-                        return norm * powf(h_inv, static_cast<float>(dim));
+                        // double-precision pow also in device code so CPU and GPU
+                        // kernel normalizations match bit-for-bit closely (powf in
+                        // single precision diverged noticeably for small h in voxel units)
+                        return norm * pow(h_inv, static_cast<double>(dim));
 #else
                         return norm * std::pow(h_inv, static_cast<double>(dim));
 #endif
@@ -266,7 +272,10 @@ namespace space_converter {
 
                     CUDA_CALLABLE double kernel_norm(double h_inv) const override {
 #ifdef SPACE_GPU_DEVICE_COMPILE
-                        return norm * powf(h_inv, static_cast<float>(dim));
+                        // double-precision pow also in device code so CPU and GPU
+                        // kernel normalizations match bit-for-bit closely (powf in
+                        // single precision diverged noticeably for small h in voxel units)
+                        return norm * pow(h_inv, static_cast<double>(dim));
 #else
                         return norm * std::pow(h_inv, static_cast<double>(dim));
 #endif
@@ -299,7 +308,7 @@ namespace space_converter {
 
 #ifdef SPACE_GPU_DEVICE_COMPILE
                         double wc_correction = 0.0294 *
-                            powf(n_neighbours * 0.01f, -0.977f) *
+                            pow(n_neighbours * 0.01, -0.977) *
                             m * n;
 #else
                         double wc_correction = 0.0294 *
@@ -342,7 +351,10 @@ namespace space_converter {
 
                     CUDA_CALLABLE double kernel_norm(double h_inv) const override {
 #ifdef SPACE_GPU_DEVICE_COMPILE
-                        return norm * powf(h_inv, static_cast<float>(dim));
+                        // double-precision pow also in device code so CPU and GPU
+                        // kernel normalizations match bit-for-bit closely (powf in
+                        // single precision diverged noticeably for small h in voxel units)
+                        return norm * pow(h_inv, static_cast<double>(dim));
 #else
                         return norm * std::pow(h_inv, static_cast<double>(dim));
 #endif
@@ -380,7 +392,7 @@ namespace space_converter {
 
 #ifdef SPACE_GPU_DEVICE_COMPILE
                         double wc_correction = 0.01342 *
-                            powf(n_neighbours * 0.01f, -1.579f) *
+                            pow(n_neighbours * 0.01, -1.579) *
                             m * n;
 #else
                         double wc_correction = 0.01342 *
@@ -423,7 +435,10 @@ namespace space_converter {
 
                     CUDA_CALLABLE double kernel_norm(double h_inv) const override {
 #ifdef SPACE_GPU_DEVICE_COMPILE
-                        return norm * powf(h_inv, static_cast<float>(dim));
+                        // double-precision pow also in device code so CPU and GPU
+                        // kernel normalizations match bit-for-bit closely (powf in
+                        // single precision diverged noticeably for small h in voxel units)
+                        return norm * pow(h_inv, static_cast<double>(dim));
 #else
                         return norm * std::pow(h_inv, static_cast<double>(dim));
 #endif
@@ -461,7 +476,7 @@ namespace space_converter {
 
 #ifdef SPACE_GPU_DEVICE_COMPILE
                         double wc_correction = 0.0116 *
-                            powf(n_neighbours * 0.01f, -2.236f) *
+                            pow(n_neighbours * 0.01, -2.236) *
                             m * n;
 #else
                         double wc_correction = 0.0116 *
@@ -508,7 +523,10 @@ namespace space_converter {
 
                     CUDA_CALLABLE double kernel_norm(double h_inv) const override {
 #ifdef SPACE_GPU_DEVICE_COMPILE
-                        return norm * powf(h_inv, static_cast<float>(dim));
+                        // double-precision pow also in device code so CPU and GPU
+                        // kernel normalizations match bit-for-bit closely (powf in
+                        // single precision diverged noticeably for small h in voxel units)
+                        return norm * pow(h_inv, static_cast<double>(dim));
 #else
                         return norm * std::pow(h_inv, static_cast<double>(dim));
 #endif

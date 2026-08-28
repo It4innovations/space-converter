@@ -266,18 +266,13 @@ namespace space_converter {
                     thrust::device_ptr<float> d_radii_thrust(d_radii_ptr);
                     thrust::device_ptr<size_t> d_ids_thrust(d_ids_ptr);
 
-                    //// Sort ids in-place based on radii values (radii array remains unchanged)
-                    //// d_ids_ptr already contains [0, 1, 2, ..., n-1]
-                    //thrust::sort(d_ids_thrust, d_ids_thrust + n,
-                    //    [d_radii_thrust] __device__ (size_t i, size_t j) {
-                    //        return d_radii_thrust[i] < d_radii_thrust[j];
-                    //    });
-
-                    // Sort ids by radius: use sort_by_key with a temporary copy of radii as keys.
-                    // The IDs contain global particle indices, not local 0..n-1 indices, so they
-                    // cannot be used to index into d_radii_thrust directly.
-                    thrust::device_vector<float> radii_copy(d_radii_thrust, d_radii_thrust + n);
-                    thrust::sort_by_key(radii_copy.begin(), radii_copy.end(), d_ids_thrust);
+                    // ids are compact per-type indices — sort the iteration order by the
+                    // radius of the referenced particle (radii array stays unchanged, so
+                    // this composes with other sorts).
+                    thrust::sort(d_ids_thrust, d_ids_thrust + n,
+                        [d_radii_thrust] __device__ (size_t i, size_t j) {
+                            return d_radii_thrust[i] < d_radii_thrust[j];
+                        });
                 }
 
                 // Check for CUDA errors
@@ -347,15 +342,15 @@ namespace space_converter {
                         continue;
                     }
 
-                    // Find bounding box on CPU (or use pre-computed values)
+                    // Find bounding box on CPU (or use pre-computed values). The bbox is
+                    // order-independent, so iterate the compact array directly.
                     const auto& positions = pos_particles_per_ptype[ptype];
-                    const auto& ids = particles_id_ordered_per_ptype[ptype];
 
                     float min_coord = std::numeric_limits<float>::max();
                     float max_coord = std::numeric_limits<float>::lowest();
 
                     for (size_t i = 0; i < n_particles; ++i) {
-                        size_t idx = ids[i] * 3;
+                        size_t idx = i * 3;
                         for (int dim = 0; dim < 3; ++dim) {
                             float coord = positions[idx + dim];
                             min_coord = std::min(min_coord, coord);

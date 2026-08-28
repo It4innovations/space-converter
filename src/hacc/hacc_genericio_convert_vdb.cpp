@@ -116,7 +116,11 @@ namespace genericio {
 
 		// Anim
 		if (use_anim) {
-			genericio_file = format_filename(genericio_file, anim_start + anim_step * world_rank);
+			// Clamp to anim_end so trailing ranks do not address frames past the animation range
+			int anim_frame = anim_start + anim_step * world_rank;
+			if (anim_frame > anim_end)
+				anim_frame = anim_end;
+			genericio_file = format_filename(genericio_file, anim_frame);
 			std::cout << "Reading timestep file: " << genericio_file << std::endl;
 		}
 

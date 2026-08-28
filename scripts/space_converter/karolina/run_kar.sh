@@ -165,7 +165,8 @@ mkdir -p ${out}
 
 #--data-type GADGET --gadget-file e:\temp\gadget\very_small_example\snap_081 --max-mem-size 6000 --buffer-size 150.0 --part-alloc-factor 2.5 --grid-dim 500 --output-path f:\temp\ --port 5005 --nanovdb
 
-srun --overlap -u -n 4096 ${install}/bin/space_converter --data-type CHANGA_TIPSY --grid-dim 1000 --output-path ${out} --tipsy-file /mnt/proj3/open-30-28/CHANGA/tipsy/LOW_512XLARGEMHDVERTDENSWend64FBSB64AB05.03280 --grid-dim 100 --port 5000 #--nanovdb
+# --grid-dim used to be passed twice (1000 and 100); the parser's last-one-wins made 100 take effect, which was a bug — keep 1000
+srun --overlap -u -n 4096 ${install}/bin/space_converter --data-type CHANGA_TIPSY --grid-dim 1000 --output-path ${out} --tipsy-file /mnt/proj3/open-30-28/CHANGA/tipsy/LOW_512XLARGEMHDVERTDENSWend64FBSB64AB05.03280 --port 5000 #--nanovdb
 
 
 #/mnt/proj3/open-30-28/milanjaros/HACC/SciVIsContest2019DATA/Full.cosmo.0

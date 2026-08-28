@@ -763,3 +763,161 @@ converter itself (self-consistency needs no golden data at all).
 Suggested order: T1/T2 first (they gate everything), then T4+T5 (the MPI bugs), then the
 rest as the corresponding fixes land. All tests run in seconds; wire them into CI
 (`ctest` after build) so the §6 class of silent drift cannot recur.
+
+---
+
+## 12. Implementation status (2026-08-28)
+
+All proposed changes were applied to the working tree (no commits — review and
+commit manually). Summary of what was implemented and where:
+
+### Core fixes (§2, §3)
+- **2.1/2.2/3.6** — new id convention: `particles_id_ordered_per_ptype` now holds
+  permuted COMPACT indices; new `particles_reader_id_per_ptype` maps compact slot →
+  global reader id; `find_particle_values` and the streaming path query the reader
+  by global id; both CPU sorts and the GPU thrust sorts rewritten for compact ids
+  (`convert_vdb.cpp`, `data_cache.{h,cpp,cu}`). Documented on `CacheManager`.
+- **2.3** — cudaKDTree k-NN cycling: persistent per-query candidate lists across
+  rounds (host store + batch staging on GPU), extraction once after the last
+  round, both CPU and GPU paths (`cudakdtree_tool.cu`).
+- **2.4** — `particle_radius_multiplier` added to the `MPI_Bcast` block
+  (`data_communication.cpp`); request validation added (grid dim, enum ranges,
+  dense-with-no-kernel fallback).
+- **2.5** — bbox symmetrization computes the center from the original min/max,
+  uses floor/ceil, integer cube edge (`data_processing.cpp`); `send_bbox` maps
+  with the uniform `bbox_size_orig` scale.
+- **3.1** — GPU sparse and dense wrappers now report per-particle value extrema
+  (atomic CAS min/max in the kernels), matching CPU; empty ranks report neutral
+  extrema (`convert_vdb_kernel.cu`).
+- **3.2** — `--bbox-sphere` applies in `--simple-density` mode too.
+- **3.3** — TCP validation falls back to Cubic for dense+eNone requests.
+- **3.4** — query-mass approximation documented at all three SPH-estimate sites.
+- **3.5** — nanoflann zeroes rho before accumulating (and the omp critical around
+  candidate collection was removed — it serialized the whole query loop).
+- **3.7** — NanoVDB Float3 merges traverse `NanoGrid<BuildType>` instead of
+  reinterpreting as float (`sparse_common.cpp`).
+- **3.8** — non-finite radii clamped to 0 in `get_particle_radius`.
+- **3.9** — voxel coordinates use `ifloor` (no double-mapping across zero).
+- **3.10** — `packCoord3` clamps to the representable ±2²⁰ range.
+- **3.11** — dense bbox tolerance converted to normalized units.
+- **3.12** — device `kernel_norm`/bias corrections use double `pow`.
+- New find: `copy_particles_to_gpu` moved AFTER the k-NN radius calculation
+  (the GPU previously kept stale hsml radii); `read_radius_from_file` assigns
+  per-type slots instead of appending past them.
+
+### Readers (§7) — all fixed as specified
+PLUTO H1/H2/H2b/M11 + `--scalar-names`; NChilada H3 + per-block count check;
+GADGET_SIMPLE H4/H5/H6 (record tag consumed in `seek_block`, mass-table offsets,
+type-coverage inferred from the record length) + M6/M7 + fread checks + missing
+blocks no longer `exit()`; Tipsy M8 (aux swap keyed on the main file's byte
+order) + int64 ranges; GADGET CodeBase M10 (mass for all types, SphP type
+guards); HACC GenericIO M1/M2/M6; iPIC3D M3/M4 (+`fabs(q)`, true global count,
+real grid spacing for hsml) with M5 left as a documented TODO (design change).
+All readers include the shared `common/reader_return_macros.h` and carry a
+data-contract header comment.
+
+### Arguments & help (§11.3)
+`parse_args` rewritten: unknown arguments are errors (reader flags whitelisted
+with their arity), every value bounds-checked (`argv[argc]` unreachable), values
+validated with ranges, extraction mode derived once (order-independent,
+conflicting flags rejected), `usage()` completed with defaults + examples +
+TCP-only note, stale example block deleted. Default port 5000 (matches the
+addon); the dead `--server` flag removed. Feature-gated flags warn instead of
+silently disappearing in builds without the feature.
+
+### Addon & scripts (§5, §6)
+All listed addon fixes applied (CUB file type, port max, float32-safe filter
+defaults, `>=` guards, ConnectionError on short reads, NanoVDB-converter error,
+FrameExtract sequences, `os.path.join` + tempdir fallback, lifecycle cleanup,
+enum guard, property clamps, protocol comment). All script fixes applied
+(`--gpu-cuda`→`--gpu`, `GENERICIO`→`HACC_GENERICIO`, barbora paths/arity,
+karolina duplicate `--grid-dim`, new `gpu_bind_polaris.sh`, `% 4` GPU binding,
+`exec "$@"`, leonardo completion).
+
+### Cleanup, comments, tests (§11.1, §11.2, §11.4)
+Dead `#if 0`/commented implementation blocks removed (cudakdtree nosplit forks,
+sparse extractAll variants, old grid paths, stale examples); duplicated
+`RETURN_*` macros and `EMPTY_KEY` defines unified; dead 40-param baggage
+(`grid_name`, `grid_transform`, `min/max_value_global`, `min/max_rho`,
+`extracted_*_type` in kernels, unused class `get_particle_radius`) removed from
+the whole call chain; per-chunk timing spam gated behind `SPACE_CONVERTER_VERBOSE`
+(`LOG_Verbose()`); `.clang-format` added (no bulk reformat); coordinate-space
+derivation documented in `convert_vdb_kernel.h`; id conventions on
+`CacheManager`; wire format mirrored as comments in C++ and Python.
+`tests/` added: deterministic 2-type GADGET_SIMPLE generator, TCP protocol
+client, and `run_smoke_tests.sh` (T1–T9; T5 auto-skips without k-NN builds,
+T7 needs a GPU build), registered with CTest; run via
+`srun --jobid=<id> --overlap ... bash tests/run_smoke_tests.sh`.
+
+### Not implemented (deliberately, per review decisions)
+§10 items 13–17 (ConversionRequest struct + versioned protocol, strong id
+types, error-propagation overhaul, sparse-manager virtualization) — deferred as
+a separate iteration; iPIC3D M5 (separating real particles from synthetic grid
+nodes) — documented TODO.
+
+### Verification results & additional bugs found while testing
+
+The CPU build (`build_spaceconverter_barng_cpu.sh`) compiles cleanly with all
+changes, and the smoke-test suite passes 9/9 on the cluster
+(T5 skipped: this build has no cudaKDTree/nanoflann; T7 needs a GPU build):
+
+```
+T1 argument validation (3 cases)      PASS
+T2 sparse extraction, type 0          PASS  (1000 particles)
+T3 sparse extraction, type 1          PASS  (500 particles — broken before 2.1/2.2)
+T4 dense rank invariance 1..3 ranks   PASS  (tolerant compare; float order differs)
+T6 cached vs streaming equivalence    PASS
+T8 TCP protocol round-trip            PASS
+T9 non-cubic bbox symmetrization      PASS  (cube edge 386 for a 100x200x400 box)
+```
+
+Bugs discovered *by the tests* (beyond the original review) and fixed:
+
+- **`LOG_MeasureStart`/`LOG_MeasureStop` contained `MPI_Barrier`** while several
+  measured sections (`save_raw_volume`, `save_raw_particles_to_*`) are entered
+  by rank 0 only → mismatched barrier counts deadlocked every multi-rank
+  `--dense-file`/particle-export run (rank 0 stuck in a barrier, the other ranks
+  in `MPI_Finalize`). Barriers removed from the logging calls — logging must not
+  synchronize; timings are now rank-local. This also removes two global barriers
+  per measured section from 6144-rank runs.
+- **`seek_block` killed all ranks (`exit(1890)`) when a snapshot lacked a known
+  block** — now reports the block as missing and lets the caller skip it.
+- (During review, also fixed on the way: `copy_particles_to_gpu` ran before the
+  k-NN radius computation, so GPU kernels used stale hsml radii; and
+  `read_radius_from_file` appended past the per-type slots instead of filling
+  them, so file-loaded radii were never used.)
+
+Test invocation used (job id from `squeue`):
+
+```bash
+srun --jobid=<JOBID> --overlap -N1 -n1 -c16 bash tests/run_smoke_tests.sh
+```
+
+### Follow-up (all-reader smoke coverage + VTK activation, same day)
+
+- **All readers now have synthetic-dataset smoke tests** (T10): generators for
+  CHANGA_TIPSY (`gen_tipsy.py`), HACC_BIN (`gen_haccbin.py`), PLUTO_VTK
+  (`gen_pluto_vtk.py`, non-uniform spacing), CHANGA_NCHILADA
+  (`gen_nchilada.py`, XDR field files) and IPIC3D_HDF5 (`gen_ipic3d.c`,
+  compiled at test time with `h5cc`), HACC_GENERICIO (`gen_genericio.cpp`,
+  a writer tool built against the bundled GenericIO library — its MPI build,
+  since the GenericIO writer path is compiled only with MPI enabled), and
+  GADGET/CodeBase, which reads the same format-2 snapshot as GADGET_SIMPLE
+  (no parameter file required) — its dark-mass case asserts min = max = 2.5,
+  a direct M10 regression check. **Every reader now has a smoke test.**
+- **VTK activated without a VTK module**: the root `CMakeLists.txt` now accepts
+  a manually supplied VTK (`-DVTK_INCLUDE_DIRS`/`-DVTK_LIBRARIES`), and
+  `scripts/build_spaceconverter_barng_cpu_full.sh` (new) builds a "full" CPU
+  binary with `WITH_PLUTO=ON` (VTK libs taken from the
+  `ParaView/6.0.1-foss-2025b` module, which bundles VTK but ships no
+  vtk-config.cmake), `WITH_HACC=ON` and `WITH_NANOFLANN=ON` (activates T5).
+- **Results**: regular CPU build **18/18 PASS** (+ expected skips for readers
+  it lacks); full build **23/23 PASS** — including T5 k-NN cycling at 2 ranks
+  via nanoflann, HACC_GENERICIO via the new `gen_genericio` writer tool,
+  GADGET/CodeBase with the M10 dark-mass value assertion, and the type>0 cases
+  (TIPSY dark 350, NChilada dark 300 — both zero/garbage before the §2.1/H3
+  fixes).
+- **GPU coverage**: `docs/GPU_Test_Plan.md` (new) — a self-contained plan for a
+  GPU-cluster session: which GPU files were modified without compilation, the
+  build matrix (CUDA / CUDA-aware MPI / HIP), tests G1–G12 with pass criteria
+  and pre-fix symptoms, plus known GPU-side TODOs.

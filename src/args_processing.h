@@ -48,12 +48,11 @@ namespace space_converter {
 		
 		/// Output directory path for generated files
 		std::string output_path;
-		
-		/// Server address for remote operations (default: "localhost")
-		std::string server = "localhost";
-		
-		/// Port number for server communication (default: 7000)
-		int port = 7000;
+
+		/// Port number the TCP server listens on (default 5000, matching the
+		/// bspace addon preference default). The converter always acts as the
+		/// listening side; the former --server option was dead and was removed.
+		int port = 5000;
 		
 		/// Flag to display dataset information only without processing
 		bool info = false;

@@ -43,4 +43,4 @@ out=${ROOT_DIR}/out
 out_t=${out}/remote
 mkdir -p ${out_t}
 
-mpirun --np 64 -env OMP_NUM_THREADS=2 --line-buffer ${install}/bin/space_converter --pos-names x y z --vel-names vx vy vz --mass-name mass --rho-name rho --hsml-name hh --data-type GENERICIO --genericio-file HACC/Farpoint/M000p/L1478/HACC000/analysis/Particles/STEP499/m000p-499.select.mpicosmo --output-path ${out_t} --port 5000 # --info #--port 5000 #--calc-radius-neigh 10 #--info
+mpirun --np 64 -env OMP_NUM_THREADS=2 --line-buffer ${install}/bin/space_converter --pos-names x y z --vel-names vx vy vz --mass-name mass --rho-name rho --hsml-name hh --data-type HACC_GENERICIO --genericio-file HACC/Farpoint/M000p/L1478/HACC000/analysis/Particles/STEP499/m000p-499.select.mpicosmo --output-path ${out_t} --port 5000 # --info #--port 5000 #--calc-radius-neigh 10 #--info

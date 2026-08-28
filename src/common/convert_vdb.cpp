@@ -84,7 +84,7 @@ namespace space_converter {
 					// Check if file exists
 					std::ifstream file(calc_radius_neigh_file_ptype, std::ios::binary);
 					if (!file.good()) {
-						printf("File %s does exist or cannot be opened\n", calc_radius_neigh_file_ptype.c_str());
+						printf("File %s does not exist or cannot be opened\n", calc_radius_neigh_file_ptype.c_str());
 						return;
 					}
 
@@ -113,10 +113,19 @@ namespace space_converter {
 
 					printf("Read %zu rho particles for particle type %d from file %s\n", size, ptype, calc_radius_neigh_file_ptype.c_str());
 
-					cache_manager.radius_particles_per_ptype.push_back(radius_particles); // Store the radius particles for this type
-					cache_manager.rho_particles_per_ptype.push_back(rho_particles); // Store the rho particles for this type
+					// Overwrite the per-type slots that find_particle_positions() already
+					// created (an earlier version push_back'ed here, appending the loaded
+					// arrays PAST index ptype_count so the kernels kept using the stale
+					// hsml-based radii).
+					if ((int)cache_manager.radius_particles_per_ptype.size() <= ptype)
+						cache_manager.radius_particles_per_ptype.resize(ptype + 1);
+					if ((int)cache_manager.rho_particles_per_ptype.size() <= ptype)
+						cache_manager.rho_particles_per_ptype.resize(ptype + 1);
 
-					cache_manager.particles_ptype_offset[ptype + 1] = cache_manager.particles_ptype_offset[ptype] + radius_particles.size();
+					cache_manager.radius_particles_per_ptype[ptype] = std::move(radius_particles);
+					cache_manager.rho_particles_per_ptype[ptype] = std::move(rho_particles);
+
+					cache_manager.particles_ptype_offset[ptype + 1] = cache_manager.particles_ptype_offset[ptype] + cache_manager.radius_particles_per_ptype[ptype].size();
 
 					file.close();
 				}
@@ -178,6 +187,7 @@ namespace space_converter {
 				cache_manager.rho_particles_per_ptype.resize(ptype_count);
 				cache_manager.mass_particles_per_ptype.resize(ptype_count);
 				cache_manager.particles_id_ordered_per_ptype.resize(ptype_count);
+				cache_manager.particles_reader_id_per_ptype.resize(ptype_count);
 				cache_manager.particles_ptype_offset.resize(ptype_count + 1, 0);
 
 				int num_threads = 1;
@@ -221,7 +231,7 @@ namespace space_converter {
 					std::vector<size_t> particles_id_master;
 					std::vector < std::vector<size_t> > particles_id_thread(num_threads);
 
-#pragma omp parallel num_threads(num_threads) 
+#pragma omp parallel num_threads(num_threads)
 					{
 #ifdef WITH_OPENMP
 						int tid = omp_get_thread_num();
@@ -252,6 +262,8 @@ namespace space_converter {
 							double radius = get_particle_hsml(i);
 							radius_thread[tid].push_back(radius);
 
+							// Global reader id of this compact slot (needed later to
+							// query per-particle values from the reader)
 							particles_id_thread[tid].push_back(i);
 						}
 					}
@@ -268,7 +280,21 @@ namespace space_converter {
 					cache_manager.radius_particles_per_ptype[ptype] = std::move(radius_master);
 					cache_manager.mass_particles_per_ptype[ptype] = std::move(pmass_master);
 					cache_manager.rho_particles_per_ptype[ptype] = std::move(rho_master);
-					cache_manager.particles_id_ordered_per_ptype[ptype] = std::move(particles_id_master);
+					// Reader ids: compact slot k of this type <-> global reader id.
+					cache_manager.particles_reader_id_per_ptype[ptype] = std::move(particles_id_master);
+					// Iteration order: COMPACT indices 0..N_t-1 (later permuted by the
+					// sorts). These index the compact per-type arrays above; they must
+					// NEVER be passed to reader accessors (use the reader ids for that).
+					// A previous version stored the global reader ids here, which made
+					// the conversion kernels index the compact arrays out of bounds for
+					// every particle type > 0.
+					{
+						size_t n_t = cache_manager.pos_particles_per_ptype[ptype].size() / 3;
+						std::vector<size_t> iter_order(n_t);
+						for (size_t k = 0; k < n_t; k++)
+							iter_order[k] = k;
+						cache_manager.particles_id_ordered_per_ptype[ptype] = std::move(iter_order);
+					}
 					cache_manager.particles_ptype_offset[ptype + 1] = cache_manager.particles_ptype_offset[ptype] + cache_manager.pos_particles_per_ptype[ptype].size() / 3;
 					cache_manager.num_particles_per_ptype[ptype] = cache_manager.pos_particles_per_ptype[ptype].size() / 3;
 				}
@@ -293,9 +319,13 @@ namespace space_converter {
 
 				// double t_start = omp_get_wtime();
 
-				// Get the particle IDs for this type from cache
-				const auto& particle_ids = cache_manager.particles_id_ordered_per_ptype[ptype];
-				size_t num_particles = particle_ids.size();
+				// Values are cached in COMPACT order (slot k of values_particles is
+				// the value of the k-th cached particle of this type). The reader is
+				// queried with the GLOBAL reader id of that slot — passing the compact
+				// index here (as an earlier version did) fetched the values of the
+				// wrong particles for every type > 0.
+				const auto& reader_ids = cache_manager.particles_reader_id_per_ptype[ptype];
+				size_t num_particles = reader_ids.size();
 
 				if (num_particles == 0) {
 					cache_manager.values_particles.clear();
@@ -312,9 +342,9 @@ namespace space_converter {
 				// Pre-allocate values_master with known size
 				std::vector<float> values_master(num_particles);
 
-#pragma omp parallel for num_threads(num_threads) 
+#pragma omp parallel for num_threads(num_threads)
 				for (size_t idx = 0; idx < num_particles; idx++) {
-					float value = get_particle_norm_value(block_name_id, idx);
+					float value = get_particle_norm_value(block_name_id, reader_ids[idx]);
 					values_master[idx] = value;
 				}
 
@@ -343,54 +373,11 @@ namespace space_converter {
 					size_t no_points = get_local_num_particles();
 
 					int ptype_count = get_num_types();
-					// cache_manager.radius_particles_per_ptype.resize(ptype_count);
-					// cache_manager.rho_particles_per_ptype.resize(ptype_count);
-					// cache_manager.particles_ptype_offset.resize(ptype_count + 1, 0);
 
 					int num_threads = omp_get_max_threads();
 
 					for (int ptype = 0; ptype < ptype_count; ptype++) {
 
-						// 					std::vector<float> points;
-						// 					std::vector < std::vector<float> > points_thread(num_threads);
-
-						// 					std::vector<float> pmass;
-						// 					std::vector < std::vector<float> > pmass_thread(num_threads);
-
-						// #pragma omp parallel num_threads(num_threads) 
-						// 					{
-						// 						int tid = omp_get_thread_num();
-
-						// #pragma omp for
-						// 						for (size_t i = 0; i < no_points; i++) {
-
-						// 							if (get_particle_type(i) != ptype)
-						// 								continue;
-
-						// 							double Pos[3];
-						// 							get_particle_position(i, Pos);
-
-						// 							// Collect particle positions per thread
-						// 							points_thread[tid].push_back(Pos[0]);
-						// 							points_thread[tid].push_back(Pos[1]);
-						// 							points_thread[tid].push_back(Pos[2]);
-
-						// 							double mass = get_particle_mass(i);
-						// 							pmass_thread[tid].push_back(mass);
-						// 						}
-						// 					}
-
-						// 					// Merge thread-local results in order to maintain particle index consistency
-						// 					// Thread order must be preserved to match particle IDs with computed radii
-						// 					std::vector<float> result;
-						// 					for (int t = 0; t < num_threads; ++t) {
-						// 						points.insert(points.end(), points_thread[t].begin(), points_thread[t].end());
-						// 						pmass.insert(pmass.end(), pmass_thread[t].begin(), pmass_thread[t].end());
-						// 					}
-
-						// 					cache_manager.particles_ptype_offset[ptype + 1] = cache_manager.particles_ptype_offset[ptype] + points.size() / 3;
-
-						// 					printf("cudakdtree: init: %f\n", omp_get_wtime() - t_start);
 
 											// Run GPU/CPU-based k-Nearest Neighbor search
 						utility::cudakdtree::run_knn(cache_manager.pos_particles_per_ptype[ptype].data(), cache_manager.pos_particles_per_ptype[ptype].size() / 3, calc_radius_neigh + 1, cache_manager.radius_particles_per_ptype[ptype], cache_manager.rho_particles_per_ptype[ptype], cache_manager.mass_particles_per_ptype[ptype], !use_cudakdtree_cpu, use_cycling, maxRadius, rho_kernel);
@@ -496,9 +483,6 @@ namespace space_converter {
 					size_t no_points = get_local_num_particles();
 
 					int ptype_count = get_num_types();
-					// cache_manager.radius_particles_per_ptype.resize(ptype_count);
-					// cache_manager.rho_particles_per_ptype.resize(ptype_count);
-					// cache_manager.particles_ptype_offset.resize(ptype_count + 1, 0);
 
 #ifdef WITH_OPENMP
 					int num_threads = omp_get_max_threads();
@@ -508,48 +492,6 @@ namespace space_converter {
 
 					for (int ptype = 0; ptype < ptype_count; ptype++) {
 
-						// 					std::vector<float> points;
-						// 					std::vector < std::vector<float> > points_thread(num_threads);
-
-						// 					std::vector<float> pmass;
-						// 					std::vector < std::vector<float> > pmass_thread(num_threads);
-
-						// #pragma omp parallel num_threads(num_threads) 
-						// 					{
-						// 						int tid = omp_get_thread_num();
-
-						// #pragma omp for
-						// 						for (size_t i = 0; i < no_points; i++) {
-
-						// 							if (get_particle_type(i) != ptype)
-						// 								continue;
-
-						// 							double Pos[3];
-						// 							get_particle_position(i, Pos);
-
-						// 							// Collect particle positions per thread (x, y, z interleaved)
-						// 							points_thread[tid].push_back(Pos[0]);
-						// 							points_thread[tid].push_back(Pos[1]);
-						// 							points_thread[tid].push_back(Pos[2]);
-
-						// 							// Store mass for density computation
-						// 							double mass = get_particle_mass(i);
-						// 							pmass_thread[tid].push_back(mass);
-						// 						}
-						// 					}
-
-						// 					// Merge thread-local results in thread order to maintain particle index consistency
-						// 					// This is critical for correct radius lookup later
-						// 					std::vector<float> result;
-						// 					for (int t = 0; t < num_threads; ++t) {
-						// 						points.insert(points.end(), points_thread[t].begin(), points_thread[t].end());
-						// 						pmass.insert(pmass.end(), pmass_thread[t].begin(), pmass_thread[t].end());
-						// 					}
-
-						// 					// Store particle count offset for this type (cumulative sum)
-						// 					cache_manager.particles_ptype_offset[ptype + 1] = cache_manager.particles_ptype_offset[ptype] + points.size() / 3;
-
-						// 					printf("nanoflann: init: %f\n", omp_get_wtime() - t_start);
 
 						if (cache_manager.pos_particles_per_ptype[ptype].size() > 0) {
 							// Run k-NN search (calc_radius_neigh + 1 includes the query point itself)
@@ -579,31 +521,22 @@ namespace space_converter {
 			void ConvertVDBBase::convert_iolib_to_grid(
 				int particle_type,
 				float particle_radius_multiplier,
-				std::string grid_name,
-				//int* grid_dims,
-				float grid_transform,
 				float* bbox_min,
 				float* bbox_max,
 				int bbox_dim,
 				int* bbox_min_orig,
 				double bbox_size_orig,
-				common::SpaceData::ExtractedType extracted_type,
-				common::SpaceData::ExtractedParticleType extracted_particle_type,
 				common::SpaceData::DenseType dense_type,
 				common::SpaceData::DenseNorm dense_norm,
 				int block_name_id,
 				float object_size,
 				float& min_value,
 				float& max_value,
-				float min_value_global,
-				float max_value_global,
 				size_t& particles_count,
 				VDBParticles& grid,
 				double& transform_scale,
 				float filter_min,
 				float filter_max,
-				float min_rho,
-				float max_rho,
 				common::SpaceData::AnimType anim_type,
 				int frame_req,
 				int frame,
@@ -732,30 +665,20 @@ namespace space_converter {
 						d_value_particles,
 						num_particles,
 						particle_radius_multiplier,
-						grid_name,
-						grid_transform,
-						bbox_min,
-						bbox_max,
 						bbox_dim,
 						bbox_min_orig,
 						bbox_size_orig,
-						extracted_type,
-						extracted_particle_type,
 						dense_type,
 						dense_norm,
 						block_name_id,
 						object_size,
 						min_value,
 						max_value,
-						min_value_global,
-						max_value_global,
 						particles_count,
 						grid,
 						transform_scale,
 						filter_min,
 						filter_max,
-						min_rho,
-						max_rho,
 						anim_type,
 						frame_req,
 						frame,
@@ -815,7 +738,6 @@ namespace space_converter {
 
 					float  min_total = FLT_MAX, max_total = -FLT_MAX;
 					size_t count_total = 0;
-					size_t compacted = 0;   // running index within this particle type
 					size_t n = 0;
 
 					auto flush_chunk = [&]() {
@@ -830,8 +752,8 @@ namespace space_converter {
 							pos_chunk[3 * k + 1] = (float)Pos[1];
 							pos_chunk[3 * k + 2] = (float)Pos[2];
 							radius_chunk[k] = (float)get_particle_hsml(src);
-							// The cached path indexes values by the position within the type
-							value_chunk[k] = get_particle_norm_value(block_name_id, compacted + k);
+							// Reader accessors take the global reader id
+							value_chunk[k] = get_particle_norm_value(block_name_id, src);
 						}
 
 						float  min_c = FLT_MAX, max_c = -FLT_MAX;
@@ -840,13 +762,13 @@ namespace space_converter {
 						kernel::convert_iolib_to_grid_cpu(
 							pos_chunk.data(), ids_chunk.data(), radius_chunk.data(), value_chunk.data(),
 							n,
-							particle_radius_multiplier, grid_name, grid_transform,
-							bbox_min, bbox_max, bbox_dim, bbox_min_orig, bbox_size_orig,
-							extracted_type, extracted_particle_type, dense_type, dense_norm,
+							particle_radius_multiplier,
+							bbox_dim, bbox_min_orig, bbox_size_orig,
+							dense_type, dense_norm,
 							block_name_id, object_size,
-							min_c, max_c, min_value_global, max_value_global, count_c,
+							min_c, max_c, count_c,
 							grid, transform_scale,
-							filter_min, filter_max, min_rho, max_rho,
+							filter_min, filter_max,
 							anim_type, frame_req, frame,
 							bbox_sphere_pos, bbox_sphere_r, use_simple_density,
 							cache_manager.particle_radius_const,
@@ -859,7 +781,6 @@ namespace space_converter {
 						if (min_c < min_total) min_total = min_c;
 						if (max_c > max_total) max_total = max_c;
 						count_total += count_c;
-						compacted += n;
 						n = 0;
 					};
 
@@ -892,30 +813,20 @@ namespace space_converter {
 						value_particles,
 						num_particles,
 						particle_radius_multiplier,
-						grid_name,
-						grid_transform,
-						bbox_min,
-						bbox_max,
 						bbox_dim,
 						bbox_min_orig,
 						bbox_size_orig,
-						extracted_type,
-						extracted_particle_type,
 						dense_type,
 						dense_norm,
 						block_name_id,
 						object_size,
 						min_value,
 						max_value,
-						min_value_global,
-						max_value_global,
 						particles_count,
 						grid,
 						transform_scale,
 						filter_min,
 						filter_max,
-						min_rho,
-						max_rho,
 						anim_type,
 						frame_req,
 						frame,
@@ -1283,36 +1194,6 @@ namespace space_converter {
 
 				floatgrid->setTransform(transform);
 
-				//			// Normalize density values using temp buffer if available
-				//#ifndef WITH_NO_DATA_TEMP
-				//#pragma omp parallel for
-				//			for (int z = 0; z < dense_manager->z(); z++) {
-				//				for (int y = 0; y < dense_manager->y(); y++) {
-				//					for (int x = 0; x < dense_manager->x(); x++) {
-				//
-				//						// Get the value from the array						
-				//						size_t index = dense_manager->get_index(x, y, z);
-				//						float density = dense_manager->data_density[index];
-				//
-				//						float temp = 0.0f;
-				//						temp = dense_manager->data_temp[index];
-				//
-				//						// Apply normalization if enabled
-				//						if (dense_norm != common::SpaceData::DenseNorm::eNone) {
-				//							density = density / temp;
-				//						}
-				//
-				//						// Store normalized value or zero for invalid data
-				//						if (!std::isnan(density)) {
-				//							dense_manager->data_density[index] = density;
-				//						}
-				//						else {
-				//							dense_manager->data_density[index] = 0.0f;
-				//						}
-				//					}
-				//				}
-				//			}
-				//#endif
 
 #ifdef WITH_GPU_CUDA
 				common::vdb::dense::VoxelGPUDenseManager* dense_manager_gpu = dynamic_cast<common::vdb::dense::VoxelGPUDenseManager*>(dense_manager);
@@ -1400,16 +1281,6 @@ namespace space_converter {
 				//	common::vdb::sparse::Voxel* voxels = nullptr;
 				//	int voxel_count = voxel_omp_manager->extractAll(&voxels);
 
-				//	// Populate OpenVDB grid from extracted voxels
-				//	for (int i = 0; i < voxel_count; i++) {
-				//		openvdb::Coord xyz(voxels[i].i, voxels[i].j, voxels[i].k);
-				//		float value = voxels[i].value;
-				//		// Only store non-zero values to maintain sparse storage efficiency
-				//		// Background value (0.0f) is implicit in OpenVDB
-				//		if (value != 0.0f) {
-				//			acc_dst.setValue(xyz, value);
-				//		}
-				//	}
 
 				//	// Clean up extracted voxel array
 				//	if (voxels != nullptr) {
@@ -1442,32 +1313,6 @@ namespace space_converter {
 					printf("VoxelOpenMPManager: Total occupied voxels: %f %%\n", 100.0f * (float)total_occupied / (float)voxel_omp_manager->insert_count);
 				}
 
-				//#ifdef WITH_GPU_CUDA
-				//			// Attempt to dynamic_cast to VoxelGPUManagerSortReduce
-				//			common::vdb::sparse::VoxelGPUManagerSortReduce* voxel_gpu_manager = dynamic_cast<common::vdb::sparse::VoxelGPUManagerSortReduce*>(voxel_manager);
-				//			if (voxel_gpu_manager) {
-				//				uint64_t* h_keys = new uint64_t[voxel_gpu_manager->m_last_count];
-				//				float* h_vals = new float[voxel_gpu_manager->m_last_count];
-				//				voxel_gpu_manager->get_keys_values_from_device(h_keys, h_vals);
-				//
-				//				auto acc_dst = floatgrid->getAccessor();
-				//				for (unsigned int i = 0; i < voxel_gpu_manager->m_last_count; i++) {
-				//					int x, y, z;
-				//					common::vdb::sparse::unpackCoord3(h_keys[i], x, y, z);
-				//					openvdb::Coord xyz(x, y, z);
-				//					float value = h_vals[i];
-				//					// Only store non-zero values to maintain sparse storage efficiency
-				//					// Background value (0.0f) is implicit in OpenVDB
-				//					if (value != 0.0f) {
-				//						acc_dst.setValue(xyz, value);
-				//					}
-				//				}
-				//				delete[] h_keys;
-				//				delete[] h_vals;
-				//
-				//				return floatgrid;
-				//			}
-				//#endif
 
 #ifdef WITH_GPU_CUDA
 			// Attempt to dynamic_cast to VoxelGPUManagerSortReduce
@@ -1564,54 +1409,6 @@ namespace space_converter {
 #endif
 
 			/**
-			 * @brief Get particle radius for rasterization
-			 *
-			 * Computes particle smoothing radius from:
-			 * - Precomputed neighbor search results (if available)
-			 * - SPH smoothing length (hsml)
-			 * - Constant radius setting
-			 * - Particle mass and density
-			 */
-			double ConvertVDBBase::get_particle_radius(
-				uint64_t pid,
-				int bbox_dim,
-				int* bbox_min_orig,
-				double bbox_size_orig,
-				double scale_space_diagonal,
-				float particle_radius_multiplier,
-				int particle_type
-			) {
-				if (cache_manager.particle_radius_const > 0.0) {
-					return cache_manager.particle_radius_const;
-				}
-
-				// Conversion factor from world space to voxel space
-				double norm_fac = (double)bbox_dim / scale_space_diagonal;
-
-				// Get SPH properties for this particle
-				double hsml = get_particle_hsml(pid);  // Smoothing length
-				double mass = get_particle_mass(pid);
-				double rho = get_particle_rho(pid);    // Density
-
-				double radius = hsml;
-
-				// Use precomputed radius from k-NN search if available (overrides hsml)
-				if (cache_manager.radius_particles_per_ptype.size() > 0 && cache_manager.radius_particles_per_ptype[particle_type].size() > 0) {
-					radius = cache_manager.radius_particles_per_ptype[particle_type][pid - cache_manager.particles_ptype_offset[particle_type]];
-				}
-
-				if (particle_radius_multiplier != 0.0f) {
-					radius *= particle_radius_multiplier;
-				}
-
-				// Convert radius to voxel units
-				double len_to_pix = norm_fac / bbox_size_orig;
-				double radiusxyz_max = radius * len_to_pix;
-
-				return radiusxyz_max;
-			}
-
-			/**
 			 * @brief Get particle density (rho) value
 			 *
 			 * Returns density from precomputed k-NN results if available,
@@ -1641,6 +1438,12 @@ namespace space_converter {
 
 				int num_types = get_num_types();
 				int rho_blocknr = get_particle_rho_blocknr();
+
+				// A reader without a rho block (e.g. HACC GenericIO without --rho-name)
+				// reports -1 — nothing to advertise then
+				if (rho_blocknr < 0) {
+					return;
+				}
 
 				// Mark density block as available if we have precomputed rho values
 				for (int type = 0; type < num_types; type++) {

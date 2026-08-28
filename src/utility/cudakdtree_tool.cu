@@ -29,6 +29,7 @@
 #include <limits>
 #include <cstring>
 #include <cmath>
+#include <algorithm>
 
 // For convert_to_dense_grid_loop_over_voxels_cpu
 #include "common/convert_vdb_kernel.h"
@@ -113,7 +114,11 @@ namespace utility {
                     if (!isinf(result_i) && !isinf(result)) {
                         result_i = sqrtf(result_i);
 
-                        // SPH density estimate by SPHtoGrid
+                        // SPH density estimate by SPHtoGrid.
+                        // NOTE: uses the QUERY particle's mass for every neighbor
+                        // (rho_i = m_i * sum_j W) — exact only for equal-mass runs;
+                        // neighbor masses from remote ranks are unavailable during
+                        // tree cycling.
                         d_rho_particles[tid] += d_mass_particles[tid] * utility::dense::sph_kernel::W(rho_kernel, result_i * h_inv, h_inv);
                     }
                     else {
@@ -217,24 +222,15 @@ namespace utility {
 
             int numQueries = N;// myPoints.size();
 
-#if 0 //nosplit
-            float3* d_queries;            
-            uint64_t* d_cand;
-            CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_queries, (size_t)N * sizeof(float3)));
-            CUDA_CHECK_ERROR(cudaMemcpy(d_queries, points, N * sizeof(float3), cudaMemcpyDefault));
-            CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_cand, (size_t)N * k * sizeof(uint64_t)));
-
-#else
-            //TODO!!!
-            // Choose S (number of splits/batches)
-            int S = 1;//k; // or make this a parameter
+            // Number of query batches (bounds device memory for the per-batch buffers)
+            int S = 1;
 
             const char *env_splits = std::getenv("CUDAKDTREE_NUM_SPLITS");
             if (env_splits) {
                 S = std::atoi(env_splits);
             }
 
-            if (S > N) {
+            if (S > N || S < 1) {
                 S = 1;
             }
 
@@ -243,15 +239,6 @@ namespace utility {
             // Allocate output buffers for all queries
             radius_particles.resize(numPointsThatIHave);
             rho_particles.resize(numPointsThatIHave);
-
-            //float* d_radius_particles = 0;
-            //float* d_rho_particles = 0;
-            //float* d_mass_particles = 0;
-            //CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_radius_particles, numPointsThatIHave * sizeof(float)));
-            //CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_rho_particles, numPointsThatIHave * sizeof(float)));
-            //CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_mass_particles, numPointsThatIHave * sizeof(float)));
-            //CUDA_CHECK_ERROR(cudaMemcpy(d_mass_particles, mass_particles.data(), numPointsThatIHave * sizeof(float), cudaMemcpyHostToDevice));
-#endif            
 
             // -----------------------------------------------------------------------------
             // now, do the queries and cycling:
@@ -264,7 +251,16 @@ namespace utility {
 				round_size = 1;
 			}
 
-			// Allocate
+            // Candidate lists MUST survive across cycling rounds: round 0 initializes
+            // them (cutoff = maxRadius) and every later round CONTINUES them
+            // (cutoff = -1, cukd uses the list as-is). They are kept on the host for
+            // all queries and staged through a batch-sized device buffer, so device
+            // memory stays bounded by the batch size. (A previous version memset the
+            // device list to zero every round; a zeroed heap has max-dist2 = 0, so no
+            // candidate could ever be inserted in rounds >= 1 and multi-rank runs
+            // produced radius = 0 / rho = NaN for every particle.)
+            std::vector<uint64_t> h_cand_all((size_t)numQueries * (size_t)k);
+
             uint64_t* d_cand = nullptr;
             size_t d_cand_size = 0;
 
@@ -280,10 +276,21 @@ namespace utility {
             float* d_batch_rho = nullptr;
 			size_t d_batch_rho_size = 0;
 
+            // Grow-only allocator for the per-batch device buffers
+            auto ensure_device = [](void** ptr, size_t& current, size_t needed) {
+                if (current < needed) {
+                    if (*ptr != nullptr) {
+                        CUDA_CHECK_ERROR(cudaFree(*ptr));
+                    }
+                    current = needed;
+                    CUDA_CHECK_ERROR(CUDA_MALLOC(ptr, needed));
+                }
+            };
+
             for (int round = 0; round < round_size; round++) {
 				if (mpi_rank == 0) {
 					printf("Starting round (cudakdtree-gpu cycling) %d\n", round);
-				}  
+				}
 
                 if (round == 0) {
                     // nothing to do , we already have our own tree
@@ -302,79 +309,33 @@ namespace utility {
 
                     char* recvPtr = reinterpret_cast<char*>(d_tree_recv);
                     char* sendPtr = reinterpret_cast<char*>(d_tree);
-                    size_t totalBytesRecv = recvCount * sizeof(*d_tree);
-                    size_t totalBytesSend = sendCount * sizeof(*d_tree);
+                    size_t totalBytesRecv = (size_t)recvCount * sizeof(*d_tree);
+                    size_t totalBytesSend = (size_t)sendCount * sizeof(*d_tree);
                     mpi_cycling(recvPeer, recvPtr, totalBytesRecv, sendPeer, sendPtr, totalBytesSend);
 
                     N = recvCount;
                     std::swap(d_tree, d_tree_recv);
                 }
 
-#if 0 //nosplit                
-                // -----------------------------------------------------------------------------
-                runQuery << <divRoundUp(numQueries, 1024), 1024 >> >
-                    (/* tree */d_tree, N,
-                        /* query params */d_cand, k, maxRadius,
-                        /* query points */d_queries, numQueries,
-                        round);
-                CUDA_CHECK_ERROR(cudaDeviceSynchronize());
-#else
-                // Process queries in S batches
+                // Process queries in S batches; each batch works on its own slice of
+                // the persistent host candidate store
                 for (int s = 0; s < S; ++s) {
                     size_t start = s * batch_size;
                     size_t this_batch = (s == S - 1) ? numQueries - start : batch_size;
                     if (this_batch == 0) continue;
 
-                    // Allocate only for this batch
-                    if (d_cand_size < this_batch * (size_t)k * sizeof(uint64_t)) {
-
-                        if (d_cand != nullptr) {
-							CUDA_CHECK_ERROR(cudaFree(d_cand));
-                        }
-
-                        d_cand_size = this_batch * (size_t)k * sizeof(uint64_t);
-                        CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_cand, d_cand_size));
+                    const size_t cand_bytes = this_batch * (size_t)k * sizeof(uint64_t);
+                    ensure_device((void**)&d_cand, d_cand_size, cand_bytes);
+                    if (round > 0) {
+                        // Continue from the candidates accumulated in previous rounds
+                        CUDA_CHECK_ERROR(cudaMemcpy(d_cand, h_cand_all.data() + start * (size_t)k, cand_bytes, cudaMemcpyHostToDevice));
                     }
-					CUDA_CHECK_ERROR(cudaMemset(d_cand, 0, d_cand_size));
+                    // round == 0 needs no upload: the FlexHeapCandidateList constructor
+                    // initializes the list in-kernel when cutoff (maxRadius) >= 0
 
                     // Prepare batch queries
-					if (d_batch_queries_size < this_batch * sizeof(float3)) {
-						if (d_batch_queries != nullptr) {
-							CUDA_CHECK_ERROR(cudaFree(d_batch_queries));
-						}
-						d_batch_queries_size = this_batch * sizeof(float3);
-                        CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_batch_queries, d_batch_queries_size));
-					}
+                    ensure_device((void**)&d_batch_queries, d_batch_queries_size, this_batch * sizeof(float3));
                     CUDA_CHECK_ERROR(cudaMemcpy(d_batch_queries, ((float3*)points) + start, this_batch * sizeof(float3), cudaMemcpyDefault));
-
-                    // Prepare batch mass
-					if (d_batch_mass_size < this_batch * sizeof(float)) {
-						if (d_batch_mass != nullptr) {
-							CUDA_CHECK_ERROR(cudaFree(d_batch_mass));
-						}
-						d_batch_mass_size = this_batch * sizeof(float);
-                        CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_batch_mass, d_batch_mass_size));
-					}                   
-                    CUDA_CHECK_ERROR(cudaMemcpy(d_batch_mass, mass_particles.data() + start, this_batch * sizeof(float), cudaMemcpyHostToDevice));
-
-                    // Output for this batch
-					if (d_batch_radius_size < this_batch * sizeof(float)) {
-						if (d_batch_radius != nullptr) {
-							CUDA_CHECK_ERROR(cudaFree(d_batch_radius));
-						}
-						d_batch_radius_size = this_batch * sizeof(float);
-                        CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_batch_radius, d_batch_radius_size));
-					}
-					CUDA_CHECK_ERROR(cudaMemset(d_batch_radius, 0, d_batch_radius_size));
-
-					if (d_batch_rho_size < this_batch * sizeof(float)) {
-						if (d_batch_rho != nullptr) {
-							CUDA_CHECK_ERROR(cudaFree(d_batch_rho));
-						}
-						d_batch_rho_size = this_batch * sizeof(float);
-                        CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_batch_rho, d_batch_rho_size));
-					}
-					CUDA_CHECK_ERROR(cudaMemset(d_batch_rho, 0, d_batch_rho_size));
 
                     // Run query for this batch
                     runQuery << <divRoundUp(this_batch, 256ULL), 256 >> >(
@@ -385,17 +346,39 @@ namespace utility {
                     );
                     CUDA_CHECK_ERROR(cudaDeviceSynchronize());
 
-                    // Extract results for this batch
-                    extractFinalResult<<<divRoundUp(this_batch, 256ULL), 256 >>>(
-						d_batch_radius, d_batch_rho, d_batch_mass, this_batch, k, d_cand, rho_kernel
-                    );
-                    CUDA_CHECK_ERROR(cudaDeviceSynchronize());
-
-                    // Copy results to the full output arrays
-                    CUDA_CHECK_ERROR(cudaMemcpy(radius_particles.data() + start, d_batch_radius, this_batch * sizeof(float), cudaMemcpyDeviceToHost));
-                    CUDA_CHECK_ERROR(cudaMemcpy(rho_particles.data() + start, d_batch_rho, this_batch * sizeof(float), cudaMemcpyDeviceToHost));
+                    // Save the batch state for the next round / final extraction
+                    CUDA_CHECK_ERROR(cudaMemcpy(h_cand_all.data() + start * (size_t)k, d_cand, cand_bytes, cudaMemcpyDeviceToHost));
                 }
-#endif
+            }
+
+            // ── Extraction: once, after the LAST round (a previous version extracted
+            // and overwrote the outputs every round) ─────────────────────────────────
+            for (int s = 0; s < S; ++s) {
+                size_t start = s * batch_size;
+                size_t this_batch = (s == S - 1) ? numQueries - start : batch_size;
+                if (this_batch == 0) continue;
+
+                const size_t cand_bytes = this_batch * (size_t)k * sizeof(uint64_t);
+                ensure_device((void**)&d_cand, d_cand_size, cand_bytes);
+                CUDA_CHECK_ERROR(cudaMemcpy(d_cand, h_cand_all.data() + start * (size_t)k, cand_bytes, cudaMemcpyHostToDevice));
+
+                ensure_device((void**)&d_batch_mass, d_batch_mass_size, this_batch * sizeof(float));
+                CUDA_CHECK_ERROR(cudaMemcpy(d_batch_mass, mass_particles.data() + start, this_batch * sizeof(float), cudaMemcpyHostToDevice));
+
+                ensure_device((void**)&d_batch_radius, d_batch_radius_size, this_batch * sizeof(float));
+                CUDA_CHECK_ERROR(cudaMemset(d_batch_radius, 0, this_batch * sizeof(float)));
+
+                ensure_device((void**)&d_batch_rho, d_batch_rho_size, this_batch * sizeof(float));
+                CUDA_CHECK_ERROR(cudaMemset(d_batch_rho, 0, this_batch * sizeof(float)));
+
+                extractFinalResult<<<divRoundUp(this_batch, 256ULL), 256 >>>(
+                    d_batch_radius, d_batch_rho, d_batch_mass, this_batch, k, d_cand, rho_kernel
+                );
+                CUDA_CHECK_ERROR(cudaDeviceSynchronize());
+
+                // Copy results to the full output arrays
+                CUDA_CHECK_ERROR(cudaMemcpy(radius_particles.data() + start, d_batch_radius, this_batch * sizeof(float), cudaMemcpyDeviceToHost));
+                CUDA_CHECK_ERROR(cudaMemcpy(rho_particles.data() + start, d_batch_rho, this_batch * sizeof(float), cudaMemcpyDeviceToHost));
             }
 
             // Free batch memory
@@ -414,29 +397,6 @@ namespace utility {
                 printf("Total execution time (queries and cycling are done): %.6f seconds\n", end_time - start_time);
             }
 
-#if 0  //nosplit            
-            std::cout << "done all queries..." << std::endl;
-            float* d_radius_particles = 0;
-            float* d_rho_particles = 0;
-            float* d_mass_particles = 0;
-            CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_radius_particles, numPointsThatIHave * sizeof(float)));
-            CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_rho_particles, numPointsThatIHave * sizeof(float)));
-            
-            CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_mass_particles, numPointsThatIHave * sizeof(float)));
-            CUDA_CHECK_ERROR(cudaMemcpy(d_mass_particles, mass_particles.data(), numPointsThatIHave * sizeof(float), cudaMemcpyHostToDevice));
-
-            extractFinalResult << <divRoundUp(numQueries, 1024), 1024 >> >
-                (d_radius_particles, d_rho_particles, d_mass_particles, numQueries, k, d_cand);
-
-            CUDA_CHECK_ERROR(cudaDeviceSynchronize());
-
-            radius_particles.resize(numPointsThatIHave);
-            rho_particles.resize(numPointsThatIHave);
-            CUDA_CHECK_ERROR(cudaMemcpy(radius_particles.data(), d_radius_particles, numPointsThatIHave * sizeof(float), cudaMemcpyDeviceToHost));
-            CUDA_CHECK_ERROR(cudaMemcpy(rho_particles.data(), d_rho_particles, numPointsThatIHave * sizeof(float), cudaMemcpyDeviceToHost));
-
-            MPI_Barrier(MPI_COMM_WORLD);
-#endif            
         }
 
         void runQuery_host(
@@ -482,7 +442,9 @@ namespace utility {
                         if (!isinf(result_i) && !isinf(result)) {
                             result_i = sqrtf(result_i);
 
-                            // SPH density estimate by SPHtoGrid						
+                            // SPH density estimate by SPHtoGrid.
+                            // NOTE: query-particle mass for every neighbor — see the
+                            // note in the GPU extractFinalResult above.
                             rho_particles[tid] += mass_particles[tid] * utility::dense::sph_kernel::W(rho_kernel, result_i * h_inv, h_inv);
                         }
                         else {
@@ -544,20 +506,15 @@ namespace utility {
 
             size_t numQueries = N;
 
-#if 0  //nosplit            
-            std::vector<float3>  queries(N);
-            memcpy(queries.data(), points, (size_t)N * sizeof(float3));
-            std::vector<uint64_t>  cand((size_t)N * k);
-#else
-            //TODO!!!
-            int S = 1;//k; // for example, or make it a parameter
+            // Number of query batches
+            int S = 1;
 
             const char *env_splits = std::getenv("CUDAKDTREE_NUM_SPLITS");
             if (env_splits) {
                 S = std::atoi(env_splits);
             }
 
-            if (S > N) {
+            if (S > N || S < 1) {
                 S = 1;
             }
 
@@ -565,8 +522,7 @@ namespace utility {
 
             // Allocate output buffers for all queries
             radius_particles.resize(numPointsThatIHave);
-            rho_particles.resize(numPointsThatIHave);            
-#endif            
+            rho_particles.resize(numPointsThatIHave);
 
             // -----------------------------------------------------------------------------
             // now, do the queries and cycling:
@@ -579,14 +535,18 @@ namespace utility {
 				round_size = 1;
 			}
 
-            std::vector<uint64_t> cand;
-            std::vector<float> batch_radius;
-            std::vector<float> batch_rho;
+            // Candidate lists for ALL queries, persistent across cycling rounds:
+            // round 0 initializes them in runQuery_host (cutoff = maxRadius), later
+            // rounds continue them (cutoff = -1). (A previous version zeroed a
+            // batch-sized buffer every round; a zeroed heap has max-dist2 = 0, so no
+            // candidate could ever be inserted in rounds >= 1 and multi-rank runs
+            // produced radius = 0 / rho = NaN for every particle.)
+            std::vector<uint64_t> cand((size_t)numQueries * (size_t)k);
 
             for (int round = 0; round < round_size; round++) {
 				if (mpi_rank == 0) {
 					printf("Starting round (cudakdtree-cpu cycling) %d\n", round);
-				}                
+				}
 
                 if (round == 0) {
                     // nothing to do , we already have our own tree
@@ -605,62 +565,34 @@ namespace utility {
 
                     char* recvPtr = reinterpret_cast<char*>(tree_recv.data());
                     char* sendPtr = reinterpret_cast<char*>(tree.data());
-                    size_t totalBytesRecv = recvCount * sizeof(float3);
-                    size_t totalBytesSend = sendCount * sizeof(float3);
-                    mpi_cycling(recvPeer, recvPtr, totalBytesRecv, sendPeer, sendPtr, totalBytesSend);               
+                    size_t totalBytesRecv = (size_t)recvCount * sizeof(float3);
+                    size_t totalBytesSend = (size_t)sendCount * sizeof(float3);
+                    mpi_cycling(recvPeer, recvPtr, totalBytesRecv, sendPeer, sendPtr, totalBytesSend);
 
                     N = recvCount;
                     std::swap(tree, tree_recv);
                 }
-#if 0  //nosplit                
-                // -----------------------------------------------------------------------------
-                runQuery_host(tree, N,
-                    cand, k, maxRadius,
-                    queries, numQueries,
-                    round);
-#else
-                // Process queries in S batches
+
+                // Process queries in S batches; each batch queries against the current
+                // round's tree, continuing its own persistent candidate-list slice
                 for (int s = 0; s < S; ++s) {
                     size_t start = s * batch_size;
-                    //size_t end = std::min(start + batch_size, numQueries);
-                    //size_t this_batch = end - start;
                     size_t this_batch = (s == S - 1) ? numQueries - start : batch_size;
-
                     if (this_batch == 0) continue;
 
-                    // Allocate only for this batch
-                    if (this_batch * (size_t)k > cand.size()) {
-                        cand.resize(this_batch * (size_t)k);
-                    }
-					memset(cand.data(), 0, this_batch * (size_t)k * sizeof(uint64_t));
-
-                    if (this_batch > batch_radius.size()) {
-						batch_radius.resize(this_batch);
-                    }
-					memset(batch_radius.data(), 0, this_batch * sizeof(float));
-
-                    if (this_batch > batch_rho.size()) {
-                        batch_rho.resize(this_batch);
-                    }
-					memset(batch_rho.data(), 0, this_batch * sizeof(float));
-
-                    // Prepare batch queries
                     float3 *batch_queries = (float3*)points + start;
-
-                    // Run query for this batch
-                    runQuery_host(tree.data(), N, cand.data(), k, maxRadius, batch_queries, this_batch, round);
-
-                    // Extract results for this batch
-                    float *batch_mass = mass_particles.data() + start;
-
-                    extractFinalResult_host(batch_radius.data(), batch_rho.data(), batch_mass, this_batch, k, cand.data(), rho_kernel);
-
-                    // Copy results to the full output arrays
-                    std::copy(batch_radius.begin(), batch_radius.end(), radius_particles.begin() + start);
-                    std::copy(batch_rho.begin(), batch_rho.end(), rho_particles.begin() + start);
+                    runQuery_host(tree.data(), N, cand.data() + start * (size_t)k, k, maxRadius, batch_queries, this_batch, round);
                 }
-#endif                    
             }
+
+            // ── Extraction: once, after the LAST round (a previous version extracted
+            // and overwrote the outputs every round) ─────────────────────────────────
+            // extractFinalResult_host accumulates rho with +=, so clear the outputs
+            // first (the caller passes the cache's rho vector pre-filled with the
+            // reader's densities)
+            std::fill(radius_particles.begin(), radius_particles.end(), 0.0f);
+            std::fill(rho_particles.begin(), rho_particles.end(), 0.0f);
+            extractFinalResult_host(radius_particles.data(), rho_particles.data(), mass_particles.data(), numQueries, k, cand.data(), rho_kernel);
 
             // End timing after computation
             MPI_Barrier(MPI_COMM_WORLD);
@@ -671,13 +603,6 @@ namespace utility {
                 printf("Total execution time (queries and cycling are done): %.6f seconds\n", end_time - start_time);
             }
 
-#if 0  //nosplit
-            radius_particles.resize(numPointsThatIHave);
-            rho_particles.resize(numPointsThatIHave);
-            extractFinalResult_host(radius_particles, rho_particles, mass_particles, numPointsThatIHave, k, cand);
-
-            MPI_Barrier(MPI_COMM_WORLD);
-#endif           
         }
 
         void run_knn(float* points, size_t N, int k, std::vector<float>& radius_particles, std::vector<float>& rho_particles, std::vector<float>& mass_particles, bool use_gpu, bool use_cycling, float max_radius, common::SpaceData::DenseType& rho_kernel)

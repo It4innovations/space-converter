@@ -41,20 +41,21 @@
 #endif
 
 #include <hdf5.h>
+#include <mpi.h>
+#include <cmath>
 
 #include "convert_common.h"
+#include "reader_return_macros.h"
 
-#define RETURN_NORM_EMPTY return 0;
-#define RETURN_NORM_VALUE(v) return (float)(v);
-#define RETURN_NORM_VECTOR3(v) return (float)space_converter::common::calculate_dmagnitude3(v[0], v[1], v[2]);
-
-#define RETURN_COMP_EMPTY return 0;
-#define RETURN_COMP_VALUE(v) return 1;
-#define RETURN_COMP_VECTOR3(v) return 3;
-
-#define RETURN_ORIG_EMPTY RETURN_COMP_EMPTY
-#define RETURN_ORIG_VALUE(v) out_value[0] = (float)v; RETURN_COMP_VALUE(v)
-#define RETURN_ORIG_VECTOR3(v) out_value[0] = (float)v[0]; out_value[1] = (float)v[1]; out_value[2] = (float)v[2]; RETURN_COMP_VECTOR3(v)
+// Reader data contract (see docs/SpaceConverter_Code_Analysis_2026-08.md §7):
+//   get_particle_mass(id) -> |q|, the charge magnitude of a real particle used as a mass
+//                            proxy (iPIC3D code units); 1.0 for synthetic grid points
+//   get_particle_rho(id)  -> charge density from /moments/species_N/rho for synthetic
+//                            grid points; 1.0 for real particles
+//   get_particle_hsml(id) -> maximum of the grid spacings Dx, Dy, Dz from settings.hdf
+//                            (1.0 when the settings file was not found)
+//   particle id space     -> rank-local, grouped by species: for each species its real
+//                            particles first, then its synthetic grid points (IdSegment)
 
 namespace ipic3d {
     namespace io {
@@ -70,7 +71,8 @@ namespace ipic3d {
         };
 
         // Data structure to hold structured-grid field/moment data, exposed as one
-        // synthetic "particle" per grid point, positioned at the cell center.
+        // synthetic "particle" per grid point, positioned at the grid node (iPIC3D
+        // stores fields and moments node-centered).
         struct GridData {
             std::vector<double> px, py, pz;             // Grid point position
             std::vector<double> ex, ey, ez;             // /fields/E{x,y,z}
@@ -309,15 +311,21 @@ namespace ipic3d {
         }
 
         double get_particle_hsml(uint64_t id) {
-            // iPIC3D doesn't have smoothing length, return a default value
-            return 1.0;
+            // iPIC3D has no smoothing length; the largest grid spacing is the natural
+            // particle extent. Falls back to 1.0 when settings.hdf was not found
+            // (grid_settings then keeps its unit-spacing defaults).
+            double h = grid_settings.Dx;
+            if (grid_settings.Dy > h) h = grid_settings.Dy;
+            if (grid_settings.Dz > h) h = grid_settings.Dz;
+            return (h > 0.0) ? h : 1.0;
         }
 
         double get_particle_mass(uint64_t id) {
-            // Use charge as a proxy for mass in iPIC3D
+            // Use the charge magnitude as a proxy for mass in iPIC3D
+            // (q is signed per species; a signed "mass" would cancel out in sums)
             int species; bool is_grid; size_t i;
             if (resolve_id(id, species, is_grid, i) && !is_grid) {
-                return particle_data_by_species[species].q[i];
+                return std::fabs(particle_data_by_species[species].q[i]);
             }
             return 1.0;
         }
@@ -368,6 +376,8 @@ namespace ipic3d {
         }
 
         void get_types_and_blocks(std::vector<int>& types_and_blocks) {
+            // Consumers (ipic3d_hdf5_convert_vdb.cpp and the common pipeline) index this
+            // table as types_and_blocks[PTMax * blocknr + type] - fill it the same way.
             types_and_blocks.resize(IPIC3DParticleType::PTMax * IPIC3DBlockType::BTMax, 0);
 
             for (int s = 0; s < IPIC3DParticleType::PTMax && s < (int)particle_data_by_species.size(); s++) {
@@ -375,21 +385,21 @@ namespace ipic3d {
                 const GridData& g = grid_data_by_species[s];
 
                 if (p.count > 0) {
-                    types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::Pos] = 1;
-                    types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::Vel] = 1;
-                    types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::Charge] = 1;
-                    types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::ID] = 1;
+                    types_and_blocks[IPIC3DParticleType::PTMax * IPIC3DBlockType::Pos + s] = 1;
+                    types_and_blocks[IPIC3DParticleType::PTMax * IPIC3DBlockType::Vel + s] = 1;
+                    types_and_blocks[IPIC3DParticleType::PTMax * IPIC3DBlockType::Charge + s] = 1;
+                    types_and_blocks[IPIC3DParticleType::PTMax * IPIC3DBlockType::ID + s] = 1;
                 }
 
-                if (g.has_efield()) types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::EField] = 1;
-                if (g.has_bfield()) types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::BField] = 1;
-                if (g.has_rho()) types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::Rho] = 1;
-                if (g.has_pxx()) types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::Pxx] = 1;
-                if (g.has_pxy()) types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::Pxy] = 1;
-                if (g.has_pxz()) types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::Pxz] = 1;
-                if (g.has_pyy()) types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::Pyy] = 1;
-                if (g.has_pyz()) types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::Pyz] = 1;
-                if (g.has_pzz()) types_and_blocks[IPIC3DBlockType::BTMax * s + IPIC3DBlockType::Pzz] = 1;
+                if (g.has_efield()) types_and_blocks[IPIC3DParticleType::PTMax * IPIC3DBlockType::EField + s] = 1;
+                if (g.has_bfield()) types_and_blocks[IPIC3DParticleType::PTMax * IPIC3DBlockType::BField + s] = 1;
+                if (g.has_rho()) types_and_blocks[IPIC3DParticleType::PTMax * IPIC3DBlockType::Rho + s] = 1;
+                if (g.has_pxx()) types_and_blocks[IPIC3DParticleType::PTMax * IPIC3DBlockType::Pxx + s] = 1;
+                if (g.has_pxy()) types_and_blocks[IPIC3DParticleType::PTMax * IPIC3DBlockType::Pxy + s] = 1;
+                if (g.has_pxz()) types_and_blocks[IPIC3DParticleType::PTMax * IPIC3DBlockType::Pxz + s] = 1;
+                if (g.has_pyy()) types_and_blocks[IPIC3DParticleType::PTMax * IPIC3DBlockType::Pyy + s] = 1;
+                if (g.has_pyz()) types_and_blocks[IPIC3DParticleType::PTMax * IPIC3DBlockType::Pyz + s] = 1;
+                if (g.has_pzz()) types_and_blocks[IPIC3DParticleType::PTMax * IPIC3DBlockType::Pzz + s] = 1;
             }
         }
 
@@ -401,7 +411,7 @@ namespace ipic3d {
             for (int type = 0; type < IPIC3DParticleType::PTMax; type++) {
                 printf("Type: Species_%d (%d)\n", type, type);
                 for (int blocknr = 0; blocknr < IPIC3DBlockType::BTMax; blocknr++) {
-                    if (types_and_blocks[IPIC3DBlockType::BTMax * type + blocknr] > 0) {
+                    if (types_and_blocks[IPIC3DParticleType::PTMax * blocknr + type] > 0) {
                         printf("\t%s (%d)\n", get_dataset_name(blocknr).c_str(), blocknr);
                     }
                 }
@@ -413,7 +423,7 @@ namespace ipic3d {
             for (int type = 0; type < IPIC3DParticleType::PTMax; type++) {
                 printf("Type: Species_%d (%d)\n", type, type);
                 for (int blocknr = 0; blocknr < IPIC3DBlockType::BTMax; blocknr++) {
-                    if (types_and_blocks[IPIC3DBlockType::BTMax * type + blocknr] > 0) {
+                    if (types_and_blocks[IPIC3DParticleType::PTMax * blocknr + type] > 0) {
                         printf("\t%s (%d)\n", get_dataset_name(blocknr).c_str(), blocknr);
                     }
                 }
@@ -654,7 +664,9 @@ namespace ipic3d {
         }
 
         // Compute the world-space position of every point in a [nx,ny,nz] local grid tile,
-        // given this tile's coordinate in the cartesian process topology.
+        // given this tile's coordinate in the cartesian process topology. Points are
+        // placed at the grid nodes, which is correct for iPIC3D's node-centered
+        // field/moment datasets (not at cell centers).
         // NOTE: assumes iPIC3D's standard 1-cell ghost layer on each side of every local
         // field/moment tile; adjust GHOST if a given dataset's layout differs.
         void compute_grid_positions(const hsize_t dims[3], const int coord[3], const GridSettings& s,
@@ -842,6 +854,7 @@ namespace ipic3d {
 #endif
             std::string settings_path = settings_file.empty() ? default_settings_path(hdf5_file) : settings_file;
             GridSettings settings = read_settings(settings_path);
+            grid_settings = settings; // keep globally for get_particle_hsml()
 
             // Discover available species and the latest cycle from the file(s) this
             // rank will read; with a single restart dataset every file shares the
@@ -940,6 +953,12 @@ namespace ipic3d {
 
             // Build the combined id space: for each species, its particles followed
             // by its grid points (see IdSegment / resolve_id).
+            // TODO(design): real particles and synthetic grid points share one particle
+            // type per species. The phantom grid points carry value 0 for the particle
+            // blocks (Pos/Vel/Charge/ID) and so dilute count-normalized output, and the
+            // E/B field grids, which are species-independent, are duplicated into every
+            // species. A dedicated "grid" particle type would fix both, but changes the
+            // advertised type list - not done here on purpose.
             id_segments.clear();
             size_t offset = 0;
             for (int s = 0; s < IPIC3DParticleType::PTMax; s++) {
@@ -955,7 +974,11 @@ namespace ipic3d {
                 }
             }
             g_local_total = offset;
-            g_total_particles = (int64_t)g_local_total;
+
+            // Each rank only knows its own slice; sum over all ranks so
+            // get_global_num_particles() reports a true global count.
+            int64_t local_total = (int64_t)g_local_total;
+            MPI_Allreduce(&local_total, &g_total_particles, 1, MPI_INT64_T, MPI_SUM, MPI_COMM_WORLD);
 
             // for (int s : species_list) {
             //     printf("Rank %d species %d: %lld particles, %lld grid points\n", world_rank, s,

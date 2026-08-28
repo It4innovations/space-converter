@@ -77,3 +77,34 @@ target_link_libraries(genericio_print PUBLIC
   )
 
 install (TARGETS genericio_print DESTINATION bin)
+
+# ------------------------------------------------------------------
+# MPI-ENABLED IO LIB + SYNTHETIC-DATASET WRITER (smoke tests)
+# The GenericIO writer path is only compiled when MPI is enabled
+# (GenericIO.cxx guards write() with #ifndef GENERICIO_NO_MPI), so the
+# tests' gen_genericio tool links this MPI build of the library.
+# ------------------------------------------------------------------
+add_library(genericio_lib_mpi_static STATIC
+    ${GENERICIO_LIB_SRC}
+  )
+
+target_link_libraries(genericio_lib_mpi_static
+  PUBLIC
+    sz_lib
+    MPI::MPI_CXX
+  PRIVATE
+    $<BUILD_INTERFACE:${BLOSC_LIBRARIES}>
+  )
+
+add_executable(gen_genericio
+    ${CMAKE_SOURCE_DIR}/tests/gen_genericio.cpp
+  )
+
+target_link_libraries(gen_genericio PUBLIC
+  sz_lib
+  genericio_lib_mpi_static
+  MPI::MPI_CXX
+  ${BLOSC_LIBRARIES}
+  )
+
+install (TARGETS gen_genericio DESTINATION bin)

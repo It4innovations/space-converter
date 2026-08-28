@@ -26,7 +26,7 @@ class BSpacePreferences(bpy.types.AddonPreferences):
     bspace_port: bpy.props.IntProperty(
         name="Port",
         min=0,
-        max=65565,
+        max=65535,
         default=5000
     ) # type: ignore
 

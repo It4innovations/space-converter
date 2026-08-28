@@ -90,7 +90,11 @@ namespace changa {
 
 		// Anim
 		if (use_anim) {
-			base_dir = format_filename(base_dir, anim_start + anim_step * world_rank);
+			// Clamp to anim_end so trailing ranks do not address frames past the animation range
+			int anim_frame = anim_start + anim_step * world_rank;
+			if (anim_frame > anim_end)
+				anim_frame = anim_end;
+			base_dir = format_filename(base_dir, anim_frame);
 			std::cout << "Reading timestep dir: " << base_dir << std::endl;
 		}
 

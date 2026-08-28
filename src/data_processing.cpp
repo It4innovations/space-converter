@@ -24,6 +24,8 @@
 #include "data_communication.h"
 #include "sparse_common.h"
 
+#include <cmath>
+
 // Data format converters
 #include "gadget/gadget_convert_vdb.h"
 #include "gadget/gadget_simple_convert_vdb.h"
@@ -290,13 +292,6 @@ namespace space_converter {
 
 		LOG_MeasureStart("find_particle_positions");
 		convert_vdb_base->find_particle_positions();
-
-#ifdef WITH_GPU_CUDA
-		if (convert_vdb_base->cache_manager.use_gpu) {
-			convert_vdb_base->cache_manager.copy_particles_to_gpu();
-		}
-#endif		
-
 		LOG_MeasureStop("find_particle_positions");
 
 		// Calculate particle radius using KD-tree algorithms
@@ -343,6 +338,17 @@ namespace space_converter {
 		//	convert_vdb_base->cache_manager.particle_radius_const = atof(converter_radius_particle_const);
 		//}
 		convert_vdb_base->cache_manager.particle_radius_const = space_data.particle_radius_const;
+
+#ifdef WITH_GPU_CUDA
+		// Upload the particle cache AFTER the k-NN radius/density calculation so the
+		// device copies hold the final radii. (Uploading right after
+		// find_particle_positions, as an earlier version did, left the GPU kernels
+		// and GPU sorts working with the initial hsml-based radii whenever
+		// --calc-radius-neigh or --calc-radius-neigh-file was used.)
+		if (convert_vdb_base->cache_manager.use_gpu) {
+			convert_vdb_base->cache_manager.copy_particles_to_gpu();
+		}
+#endif
 
 		// Enable sorting by radius if specified via command-line argument
 		if (from_cl.use_sort_by_radius) {
@@ -481,27 +487,33 @@ namespace space_converter {
 		MPI_Allreduce(bbox_min_orig_local, bbox_min_orig, 3, MPI_FLOAT, MPI_MIN, MPI_COMM_WORLD);
 		MPI_Allreduce(bbox_max_orig_local, bbox_max_orig, 3, MPI_FLOAT, MPI_MAX, MPI_COMM_WORLD);
 
-		// Expand bounding box by 1 unit in each direction
-		space_data.bbox_min_orig[0] = static_cast<int>(bbox_min_orig[0] - 1.0f);
-		space_data.bbox_min_orig[1] = static_cast<int>(bbox_min_orig[1] - 1.0f);
-		space_data.bbox_min_orig[2] = static_cast<int>(bbox_min_orig[2] - 1.0f);
+		// Expand bounding box by 1 unit in each direction. floor/ceil (not int
+		// truncation) so negative coordinates are padded outward, not inward.
+		space_data.bbox_min_orig[0] = static_cast<int>(std::floor(bbox_min_orig[0] - 1.0f));
+		space_data.bbox_min_orig[1] = static_cast<int>(std::floor(bbox_min_orig[1] - 1.0f));
+		space_data.bbox_min_orig[2] = static_cast<int>(std::floor(bbox_min_orig[2] - 1.0f));
 
-		space_data.bbox_max_orig[0] = static_cast<int>(bbox_max_orig[0] + 1.0f);
-		space_data.bbox_max_orig[1] = static_cast<int>(bbox_max_orig[1] + 1.0f);
-		space_data.bbox_max_orig[2] = static_cast<int>(bbox_max_orig[2] + 1.0f);
+		space_data.bbox_max_orig[0] = static_cast<int>(std::ceil(bbox_max_orig[0] + 1.0f));
+		space_data.bbox_max_orig[1] = static_cast<int>(std::ceil(bbox_max_orig[1] + 1.0f));
+		space_data.bbox_max_orig[2] = static_cast<int>(std::ceil(bbox_max_orig[2] + 1.0f));
 
-		// Calculate the largest dimension to create a symmetric bounding box
+		// Calculate the largest dimension to create a symmetric (cubic) bounding box
 		space_data.bbox_size_orig = std::max((double)space_data.bbox_max_orig[0] - (double)space_data.bbox_min_orig[0], (double)space_data.bbox_max_orig[1] - (double)space_data.bbox_min_orig[1]);
 		space_data.bbox_size_orig = std::max(space_data.bbox_size_orig, (double)space_data.bbox_max_orig[2] - (double)space_data.bbox_min_orig[2]);
+		// Round the cube edge up to an integer so the int min/max corners below
+		// can represent it exactly.
+		space_data.bbox_size_orig = std::ceil(space_data.bbox_size_orig);
 
-		// Make bounding box symmetric around center point
-		space_data.bbox_min_orig[0] = (space_data.bbox_min_orig[0] + space_data.bbox_max_orig[0]) / 2.0 - space_data.bbox_size_orig / 2.0;
-		space_data.bbox_min_orig[1] = (space_data.bbox_min_orig[1] + space_data.bbox_max_orig[1]) / 2.0 - space_data.bbox_size_orig / 2.0;
-		space_data.bbox_min_orig[2] = (space_data.bbox_min_orig[2] + space_data.bbox_max_orig[2]) / 2.0 - space_data.bbox_size_orig / 2.0;
-
-		space_data.bbox_max_orig[0] = (space_data.bbox_min_orig[0] + space_data.bbox_max_orig[0]) / 2.0 + space_data.bbox_size_orig / 2.0;
-		space_data.bbox_max_orig[1] = (space_data.bbox_min_orig[1] + space_data.bbox_max_orig[1]) / 2.0 + space_data.bbox_size_orig / 2.0;
-		space_data.bbox_max_orig[2] = (space_data.bbox_min_orig[2] + space_data.bbox_max_orig[2]) / 2.0 + space_data.bbox_size_orig / 2.0;
+		// Make the bounding box a cube of edge bbox_size_orig around each axis
+		// center. The center must be computed from the ORIGINAL min/max before
+		// either is overwritten (a previous version reused the already-updated min
+		// when computing max, producing a non-cubic box on all non-longest axes and
+		// desynchronizing send_bbox's mapping from the conversion kernels).
+		for (int a = 0; a < 3; a++) {
+			double center = ((double)space_data.bbox_min_orig[a] + (double)space_data.bbox_max_orig[a]) / 2.0;
+			space_data.bbox_min_orig[a] = static_cast<int>(std::floor(center - space_data.bbox_size_orig / 2.0));
+			space_data.bbox_max_orig[a] = space_data.bbox_min_orig[a] + static_cast<int>(space_data.bbox_size_orig);
+		}
 
 		//CALL_MPI_BARRIER;
 
@@ -627,30 +639,22 @@ namespace space_converter {
 		convert_vdb_base->convert_iolib_to_grid(
 			space_data.particle_type,
 			space_data.particle_radius_multiplier,
-			"density",
-			space_data.grid_transform,
 			space_data.bbox_min,
 			space_data.bbox_max,
 			space_data.bbox_dim,
 			space_data.bbox_min_orig,
 			space_data.bbox_size_orig,
-			space_data.extracted_type,
-			space_data.extracted_particle_type,
 			space_data.dense_type,
 			space_data.dense_norm,
 			space_data.block_name_id,
 			space_data.object_size,
 			space_data.min_value_local,
 			space_data.max_value_local,
-			space_data.min_value,
-			space_data.max_value,
 			space_data.particles_count_local,
 			grid_main,
 			space_data.transform_scale,
 			space_data.filter_min,
 			space_data.filter_max,
-			space_data.min_rho,
-			space_data.max_rho,
 			space_data.anim_type,
 			space_data.frame,
 			space_data.anim_start + from_cl.world_rank,
@@ -1046,17 +1050,6 @@ namespace space_converter {
 				}
 				// Convert NanoVDB to binary format
 				else if (from_cl.use_nanovdb) {
-//					convert_vdb_base->sparse_to_nanovdb(grid_main_sum.sparse_grid.get());
-//
-//					nanovdb::GridHandle<nanovdb::HostBuffer> grid_handle_final = nanovdb::tools::createNanoGrid(*grid_main_sum.nano_grid);
-//
-//					// Serialize to binary
-//					grid_main_final.vector_grid.resize(grid_handle_final.size());
-//					memcpy(grid_main_final.vector_grid.data(), grid_handle_final.data(), grid_handle_final.size());
-//
-//					nanovdb::NanoGrid<float>* nanogrid = (nanovdb::NanoGrid<float>*) grid_handle_final.data();
-//
-//					nanogrid->tree().extrema(space_data.min_value_reduced, space_data.max_value_reduced);
 
 					common::vdb::sparse::VoxelNanoVDBManagerFloat* nanovdb_manager_float = dynamic_cast<common::vdb::sparse::VoxelNanoVDBManagerFloat*>(grid_main_sum.sparse_grid.get());
 					common::vdb::sparse::VoxelNanoVDBManagerFloat3* nanovdb_manager_float3 = dynamic_cast<common::vdb::sparse::VoxelNanoVDBManagerFloat3*>(grid_main_sum.sparse_grid.get());
@@ -1175,14 +1168,16 @@ namespace space_converter {
 	{
 		LOG_MeasureStart("save_vdb");
 
-		if (!only_rank0 || from_cl.world_rank == 0 || (space_data.anim_type != common::SpaceData::AnimType::eNone && space_data.anim_type != common::SpaceData::AnimType::eAllMerge) &&
-			(space_data.anim_type == common::SpaceData::AnimType::eFrameExtract && space_data.frame == space_data.anim_start + from_cl.world_rank || space_data.anim_type == common::SpaceData::AnimType::eAllPath)) {
+		if (!only_rank0 || from_cl.world_rank == 0 ||
+			((space_data.anim_type != common::SpaceData::AnimType::eNone && space_data.anim_type != common::SpaceData::AnimType::eAllMerge) &&
+			 ((space_data.anim_type == common::SpaceData::AnimType::eFrameExtract && space_data.frame == space_data.anim_start + from_cl.world_rank) ||
+			  space_data.anim_type == common::SpaceData::AnimType::eAllPath))) {
 			
 			// Build output filename
 			std::string full_filepath = from_cl.output_path + "/" + convert_vdb_base->get_type_name(space_data.particle_type) + "_" + convert_vdb_base->get_dataset_name(space_data.block_name_id);
 
 			// Add frame/rank suffix for animation sequences
-			if (!only_rank0 || space_data.anim_type != common::SpaceData::AnimType::eNone && space_data.anim_type != common::SpaceData::AnimType::eAllMerge) {
+			if (!only_rank0 || (space_data.anim_type != common::SpaceData::AnimType::eNone && space_data.anim_type != common::SpaceData::AnimType::eAllMerge)) {
 				char temp[1024];
 				snprintf(temp, sizeof(temp), "%d_%05d", space_data.anim_task_counter, from_cl.world_rank);
 				full_filepath = full_filepath + "_" + std::string(temp);
@@ -1339,7 +1334,7 @@ namespace space_converter {
 			if (!only_rank0 || from_cl.world_rank == 0) {
 				// Build output filename with dimensions
 				std::string full_filepath = from_cl.output_path + "/" + convert_vdb_base->get_type_name(space_data.particle_type) + "_" + convert_vdb_base->get_dataset_name(space_data.block_name_id);
-				if (!only_rank0 || space_data.anim_type != common::SpaceData::AnimType::eNone && space_data.anim_type != common::SpaceData::AnimType::eAllMerge) {
+				if (!only_rank0 || (space_data.anim_type != common::SpaceData::AnimType::eNone && space_data.anim_type != common::SpaceData::AnimType::eAllMerge)) {
 					char temp[1024];
 					snprintf(temp, sizeof(temp), "%d_%05d", space_data.anim_task_counter, from_cl.world_rank);
 					full_filepath = full_filepath + "_" + std::string(temp);
@@ -1379,7 +1374,7 @@ namespace space_converter {
 		if (grid_main.dense_grid->data_density.size() > 0) {
 			if (!only_rank0 || from_cl.world_rank == 0) {
 				std::string full_filepath = from_cl.output_path + "/" + convert_vdb_base->get_type_name(space_data.particle_type) + "_" + convert_vdb_base->get_dataset_name(space_data.block_name_id);
-				if (!only_rank0 || space_data.anim_type != common::SpaceData::AnimType::eNone && space_data.anim_type != common::SpaceData::AnimType::eAllMerge) {
+				if (!only_rank0 || (space_data.anim_type != common::SpaceData::AnimType::eNone && space_data.anim_type != common::SpaceData::AnimType::eAllMerge)) {
 					char temp[1024];
 					snprintf(temp, sizeof(temp), "%d_%05d", space_data.anim_task_counter, from_cl.world_rank);
 					full_filepath = full_filepath + "_" + std::string(temp);

@@ -70,45 +70,35 @@ namespace space_converter {
 				 * @brief Convert particle data from I/O library format to VDB grid
 				 *
 				 * Main conversion function that reads particles and rasterizes them into the
-				 * specified grid type. Handles filtering, normalization, and spatial indexing.
+				 * specified grid type (dense / sparse / raw, decided by grid.type). Handles
+				 * filtering and spatial indexing; dispatches to the CPU or GPU kernels.
 				 *
 				 * @param particle_type Type of particles to convert
-				 * @param particle_radius_multiplier Fixed particle size multiplier
-				 * @param grid_name Name for the output grid
-				 * @param grid_transform Grid transformation scale
-				 * @param bbox_min Bounding box minimum coordinates
-				 * @param bbox_max Bounding box maximum coordinates
+				 * @param particle_radius_multiplier Particle radius multiplier (0 = off)
+				 * @param bbox_min/bbox_max Requested zoom box in object space [0, object_size]
 				 * @param bbox_dim Grid dimension (resolution)
-				 * @param dense_type Type of density calculation
+				 * @param bbox_min_orig/bbox_size_orig Cube-symmetrized dataset bbox (world space)
 				 * @param grid Output VDB grid container
 				 */
 				void convert_iolib_to_grid(
 					int particle_type,
 					float particle_radius_multiplier,
-					std::string grid_name,
-					float grid_transform,
 					float* bbox_min,
 					float* bbox_max,
 					int bbox_dim,
 					int* bbox_min_orig,
 					double bbox_size_orig,
-					common::SpaceData::ExtractedType extracted_type,
-					common::SpaceData::ExtractedParticleType extracted_particle_type,
 					common::SpaceData::DenseType dense_type,
 					common::SpaceData::DenseNorm dense_norm,
 					int block_name_id,
 					float object_size,
 					float& min_value,
 					float& max_value,
-					float min_value_global,
-					float max_value_global,
 					size_t& particles_count,
 					VDBParticles& grid,
 					double& transform_scale,
 					float filter_min,
 					float filter_max,
-					float min_rho,
-					float max_rho,
 					common::SpaceData::AnimType anim_type,
 					int frame_req,
 					int frame,
@@ -244,27 +234,6 @@ namespace space_converter {
 				 */
 				void calculate_radius_by_nanoflann(int calc_radius_neigh, std::string& calc_radius_neigh_file, bool use_cycling, common::SpaceData::DenseType& rho_kernel);
 #endif
-
-				/**
-				 * @brief Get effective radius for a particle
-				 * @param pid Particle ID
-				 * @param bbox_dim Bounding box dimension
-				 * @param bbox_min_orig Original bounding box minimum
-				 * @param bbox_size_orig Original bounding box size
-				 * @param scale_space_diagonal Diagonal scaling factor
-				 * @param particle_radius_multiplier Fixed size multiplier
-				 * @param particle_type Type of particle
-				 * @return Particle radius in grid coordinates
-				 */
-				virtual double get_particle_radius(
-					uint64_t pid,
-					int bbox_dim,
-					int* bbox_min_orig,
-					double bbox_size_orig,
-					double scale_space_diagonal,
-					float particle_radius_multiplier,
-					int particle_type
-				);
 
 				/**
 				 * @brief Find bounding box for particles of given type

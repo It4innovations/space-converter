@@ -38,23 +38,15 @@
 
 #include "convert_common.h"
 
-#define RETURN_NORM_EMPTY return 0; //return std::numeric_limits<float>::quiet_NaN();//0;
-#define RETURN_NORM_VALUE(v) return (float)(v);
-#define RETURN_NORM_VECTOR3(v) return (float)space_converter::common::calculate_dmagnitude3(v[0], v[1], v[2]);
-#define RETURN_NORM_DVECTORN(v,n) return (float)space_converter::common::calculate_dmagnituden(v,n);
-#define RETURN_NORM_FVECTORN(v,n) return (float)space_converter::common::calculate_fmagnituden(v,n);
+#include "reader_return_macros.h"
 
-#define RETURN_COMP_EMPTY return 0;
-#define RETURN_COMP_VALUE(v) return 1;
-#define RETURN_COMP_VECTOR3(v) return 3;
-#define RETURN_COMP_DVECTORN(v,n) return n;
-#define RETURN_COMP_FVECTORN(v,n) return n;
-
-#define RETURN_ORIG_EMPTY RETURN_COMP_EMPTY
-#define RETURN_ORIG_VALUE(v) out_value[0] = (float)v; RETURN_COMP_VALUE(v)
-#define RETURN_ORIG_VECTOR3(v) out_value[0] = (float)v[0]; out_value[1] = (float)v[1]; out_value[2] = (float)v[2]; RETURN_COMP_VECTOR3(v)
-#define RETURN_ORIG_DVECTORN(v,n) for(int iv=0;iv<n;iv++) out_value[iv] = (float)v[iv]; RETURN_COMP_DVECTORN(v,n)
-#define RETURN_ORIG_FVECTORN(v,n) for(int iv=0;iv<n;iv++) out_value[iv] = (float)v[iv]; RETURN_COMP_FVECTORN(v,n)
+// Reader data contract (see docs/SpaceConverter_Code_Analysis_2026-08.md §7):
+//   get_particle_mass(id) -> per-particle mass field of the HACC binary record
+//                            (HACC code units), single particle type
+//   get_particle_rho(id)  -> per-particle rho field of the HACC binary record
+//   get_particle_hsml(id) -> per-particle hh (smoothing length) field of the record
+//   particle id space     -> rank-local, single type: ids index this rank's contiguous
+//                            slice [g_start_particles, g_start_particles + g_num_particles)
 
 namespace haccbin {
 	namespace io {
@@ -325,8 +317,8 @@ namespace haccbin {
 			g_total_particles = HACCBinFile::get_count(basefile);// .line_count;//STDMAX(th.nsph, STDMAX(th.ndark, th.nstar));
 
 			// Each process calculates its range of particles to read
-			int particles_per_process = g_total_particles / world_size;
-			g_start_particles = world_rank * particles_per_process;
+			size_t particles_per_process = g_total_particles / world_size;
+			g_start_particles = (size_t)world_rank * particles_per_process;
 			g_num_particles = (world_rank == world_size - 1) ? g_total_particles - g_start_particles : particles_per_process;
 
 			tf_data = new HACCBinFile(basefile, g_start_particles, g_start_particles + g_num_particles, g_total_particles);

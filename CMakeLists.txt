@@ -94,14 +94,21 @@ else()
 endif()
 
 if(WITH_VTK)
-    # If you know exactly which modules you need, list them here (recommended).
-    find_package(VTK REQUIRED COMPONENTS
-        CommonCore
-        CommonDataModel
-        IOLegacy
-        IOXML
-        IOParallelXML
-    )
+    # A manual VTK can be supplied with -DVTK_INCLUDE_DIRS=... -DVTK_LIBRARIES=...
+    # (e.g. the VTK bundled inside a ParaView installation, which ships the
+    # libraries and headers but no standalone vtk-config.cmake).
+    if(NOT VTK_LIBRARIES)
+        # If you know exactly which modules you need, list them here (recommended).
+        find_package(VTK REQUIRED COMPONENTS
+            CommonCore
+            CommonDataModel
+            IOLegacy
+            IOXML
+            IOParallelXML
+        )
+    else()
+        message(STATUS "Using manually specified VTK: ${VTK_LIBRARIES}")
+    endif()
 endif()
 
 if(WITH_MPI)
@@ -199,6 +206,20 @@ endif()
 
 ########################################################
 add_subdirectory(src)
+########################################################
+
+# Smoke tests (registered with CTest, never run at build time). The test
+# driver launches MPI jobs itself, so run ctest FROM A COMPUTE NODE, e.g.:
+#   srun --jobid=<JOBID> --overlap -N1 -n1 -c16 ctest --test-dir build/... -V
+option(SPACE_CONVERTER_TESTS "Register the smoke tests with CTest" ON)
+if(SPACE_CONVERTER_TESTS)
+    enable_testing()
+    add_test(NAME smoke_tests
+             COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_smoke_tests.sh)
+    set_tests_properties(smoke_tests PROPERTIES
+        ENVIRONMENT "SC_BIN=$<TARGET_FILE:space_converter>"
+        TIMEOUT 900)
+endif()
 ########################################################
 
 # ==================================================================
