@@ -1135,7 +1135,8 @@ namespace space_converter {
 								}
 
 								// If the value is non-zero, set it in the grid
-								if (!std::isnan(density)) {
+								// isfinite also rejects inf from division by a zero weight (voxel with density but no accumulated norm)
+								if (std::isfinite(density)) {
 									//accessor.setValue(openvdb::Coord(x + dense_manager->offset[0], y + dense_manager->offset[1], z + dense_manager->offset[2]), density);							
 									//if (dense_type == common::SpaceData::DenseType::eType2)
 									//	dense_manager->data_density[index] = std::log10(density);
@@ -1333,7 +1334,8 @@ namespace space_converter {
 								}
 
 								// If the value is non-zero, set it in the grid
-								if (!std::isnan(density)) {
+								// isfinite also rejects inf from division by a zero weight (voxel with density but no accumulated norm)
+								if (std::isfinite(density)) {
 									//accessor.setValue(openvdb::Coord(x + dense_manager->offset[0], y + dense_manager->offset[1], z + dense_manager->offset[2]), density);							
 									//if (dense_type == common::SpaceData::DenseType::eType2)
 									//	dense_manager->data_density[index] = std::log10(density);

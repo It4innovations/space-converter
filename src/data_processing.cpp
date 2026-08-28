@@ -542,7 +542,9 @@ namespace space_converter {
 				grid_main.dense_grid = std::make_shared<common::vdb::dense::VoxelCPUDenseManager>();
 			}
 
-			grid_main.dense_grid->create(space_data.bbox_dim, space_data.bbox_dim, space_data.bbox_dim);
+			// Allocate data_temp only if normalization is needed (must match grid_main_sum in reduction())
+			bool allocate_data_temp = (space_data.dense_norm != common::SpaceData::DenseNorm::eNone);
+			grid_main.dense_grid->create(space_data.bbox_dim, space_data.bbox_dim, space_data.bbox_dim, allocate_data_temp);
 		}
 		//Raw particle data
 		else if (space_data.extracted_type == common::SpaceData::ExtractedType::eParticle) {
