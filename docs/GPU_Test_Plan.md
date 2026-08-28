@@ -205,3 +205,128 @@ python3 tests/protocol_client.py <host> 5000 0 0
    do NOT commit — leave changes for review (project rule).
 6. Never run compute on login nodes; use the site's job system
    (`srun --jobid=... --overlap ...` on Slurm sites).
+
+---
+
+## 7. Results (Barbora qgpu, 2026-08-28, job with 6x cn[193-198], 4x V100 sm_70 each)
+
+### Build A — CUDA, no CUDA-aware MPI
+
+- Toolchain: GCC 13.3.0 + OpenMPI/5.0.3-GCC-13.3.0 + CUDA/12.6.0,
+  `-DCMAKE_CUDA_ARCHITECTURES=70` — new script
+  `scripts/build_spaceconverter_bar_gpu.sh`. **Compiled cleanly on the first
+  attempt** (0 errors / 0 warnings) — every §1 file builds.
+- Runner: `tests/run_gpu_tests.sh` (new; implements G1–G12 with CPU references
+  from the same binary, tolerant RAW comparisons via `tests/compare_raw.py`,
+  which gained a `max_bad_fraction` argument for k-NN tie-breaking).
+- **Result: 23/23 PASS** — G1 (sparse counts/voxels/min-max match CPU),
+  G2+G2b (dense grids within 1e-3, sub-box too), G3 (type 1 on device),
+  G4 (all three sort variants neutral), G5 (GPU tree == host tree == nanoflann
+  within 5%), G6 (cycling at 2 and 4 ranks + `CUDAKDTREE_NUM_SPLITS=4`),
+  G8 (rank invariance dense+sparse), G9 (voxel-centric loop), G10 (.nvdb),
+  G11 (protocol with --gpu server), G12 (repeatability, empty type).
+
+### Additional GPU bug found & fixed during testing
+
+- **k-NN tree cycling sent device pointers through plain MPI** — with a
+  non-CUDA-aware stack UCX segfaults on the first exchange
+  (`uct_mm_ep_am_bcopy` on a device address). The reduction paths honor
+  `WITH_CUDA_AWARE_MPI`, but `run_knn_gpu` did not. Fixed in
+  `src/utility/cudakdtree_tool.cu`: without `WITH_CUDA_AWARE_MPI` the tree
+  exchange now stages through host buffers (D2H → MPI → H2D); with it, the
+  GPUDirect path is kept.
+
+### Build B — WITH_CUDA_AWARE_MPI=ON
+
+- Toolchain that actually works on Barbora:
+  **OpenMPI/4.1.6-NVHPC-23.5-CUDA-12.2.0** (pulls UCX 1.14.1 with working
+  `cuda_copy`/`cuda_ipc`/`gdr_copy` transports) — new script
+  `scripts/build_spaceconverter_bar_gpu_aware.sh` (g++ from the toolchain's
+  GCCcore 12.2; the NVHPC module's `-tp=native` C/CXXFLAGS must be unset).
+  NOTE: the newer OpenMPI/4.1.6-NVHPC-24.3-CUDA-12.3.0 stack pairs with UCX
+  1.16.0 whose UCX-CUDA plugins do NOT load on Barbora (no cuda transports in
+  `ucx_info -d`) → device-pointer pt2pt segfaults there; device-side
+  MPI_Reduce still worked. Check `ucx_info -d | grep "Transport: cuda"` before
+  choosing a stack.
+- **Validated (all vs 1-rank references, 0 voxels out of tolerance):**
+  - device-pointer `MPI_Reduce` dense reduction, 2 ranks;
+  - sparse `serializeGPU`/`deserializeGPU`/`merge` RDMA path
+    (`VoxelGPUManagerSortReduce`), 2 ranks — count 1000, voxels 999 == 1-rank;
+  - GPUDirect k-NN tree cycling, 2 and 4 ranks.
+
+### Remaining known gaps (unchanged, by design)
+
+- `eCUB` save and GPU raw-particle export are TODO (§5).
+- HIP build (Build C) not attempted — no AMD GPUs on Barbora; the plan's §5
+  note about `atomicCAS`/`__float_as_int` in the HIP compat layer still
+  applies for a LUMI session.
+- Test-infra note for future sessions: results written on a compute node can
+  take >20 s to become visible on the login node (Lustre attribute caching) —
+  the drivers use retry loops / log-based assertions where possible, and srun
+  can return non-zero despite a successful step (pmix error handler), so the
+  drivers do not gate file collection on srun's exit code.
+
+---
+
+## 8. Follow-up results (same GPU session): CUB + raw particles + suite growth
+
+Gaps from §5 closed where possible on NVIDIA/CPU:
+
+- **`eCUB` save implemented** (`src/data_processing.cpp`):
+  - sparse finalize: null-guarded GPU-manager serialization + reduced min/max
+    via `find_min_max`; sparse `--cub` without `--gpu` now falls back to
+    OpenVDB with a rank-0 note (previously a guaranteed null-pointer crash);
+  - dense finalize: new host-side `serialize_dense_to_cub()` writing the exact
+    `get_header()`/`serializeCPU()` layout (bbox, 3x4 scale transform, count,
+    packed keys + values of non-zero voxels) — works on CPU and GPU builds;
+    the shared value normalization was extracted into
+    `common::vdb::normalize_dense_values()` (also de-duplicates
+    `dense_to_nanovdb`/`dense_to_openvdb`);
+  - `save_vdb` `eCUB` branch (per-rank `--save-mpi-rank` saves) implemented.
+- **Raw-particle export under `--gpu`** now falls through to the CPU path with
+  a rank-0 note instead of erroring (`convert_iolib_to_grid`); the particle
+  cache is host-resident, so no data movement is added.
+- Driver grew to **G13** (CUB: sparse GPU header count == active voxels; dense
+  CPU vs GPU .cub voxel counts equal) and **G14** (raw export under `--gpu`).
+- **Suite result after the changes: 26/26 PASS** (Build A); the CPU builds and
+  the CPU smoke suite (18/18) stay green. CPU-build CUB behavior verified
+  manually: sparse falls back with the note, dense writes a byte-exact .cub
+  (header count == payload count, size == 80 + count*12).
+- `find_min_max` is NOT dead code (used by the voxel-centric GPU loop and now
+  by the CUB finalize) — the §5 cleanup note is resolved as "keep".
+
+## 9. Build C (HIP / LUMI) — concrete checklist for the AMD session
+
+State: HIP has never been compiled with the 2026-08 changes. Everything below
+compiles CUDA sources as HIP through the wrapper TUs `src/common/hip/*.cpp`
+(`#include "../*.cu"` after `gpu_device_compat.h`).
+
+1. Build (template: `scripts/space_converter/lumi/build_lumi.sh`):
+   `ml LUMI partition/G; ml PrgEnv-gnu; ml rocm` and
+   `-DWITH_GPU_HIP=ON -DCMAKE_HIP_ARCHITECTURES=gfx90a`
+   `-DCMAKE_HIP_COMPILER=${ROCM_PATH}/bin/amdclang++`;
+   `WITH_CUDAKDTREE=OFF` (cukd is CUDA-only) — so no `--cudakdtree`,
+   `--dense-loop-over-voxels`, or GPU k-NN on HIP; keep `WITH_NANOFLANN=ON`
+   for the CPU k-NN backend.
+2. Expected first-compile watchpoints in the changed code:
+   - `atomicMinFloat`/`atomicMaxFloat` (`convert_vdb_kernel.cu`): use
+     `atomicCAS` + `__float_as_int`/`__int_as_float` + `fminf/fmaxf` — all
+     exist as HIP intrinsics (same pattern as the pre-existing
+     `find_bbox_kernel_cuda`, which compiled under HIP before);
+   - `data_cache.cu` thrust sorts with device lambdas → rocThrust; hipcc
+     enables extended lambdas by default, but verify the
+     `thrust::sort(d_ids, comparator-indexing-d_radii)` compiles;
+   - `sparse_common.cu`: `clampCoord`/`packCoord3` are `__host__ __device__`
+     inline — plain arithmetic, no intrinsics;
+   - `cudakdtree_tool.cu` is NOT built on HIP (WITH_CUDAKDTREE=OFF).
+3. Tests to run (adapt `tests/run_gpu_tests.sh` launcher to LUMI's
+   `srun --mpi=cray_shasta` or site guidance; SC_BIN → the HIP binary):
+   G1–G4, G8, G10–G14 apply; G5–G7, G9 are skipped (no cudaKDTree);
+   T5 in the CPU smoke suite still runs via nanoflann.
+4. `WITH_CUDA_AWARE_MPI` on LUMI: Cray MPICH is GPU-aware with
+   `MPICH_GPU_SUPPORT_ENABLED=1`; the `#ifdef WITH_CUDA_AWARE_MPI` paths
+   (device-pointer reduce, sparse RDMA merge, GPUDirect cycling — the last one
+   irrelevant without cudaKDTree) can be exercised with a
+   `-DWITH_CUDA_AWARE_MPI=ON` variant once the plain build passes.
+5. Project rules: no commits; nothing on login nodes (`srun --jobid=... --overlap`);
+   temp files under `<repo>/temp/`; results appended to this file.

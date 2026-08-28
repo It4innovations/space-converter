@@ -103,6 +103,87 @@
 // 	}
 
 namespace space_converter {
+
+	/**
+	 * @brief Serialize a (normalized) dense grid to the CUB binary format.
+	 *
+	 * Layout matches VoxelGPUManagerSortReduce::get_header()/serializeCPU():
+	 *   header: float index_bbox[6], float transform[12] (3x4, scale diagonal),
+	 *           int32 voxel_count
+	 *   payload: int32 voxel_count, uint64 keys[count] (packCoord3 of absolute
+	 *            voxel coords), float values[count]
+	 * Only non-zero voxels are stored. Also reports their value extrema.
+	 */
+	static void serialize_dense_to_cub(
+		common::vdb::VoxelDenseManager* dense_manager,
+		double transform_scale,
+		std::vector<uint8_t>& bin_data,
+		float& min_value_reduced,
+		float& max_value_reduced)
+	{
+		using common::vdb::sparse::packCoord3;
+
+		std::vector<uint64_t> keys;
+		std::vector<float> vals;
+		keys.reserve(1024);
+		vals.reserve(1024);
+
+		float bbox_min[3] = { FLT_MAX, FLT_MAX, FLT_MAX };
+		float bbox_max[3] = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
+		float vmin = FLT_MAX, vmax = -FLT_MAX;
+
+		const size_t off0 = dense_manager->offset[0];
+		const size_t off1 = dense_manager->offset[1];
+		const size_t off2 = dense_manager->offset[2];
+
+		for (size_t z = 0; z < dense_manager->z(); z++) {
+			for (size_t y = 0; y < dense_manager->y(); y++) {
+				for (size_t x = 0; x < dense_manager->x(); x++) {
+					float v = dense_manager->data_density[dense_manager->get_index(x, y, z)];
+					if (v == 0.0f)
+						continue;
+
+					// Absolute voxel coordinates (same convention as the sparse path)
+					int gx = (int)(x + off0), gy = (int)(y + off1), gz = (int)(z + off2);
+					keys.push_back(packCoord3(gx, gy, gz));
+					vals.push_back(v);
+
+					if ((float)gx < bbox_min[0]) bbox_min[0] = (float)gx;
+					if ((float)gy < bbox_min[1]) bbox_min[1] = (float)gy;
+					if ((float)gz < bbox_min[2]) bbox_min[2] = (float)gz;
+					if ((float)gx > bbox_max[0]) bbox_max[0] = (float)gx;
+					if ((float)gy > bbox_max[1]) bbox_max[1] = (float)gy;
+					if ((float)gz > bbox_max[2]) bbox_max[2] = (float)gz;
+					if (v < vmin) vmin = v;
+					if (v > vmax) vmax = v;
+				}
+			}
+		}
+
+		const int32_t count = (int32_t)keys.size();
+		min_value_reduced = (count > 0) ? vmin : 0.0f;
+		max_value_reduced = (count > 0) ? vmax : 0.0f;
+
+		const size_t header_size = 6 * sizeof(float) + 12 * sizeof(float) + sizeof(int32_t);
+		bin_data.resize(header_size + sizeof(int32_t)
+			+ keys.size() * sizeof(uint64_t) + vals.size() * sizeof(float));
+
+		uint8_t* ptr = bin_data.data();
+		memcpy(ptr, bbox_min, 3 * sizeof(float)); ptr += 3 * sizeof(float);
+		memcpy(ptr, bbox_max, 3 * sizeof(float)); ptr += 3 * sizeof(float);
+
+		float transform[12] = { 0.0f };
+		transform[0] = transform[5] = transform[10] = (float)transform_scale;
+		memcpy(ptr, transform, 12 * sizeof(float)); ptr += 12 * sizeof(float);
+
+		memcpy(ptr, &count, sizeof(int32_t)); ptr += sizeof(int32_t);
+		// The payload repeats the count (see serializeCPU: it fills the padding
+		// slot so the uint64 keys are 8-byte aligned at offset 80)
+		memcpy(ptr, &count, sizeof(int32_t)); ptr += sizeof(int32_t);
+		memcpy(ptr, keys.data(), keys.size() * sizeof(uint64_t)); ptr += keys.size() * sizeof(uint64_t);
+		memcpy(ptr, vals.data(), vals.size() * sizeof(float));
+	}
+
 	/**
 	 * @brief Test function for converter development and debugging
 	 * @param argc Command line argument count
@@ -185,6 +266,21 @@ namespace space_converter {
 		}
 		convert_vdb_base->cache_manager.use_gpu = from_cl.use_gpu;
 #endif
+
+		// Sparse CUB output is produced by the GPU sort-reduce manager; without
+		// --gpu the sparse grid lives in a CPU manager that cannot serialize it.
+		// Dense CUB is serialized host-side and works everywhere.
+		{
+			bool gpu_active = false;
+#ifdef WITH_GPU_CUDA
+			gpu_active = from_cl.use_gpu;
+#endif
+			if (from_cl.use_cub && !gpu_active && space_data.extracted_type != common::SpaceData::ExtractedType::eDense) {
+				if (from_cl.world_rank == 0)
+					printf("Note: sparse --cub requires --gpu, falling back to OpenVDB output\n");
+				from_cl.use_cub = false;
+			}
+		}
 #ifdef WITH_CUDAKDTREE
 		convert_vdb_base->cache_manager.use_dense_loop_over_voxels = from_cl.use_dense_loop_over_voxels;
 		if (space_data.calc_radius_neigh > 0) {
@@ -998,8 +1094,15 @@ namespace space_converter {
 					nanogrid->tree().extrema(space_data.min_value_reduced, space_data.max_value_reduced);
 				}
 				else if (from_cl.use_cub) {
-					// Convert dense grid to CUB format
-					// TODO: Implement CUB conversion and min/max extraction
+					// Convert dense grid to CUB format (host-side): normalize like the
+					// NanoVDB/OpenVDB converters, then pack non-zero voxels
+#ifdef WITH_GPU_CUDA
+					if (auto* dense_gpu = dynamic_cast<common::vdb::dense::VoxelGPUDenseManager*>(grid_main_sum.dense_grid.get()))
+						dense_gpu->from_device();
+#endif
+					common::vdb::normalize_dense_values(grid_main_sum.dense_grid.get(), space_data.transform_scale, space_data.dense_norm);
+					serialize_dense_to_cub(grid_main_sum.dense_grid.get(), space_data.transform_scale,
+						grid_main_final.vector_grid, space_data.min_value_reduced, space_data.max_value_reduced);
 				}
 				// Convert dense grid to sparse OpenVDB format
 				else {
@@ -1081,13 +1184,22 @@ namespace space_converter {
 				}
 				else if (from_cl.use_cub) {
 #ifdef WITH_GPU_CUDA
-					// Convert to CUB format
-					//TODO: Implement CUB conversion and min/max extraction
+					// Convert to CUB format (header + packed keys/values from the GPU
+					// sort-reduce manager). CUB with CPU managers is prevented up-front
+					// in init_converter (falls back to OpenVDB), so the cast is guarded
+					// only against logic errors.
 					common::vdb::sparse::VoxelGPUManagerSortReduce* gpu_mgr = dynamic_cast<common::vdb::sparse::VoxelGPUManagerSortReduce*>(grid_main_sum.sparse_grid.get());
-					grid_main_final.vector_grid.resize(gpu_mgr->get_header_size() + gpu_mgr->mem_size());
-					gpu_mgr->get_header(grid_main_final.vector_grid.data());
-					gpu_mgr->serializeCPU(grid_main_final.vector_grid.data() + gpu_mgr->get_header_size());
-#endif	
+					if (gpu_mgr) {
+						grid_main_final.vector_grid.resize(gpu_mgr->get_header_size() + gpu_mgr->mem_size());
+						gpu_mgr->get_header(grid_main_final.vector_grid.data());
+						gpu_mgr->serializeCPU(grid_main_final.vector_grid.data() + gpu_mgr->get_header_size());
+						// Reduced extrema over the accumulated voxel values
+						gpu_mgr->find_min_max(space_data.min_value_reduced, space_data.max_value_reduced);
+					}
+					else {
+						printf("rank #%d: Error: CUB finalize requires the GPU sparse manager\n", from_cl.world_rank);
+					}
+#endif
 				}
 				// Convert OpenVDB to binary format
 				else {
@@ -1278,7 +1390,28 @@ namespace space_converter {
 				printf("rank #%d: finished: %s\n", from_cl.world_rank, full_filepath.c_str());
 			}
 			else if (particle_type == common::vdb::VDBParticleType::eCUB) {
-				//TODO: Implement CUB saving
+				// Per-rank CUB save (use_save_mpirank path): same serialization as
+				// finalize_grid's CUB branch
+#ifdef WITH_GPU_CUDA
+				common::vdb::sparse::VoxelGPUManagerSortReduce* gpu_mgr = dynamic_cast<common::vdb::sparse::VoxelGPUManagerSortReduce*>(grid_main_final.sparse_grid.get());
+				if (gpu_mgr) {
+					std::vector<uint8_t> cub_data(gpu_mgr->get_header_size() + gpu_mgr->mem_size());
+					gpu_mgr->get_header(cub_data.data());
+					gpu_mgr->serializeCPU(cub_data.data() + gpu_mgr->get_header_size());
+
+					std::ofstream output_file(full_filepath, std::ios::binary);
+					if (!output_file) {
+						printf("Unable to open file for writing: %s\n", full_filepath.c_str());
+						return;
+					}
+					output_file.write((char*)cub_data.data(), cub_data.size());
+					printf("rank #%d: finished: %s\n", from_cl.world_rank, full_filepath.c_str());
+				}
+				else
+#endif
+				{
+					printf("rank #%d: CUB save requires the GPU sparse manager, skipping %s\n", from_cl.world_rank, full_filepath.c_str());
+				}
 			}
 			// Save raw particle format
 			else if (particle_type == common::vdb::VDBParticleType::eRawParticles) {

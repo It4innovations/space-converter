@@ -921,3 +921,42 @@ srun --jobid=<JOBID> --overlap -N1 -n1 -c16 bash tests/run_smoke_tests.sh
   GPU-cluster session: which GPU files were modified without compilation, the
   build matrix (CUDA / CUDA-aware MPI / HIP), tests G1–G12 with pass criteria
   and pre-fix symptoms, plus known GPU-side TODOs.
+
+### GPU validation follow-up (Barbora qgpu, 4x V100, same day)
+
+`docs/GPU_Test_Plan.md` was executed (see its new §7 Results for details):
+
+- **Build A** (CUDA, `scripts/build_spaceconverter_bar_gpu.sh` — GCC 13.3 +
+  OpenMPI 5.0.3 + CUDA 12.6, sm_70): all blind-changed GPU files compiled
+  cleanly on the first attempt; the new `tests/run_gpu_tests.sh` driver
+  (G1–G12) reports **23/23 PASS**, including per-particle min/max on GPU
+  (3.1 fix), type>0 on device (2.1 fix), sort neutrality, k-NN backend
+  agreement, cycling at 2/4 ranks and rank invariance.
+- **New GPU bug found & fixed**: the k-NN tree cycling sent CUDA device
+  pointers through plain MPI (UCX segfault on non-CUDA-aware stacks) —
+  `cudakdtree_tool.cu` now stages the exchange through host buffers unless
+  `WITH_CUDA_AWARE_MPI` is set (the reduction paths already honored the flag;
+  the cycling path did not).
+- **Build B** (`WITH_CUDA_AWARE_MPI=ON`,
+  `scripts/build_spaceconverter_bar_gpu_aware.sh` —
+  OpenMPI/4.1.6-NVHPC-23.5-CUDA-12.2.0 whose UCX 1.14.1 has working cuda
+  transports; the NVHPC-24.3/UCX-1.16 stack does not on Barbora): validated
+  device-pointer `MPI_Reduce`, the sparse `serializeGPU`/`deserializeGPU` RDMA
+  merge, and GPUDirect tree cycling at 2/4 ranks — all bit-clean against
+  1-rank references.
+- Still open by design: `eCUB` save TODO, GPU raw-particle export, HIP/LUMI
+  build (Build C).
+
+### CUB + raw-particle completion (same GPU session)
+
+The remaining §12 "by design" gaps doable on NVIDIA/CPU were closed
+(GPU_Test_Plan.md §8 has details): `eCUB` save implemented for sparse
+(GPU manager serialization + reduced extrema + graceful CPU fallback to
+OpenVDB), dense (new host-side `serialize_dense_to_cub()`, works on CPU and
+GPU) and the per-rank `--save-mpi-rank` path; the duplicated dense
+normalization in `dense_to_nanovdb`/`dense_to_openvdb` was extracted into a
+shared `normalize_dense_values()`; raw-particle export under `--gpu` now falls
+back to the CPU path instead of erroring. GPU suite grew to G13 (CUB) + G14
+(raw export): **26/26 PASS**; CPU builds and smoke suite unaffected (18/18).
+Still open: HIP/LUMI build (Build C) — a concrete AMD-session checklist is in
+GPU_Test_Plan.md §9.

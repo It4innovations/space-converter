@@ -643,7 +643,13 @@ namespace space_converter {
 				//printf("===convert_iolib_to_grid: FIND: %f [s]\n", omp_get_wtime() - t);
 
 #ifdef WITH_GPU_CUDA
-				if (cache_manager.use_gpu) {
+				// Raw-particle export has no GPU implementation — fall through to the
+				// CPU path (the particle cache is host-resident anyway), so --gpu runs
+				// can still export raw particles instead of erroring out
+				if (cache_manager.use_gpu && grid.type == VDBParticleType::eRawParticles && cache_manager.world_rank == 0) {
+					printf("Note: raw-particle export runs on the CPU (no GPU implementation)\n");
+				}
+				if (cache_manager.use_gpu && grid.type != VDBParticleType::eRawParticles) {
 
 					if (new_values) {
 						// Upload values_particles to GPU if they were newly computed
@@ -1000,6 +1006,47 @@ namespace space_converter {
 				}
 			}
 
+			/**
+			 * @brief Normalize accumulated dense-grid values in place.
+			 *
+			 * eVoxelVolume: divide by the voxel world volume (physical density,
+			 * zoom/resolution invariant). eCount/eSPHInterpolation: divide by the
+			 * accumulated per-voxel weights in data_temp. Non-finite results
+			 * (division by a zero weight) become 0. Shared by dense_to_nanovdb,
+			 * dense_to_openvdb and the dense -> CUB serializer.
+			 */
+			void normalize_dense_values(VoxelDenseManager* dense_manager, double transform_scale, common::SpaceData::DenseNorm dense_norm)
+			{
+				if (dense_norm == common::SpaceData::DenseNorm::eVoxelVolume && transform_scale > 0.0) {
+					const float inv_voxel_volume = (float)(1.0 / (transform_scale * transform_scale * transform_scale));
+#pragma omp parallel for
+					for (long long i = 0; i < (long long)dense_manager->data_density.size(); i++) {
+						float density = dense_manager->data_density[i] * inv_voxel_volume;
+						dense_manager->data_density[i] = std::isfinite(density) ? density : 0.0f;
+					}
+				}
+				else if (!dense_manager->data_temp.empty()) {
+#pragma omp parallel for
+					for (int z = 0; z < dense_manager->z(); z++) {
+						for (int y = 0; y < dense_manager->y(); y++) {
+							for (int x = 0; x < dense_manager->x(); x++) {
+								size_t index = dense_manager->get_index(x, y, z);
+								float density = dense_manager->data_density[index];
+								float temp = dense_manager->data_temp[index];
+
+								// Weighted average for SPH-like density estimation
+								if (dense_norm != common::SpaceData::DenseNorm::eNone) {
+									density = density / temp;
+								}
+
+								// isfinite also rejects inf from division by a zero weight
+								dense_manager->data_density[index] = std::isfinite(density) ? density : 0.0f;
+							}
+						}
+					}
+				}
+			}
+
 #ifdef WITH_NANOVDB
 
 			std::shared_ptr<nanovdb::tools::build::FloatGrid> ConvertVDBBase::dense_to_nanovdb(VoxelDenseManager* dense_manager, double transform_scale, common::SpaceData::DenseType dense_type, common::SpaceData::DenseNorm dense_norm)
@@ -1025,52 +1072,9 @@ namespace space_converter {
 					dense_manager_gpu->from_device();
 				}
 #endif
-				// eVoxelVolume: convert per-voxel accumulated mass to physical density (value / voxel world volume).
-				// Result is independent of bbox size and grid resolution -> consistent intensity across zoom levels.
-				if (dense_norm == common::SpaceData::DenseNorm::eVoxelVolume && transform_scale > 0.0) {
-					const float inv_voxel_volume = (float)(1.0 / (transform_scale * transform_scale * transform_scale));
-#pragma omp parallel for
-					for (long long i = 0; i < (long long)dense_manager->data_density.size(); i++) {
-						float density = dense_manager->data_density[i] * inv_voxel_volume;
-						dense_manager->data_density[i] = std::isfinite(density) ? density : 0.0f;
-					}
-				}
-				// Normalize density values using temp buffer if available
-				else if (!dense_manager->data_temp.empty()) {
-#pragma omp parallel for
-					for (int z = 0; z < dense_manager->z(); z++) {
-						for (int y = 0; y < dense_manager->y(); y++) {
-							for (int x = 0; x < dense_manager->x(); x++) {
-
-								// Get raw density and temp values from dense grid
-								size_t index = dense_manager->get_index(x, y, z);
-								float density = dense_manager->data_density[index];
-
-								float temp = 0.0f;
-								temp = dense_manager->data_temp[index];
-
-								// Apply normalization: divide accumulated density by accumulated weights (temp buffer)
-								// This computes the weighted average for SPH-like density estimation
-								if (dense_norm != common::SpaceData::DenseNorm::eNone) {
-									density = density / temp;
-								}
-
-								// If the value is non-zero, set it in the grid
-								// isfinite also rejects inf from division by a zero weight (voxel with density but no accumulated norm)
-								if (std::isfinite(density)) {
-									//accessor.setValue(openvdb::Coord(x + dense_manager->offset[0], y + dense_manager->offset[1], z + dense_manager->offset[2]), density);							
-									//if (dense_type == common::SpaceData::DenseType::eType2)
-									//	dense_manager->data_density[index] = std::log10(density);
-									//else
-									dense_manager->data_density[index] = density;
-								}
-								else {
-									dense_manager->data_density[index] = 0.0f;
-								}
-							}
-						}
-					}
-				}
+				// Normalization shared between dense_to_nanovdb, dense_to_openvdb and
+				// the dense -> CUB serializer
+				normalize_dense_values(dense_manager, transform_scale, dense_norm);
 
 				/**
 				 * @brief Copy normalized dense data to sparse NanoVDB grid
@@ -1204,52 +1208,9 @@ namespace space_converter {
 				}
 #endif
 
-				// eVoxelVolume: convert per-voxel accumulated mass to physical density (value / voxel world volume).
-				// Result is independent of bbox size and grid resolution -> consistent intensity across zoom levels.
-				if (dense_norm == common::SpaceData::DenseNorm::eVoxelVolume && transform_scale > 0.0) {
-					const float inv_voxel_volume = (float)(1.0 / (transform_scale * transform_scale * transform_scale));
-#pragma omp parallel for
-					for (long long i = 0; i < (long long)dense_manager->data_density.size(); i++) {
-						float density = dense_manager->data_density[i] * inv_voxel_volume;
-						dense_manager->data_density[i] = std::isfinite(density) ? density : 0.0f;
-					}
-				}
-				// Normalize density values using temp buffer if available
-				else if (!dense_manager->data_temp.empty()) {
-#pragma omp parallel for
-					for (int z = 0; z < dense_manager->z(); z++) {
-						for (int y = 0; y < dense_manager->y(); y++) {
-							for (int x = 0; x < dense_manager->x(); x++) {
-
-								// Get raw density and temp values from dense grid
-								size_t index = dense_manager->get_index(x, y, z);
-								float density = dense_manager->data_density[index];
-
-								float temp = 0.0f;
-								temp = dense_manager->data_temp[index];
-
-								// Apply normalization: divide accumulated density by accumulated weights (temp buffer)
-								// This computes the weighted average for SPH-like density estimation
-								if (dense_norm != common::SpaceData::DenseNorm::eNone) {
-									density = density / temp;
-								}
-
-								// If the value is non-zero, set it in the grid
-								// isfinite also rejects inf from division by a zero weight (voxel with density but no accumulated norm)
-								if (std::isfinite(density)) {
-									//accessor.setValue(openvdb::Coord(x + dense_manager->offset[0], y + dense_manager->offset[1], z + dense_manager->offset[2]), density);							
-									//if (dense_type == common::SpaceData::DenseType::eType2)
-									//	dense_manager->data_density[index] = std::log10(density);
-									//else
-									dense_manager->data_density[index] = density;
-								}
-								else {
-									dense_manager->data_density[index] = 0.0f;
-								}
-							}
-						}
-					}
-				}
+				// Normalization shared between dense_to_nanovdb, dense_to_openvdb and
+				// the dense -> CUB serializer
+				normalize_dense_values(dense_manager, transform_scale, dense_norm);
 
 				// Use OpenVDB's optimized dense-to-sparse conversion
 				// This efficiently identifies non-zero regions and builds the sparse tree

@@ -6,7 +6,10 @@ float accumulation order differs (atomics, partial-sum reduction), so voxel
 values legitimately differ in the last ulps. This checks a relative/absolute
 tolerance instead.
 
-Usage: compare_raw.py A.raw B.raw [rel_tol] [abs_tol]
+Usage: compare_raw.py A.raw B.raw [rel_tol] [abs_tol] [max_bad_fraction]
+max_bad_fraction (default 0) allows a small share of out-of-tolerance voxels —
+useful for k-NN comparisons where equal-distance ties legitimately pick
+different neighbor sets per backend or rank split.
 Exit 0 when equal within tolerance, 1 otherwise.
 """
 
@@ -18,6 +21,7 @@ def main():
     a_path, b_path = sys.argv[1], sys.argv[2]
     rel = float(sys.argv[3]) if len(sys.argv) > 3 else 1e-4
     abs_tol = float(sys.argv[4]) if len(sys.argv) > 4 else 1e-6
+    max_bad_fraction = float(sys.argv[5]) if len(sys.argv) > 5 else 0.0
 
     with open(a_path, "rb") as f:
         a = f.read()
@@ -45,9 +49,11 @@ def main():
             bad += 1
             if d > worst:
                 worst, worst_i = d, i
-    print(f"voxels: {n}, out-of-tolerance: {bad}, sum(A)={suma:.6g}, sum(B)={sumb:.6g}")
+    print(f"voxels: {n}, out-of-tolerance: {bad} ({100.0 * bad / n:.4f}%), "
+          f"sum(A)={suma:.6g}, sum(B)={sumb:.6g}")
     if bad:
         print(f"worst diff {worst:g} at voxel {worst_i}: {va[worst_i]:g} vs {vb[worst_i]:g}")
+    if bad > max_bad_fraction * n:
         return 1
     return 0
 

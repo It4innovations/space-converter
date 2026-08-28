@@ -52,6 +52,11 @@ namespace space_converter {
 	namespace common {
 		namespace vdb {
 
+			/// Normalize accumulated dense-grid values in place (voxel-volume or
+			/// per-voxel weight normalization; shared by the dense -> NanoVDB /
+			/// OpenVDB / CUB converters). Implemented in convert_vdb.cpp.
+			void normalize_dense_values(VoxelDenseManager* dense_manager, double transform_scale, common::SpaceData::DenseNorm dense_norm);
+
 			/**
 			 * @brief Base class for converting particle data to VDB grids
 			 *

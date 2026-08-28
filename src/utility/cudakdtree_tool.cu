@@ -261,6 +261,10 @@ namespace utility {
             // produced radius = 0 / rho = NaN for every particle.)
             std::vector<uint64_t> h_cand_all((size_t)numQueries * (size_t)k);
 
+            // Host staging buffers for the tree exchange (used when MPI is not
+            // CUDA-aware; allocated lazily in the first cycling round)
+            std::vector<char> h_tree_send, h_tree_recv;
+
             uint64_t* d_cand = nullptr;
             size_t d_cand_size = 0;
 
@@ -307,11 +311,25 @@ namespace utility {
                         MPI_COMM_WORLD, &requests[1]));
                     CUKD_MPI_CALL(Waitall(2, requests, MPI_STATUSES_IGNORE));
 
-                    char* recvPtr = reinterpret_cast<char*>(d_tree_recv);
-                    char* sendPtr = reinterpret_cast<char*>(d_tree);
                     size_t totalBytesRecv = (size_t)recvCount * sizeof(*d_tree);
                     size_t totalBytesSend = (size_t)sendCount * sizeof(*d_tree);
-                    mpi_cycling(recvPeer, recvPtr, totalBytesRecv, sendPeer, sendPtr, totalBytesSend);
+#ifdef WITH_CUDA_AWARE_MPI
+                    // GPUDirect: exchange the device buffers directly
+                    mpi_cycling(recvPeer, reinterpret_cast<char*>(d_tree_recv), totalBytesRecv,
+                                sendPeer, reinterpret_cast<char*>(d_tree), totalBytesSend);
+#else
+                    // Plain MPI cannot take device pointers (UCX segfaults on the
+                    // memcpy from device memory) — stage the tree exchange through
+                    // host buffers. Allocated once, sized for the largest tree.
+                    if (h_tree_send.empty()) {
+                        h_tree_send.resize((size_t)(maxNumPointsAnybodyHas + 1) * sizeof(*d_tree));
+                        h_tree_recv.resize((size_t)(maxNumPointsAnybodyHas + 1) * sizeof(*d_tree));
+                    }
+                    CUDA_CHECK_ERROR(cudaMemcpy(h_tree_send.data(), d_tree, totalBytesSend, cudaMemcpyDeviceToHost));
+                    mpi_cycling(recvPeer, h_tree_recv.data(), totalBytesRecv,
+                                sendPeer, h_tree_send.data(), totalBytesSend);
+                    CUDA_CHECK_ERROR(cudaMemcpy(d_tree_recv, h_tree_recv.data(), totalBytesRecv, cudaMemcpyHostToDevice));
+#endif
 
                     N = recvCount;
                     std::swap(d_tree, d_tree_recv);
