@@ -208,11 +208,13 @@ namespace space_converter {
 					printf("Note: --skip-cache-manager ignored, particle sorting needs the cached particle arrays\n");
 				skip = false;
 			}
+#if defined(WITH_CUDAKDTREE) || defined(WITH_NANOFLANN)			
 			if (skip && space_data.calc_radius_neigh > 0) {
 				if (from_cl.world_rank == 0)
 					printf("Note: --skip-cache-manager ignored, --calc-radius-neigh needs the cached particle arrays\n");
 				skip = false;
 			}
+#endif			
 			if (skip && space_data.extracted_type == common::SpaceData::ExtractedType::eParticle) {
 				if (from_cl.world_rank == 0)
 					printf("Note: --skip-cache-manager ignored, raw particle export needs the cached particle arrays\n");
