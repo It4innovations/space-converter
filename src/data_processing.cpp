@@ -1261,6 +1261,28 @@ namespace space_converter {
 
 
 	/**
+	 * @brief Build the base output file path (no frame/rank suffix or extension yet).
+	 *
+	 * Uses the user-provided --output-file when set, otherwise falls back to the
+	 * automatic "<output-path>/<type-name>_<dataset-name>" naming. A relative
+	 * --output-file is placed inside --output-path (when given) so the two flags
+	 * compose; the result is made absolute so logs show where the file went.
+	 */
+	static std::string output_base_filepath(common::vdb::ConvertVDBBase* convert_vdb_base, const FromCL& from_cl, const common::SpaceData& space_data)
+	{
+		if (!from_cl.output_file.empty()) {
+			std::filesystem::path file(from_cl.output_file);
+			if (file.is_relative() && !from_cl.output_path.empty()) {
+				file = std::filesystem::path(from_cl.output_path) / file;
+			}
+			std::error_code ec;
+			std::filesystem::path abs = std::filesystem::absolute(file, ec);
+			return ec ? file.string() : abs.string();
+		}
+		return from_cl.output_path + "/" + convert_vdb_base->get_type_name(space_data.particle_type) + "_" + convert_vdb_base->get_dataset_name(space_data.block_name_id);
+	}
+
+	/**
 	 * @brief Save VDB grid to file
 	 * @param convert_vdb_base Converter instance
 	 * @param from_cl Command line parameters
@@ -1286,7 +1308,7 @@ namespace space_converter {
 			  space_data.anim_type == common::SpaceData::AnimType::eAllPath))) {
 			
 			// Build output filename
-			std::string full_filepath = from_cl.output_path + "/" + convert_vdb_base->get_type_name(space_data.particle_type) + "_" + convert_vdb_base->get_dataset_name(space_data.block_name_id);
+			std::string full_filepath = output_base_filepath(convert_vdb_base, from_cl, space_data);
 
 			// Add frame/rank suffix for animation sequences
 			if (!only_rank0 || (space_data.anim_type != common::SpaceData::AnimType::eNone && space_data.anim_type != common::SpaceData::AnimType::eAllMerge)) {
@@ -1466,7 +1488,7 @@ namespace space_converter {
 		if (grid_main.dense_grid->data_density.size() > 0) {
 			if (!only_rank0 || from_cl.world_rank == 0) {
 				// Build output filename with dimensions
-				std::string full_filepath = from_cl.output_path + "/" + convert_vdb_base->get_type_name(space_data.particle_type) + "_" + convert_vdb_base->get_dataset_name(space_data.block_name_id);
+				std::string full_filepath = output_base_filepath(convert_vdb_base, from_cl, space_data);
 				if (!only_rank0 || (space_data.anim_type != common::SpaceData::AnimType::eNone && space_data.anim_type != common::SpaceData::AnimType::eAllMerge)) {
 					char temp[1024];
 					snprintf(temp, sizeof(temp), "%d_%05d", space_data.anim_task_counter, from_cl.world_rank);
@@ -1506,7 +1528,7 @@ namespace space_converter {
 
 		if (grid_main.dense_grid->data_density.size() > 0) {
 			if (!only_rank0 || from_cl.world_rank == 0) {
-				std::string full_filepath = from_cl.output_path + "/" + convert_vdb_base->get_type_name(space_data.particle_type) + "_" + convert_vdb_base->get_dataset_name(space_data.block_name_id);
+				std::string full_filepath = output_base_filepath(convert_vdb_base, from_cl, space_data);
 				if (!only_rank0 || (space_data.anim_type != common::SpaceData::AnimType::eNone && space_data.anim_type != common::SpaceData::AnimType::eAllMerge)) {
 					char temp[1024];
 					snprintf(temp, sizeof(temp), "%d_%05d", space_data.anim_task_counter, from_cl.world_rank);
@@ -1585,7 +1607,7 @@ namespace space_converter {
 #ifdef WITH_OPENVDB
 		if (/*from_cl.use_rawpart2vdb &&*/ grid_main.raw_particles.data.size() > 0) {
 			if (from_cl.world_rank == 0) {
-				std::string full_filepath = from_cl.output_path + "/" + convert_vdb_base->get_type_name(space_data.particle_type) + "_" + convert_vdb_base->get_dataset_name(space_data.block_name_id);
+				std::string full_filepath = output_base_filepath(convert_vdb_base, from_cl, space_data);
 
 				if (space_data.anim_type != common::SpaceData::AnimType::eNone && space_data.anim_type != common::SpaceData::AnimType::eAllMerge) {
 					char temp[1024];
@@ -1688,7 +1710,7 @@ namespace space_converter {
 #ifdef WITH_VTK
 		if (/*from_cl.use_rawpart2vdb &&*/ grid_main.raw_particles.data.size() > 0) {
 			if (!only_rank0 || from_cl.world_rank == 0) {
-				std::string full_filepath = from_cl.output_path + "/" + convert_vdb_base->get_type_name(space_data.particle_type) + "_" + convert_vdb_base->get_dataset_name(space_data.block_name_id);
+				std::string full_filepath = output_base_filepath(convert_vdb_base, from_cl, space_data);
 
 				if (!only_rank0 || (space_data.anim_type != common::SpaceData::AnimType::eNone && space_data.anim_type != common::SpaceData::AnimType::eAllMerge)) {
 					char temp[1024];

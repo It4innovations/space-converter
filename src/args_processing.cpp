@@ -43,6 +43,7 @@ namespace space_converter {
 		std::cout << "\noptions (defaults in brackets):" << std::endl;
 		std::cout << "\t--grid-dim N                       : Grid resolution per axis [100]" << std::endl;
 		std::cout << "\t-o, --output-path DIR              : Output directory for generated files" << std::endl;
+		std::cout << "\t-f, --output-file FILE             : Output file path (base name without extension; overrides the automatic <type>_<dataset> naming, frame/rank suffixes and the format extension are still appended; a relative FILE is placed inside --output-path)" << std::endl;
 		std::cout << "\t--port N                           : TCP port the server listens on [5000]" << std::endl;
 		std::cout << "\t--info                             : Print dataset info and exit" << std::endl;
 		std::cout << "\t--nanovdb                          : Output NanoVDB instead of OpenVDB" << std::endl;
@@ -291,6 +292,9 @@ namespace space_converter {
 			else if (arg == "-o" || arg == "--output-path") {
 				from_cl.output_path = next_arg(i, argc, argv, "--output-path");
 			}
+			else if (arg == "-f" || arg == "--output-file") {
+				from_cl.output_file = next_arg(i, argc, argv, "--output-file");
+			}
 			else if (arg == "--port") {
 				from_cl.port = parse_int_range(i, argc, argv, "--port", 1, 65535);
 			}
@@ -522,6 +526,7 @@ namespace space_converter {
 		std::cout << "\n=== FromCL Configuration ==="<< std::endl;
 		std::cout << "data_type: " << data_type << std::endl;
 		std::cout << "output_path: " << output_path << std::endl;
+		std::cout << "output_file: " << (output_file.empty() ? "(auto)" : output_file) << std::endl;
 		std::cout << "port: " << port << std::endl;
 		std::cout << "info: " << (info ? "true" : "false") << std::endl;
 		std::cout << "remote: " << (remote ? "true" : "false") << std::endl;
