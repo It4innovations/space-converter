@@ -21,21 +21,34 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(dirname "$HERE")"
 BLENDER_ROOT="$(cd "$REPO/../.." && pwd)"
 
-SC_BIN="${SC_BIN:-$BLENDER_ROOT/install/space_converter_barng_cpu/bin/space_converter}"
 SC_OUT="${SC_OUT:-$REPO/temp/tests}"
 SC_NP="${SC_NP:-3}"
 
-# Runtime environment (mirror run_spaceconverter_barng_cpu.sh)
-if command -v ml >/dev/null 2>&1; then
-    ml HDF5/1.14.6-gompi-2025b 2>/dev/null || true
-    ml GCC/14.3.0 2>/dev/null || true
+# ── Site detection: LUMI (Cray) vs Barbora-style (EasyBuild modules) ─────────
+if [ -d /appl/lumi ]; then
+    # LUMI: the HIP binary doubles as the CPU binary (run without --gpu)
+    SC_BIN="${SC_BIN:-$BLENDER_ROOT/install/space_converter_lumi_hip/bin/space_converter}"
+    if command -v ml >/dev/null 2>&1; then
+        ml LUMI/25.09 partition/G 2>/dev/null || true
+        ml PrgEnv-gnu 2>/dev/null || true
+        ml rocm/6.4.4 2>/dev/null || true
+    fi
+    LIB_DIR="$BLENDER_ROOT/install/lib-linux_x64"
+    export LD_LIBRARY_PATH="$LIB_DIR/openvdb/lib:$LIB_DIR/tbb/lib:${ROCM_PATH:-/opt/rocm}/lib:${LD_LIBRARY_PATH:-}"
+else
+    SC_BIN="${SC_BIN:-$BLENDER_ROOT/install/space_converter_barng_cpu/bin/space_converter}"
+    # Runtime environment (mirror run_spaceconverter_barng_cpu.sh)
+    if command -v ml >/dev/null 2>&1; then
+        ml HDF5/1.14.6-gompi-2025b 2>/dev/null || true
+        ml GCC/14.3.0 2>/dev/null || true
+    fi
+    CYCLES_LIB="$BLENDER_ROOT/src/cyclesphi/lib/linux_x64"
+    export LD_LIBRARY_PATH="$CYCLES_LIB/openvdb/lib:$CYCLES_LIB/tbb/lib:${LD_LIBRARY_PATH:-}"
+    # VTK runtime for PLUTO-enabled builds (VTK bundled in ParaView, see
+    # build_spaceconverter_barng_cpu_full.sh); harmless when absent
+    PARAVIEW_LIB="/apps/all/ParaView/6.0.1-foss-2025b/lib64"
+    [ -d "$PARAVIEW_LIB" ] && export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$PARAVIEW_LIB"
 fi
-CYCLES_LIB="$BLENDER_ROOT/src/cyclesphi/lib/linux_x64"
-export LD_LIBRARY_PATH="$CYCLES_LIB/openvdb/lib:$CYCLES_LIB/tbb/lib:${LD_LIBRARY_PATH:-}"
-# VTK runtime for PLUTO-enabled builds (VTK bundled in ParaView, see
-# build_spaceconverter_barng_cpu_full.sh); harmless when absent
-PARAVIEW_LIB="/apps/all/ParaView/6.0.1-foss-2025b/lib64"
-[ -d "$PARAVIEW_LIB" ] && export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$PARAVIEW_LIB"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-2}"
 
 # Fail fast (with a clear message) if the binary cannot even start.
@@ -52,11 +65,19 @@ fi
 if [ -n "${SLURM_JOB_ID:-}" ]; then
     SC_JOBID="$SLURM_JOB_ID"
     SLURM_UNSET_FLAGS=$(compgen -e | grep "^SLURM_\|^SRUN_" | sed "s/^/-u /")
+    if [ -d /appl/lumi ]; then
+        launch() {
+            local n=$1; shift
+            # shellcheck disable=SC2086
+            env $SLURM_UNSET_FLAGS srun --jobid="$SC_JOBID" --overlap -n "$n" -N1 "$@"
+        }
+    else
     launch() {
         local n=$1; shift
         # shellcheck disable=SC2086
         env $SLURM_UNSET_FLAGS srun --jobid="$SC_JOBID" --overlap --mpi=pmix -n "$n" -N1 "$@"
     }
+    fi
 elif command -v mpirun >/dev/null 2>&1; then
     launch() { local n=$1; shift; mpirun -n "$n" "$@"; }
 else

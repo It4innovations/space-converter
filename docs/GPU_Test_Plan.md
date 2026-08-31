@@ -330,3 +330,54 @@ compiles CUDA sources as HIP through the wrapper TUs `src/common/hip/*.cpp`
    `-DWITH_CUDA_AWARE_MPI=ON` variant once the plain build passes.
 5. Project rules: no commits; nothing on login nodes (`srun --jobid=... --overlap`);
    temp files under `<repo>/temp/`; results appended to this file.
+
+---
+
+## 10. Results — Build C (HIP / LUMI-G, 2026-08-29, 1x node, 8x MI250X GCD gfx90a)
+
+**The plan is hereby complete: all three builds (A CUDA, B CUDA-aware, C HIP)
+are compiled and validated.**
+
+- Build: `scripts/space_converter/lumi/build_lumi.sh` (already in-tree:
+  `LUMI/25.09 partition/G` + `PrgEnv-gnu` + `rocm/6.4.4`, `CC=cc`/`CXX=CC`
+  Cray wrappers, `WITH_GPU_HIP=ON`, **`WITH_HIP_AWARE_MPI=ON`** (Cray MPICH +
+  GTL), `gfx90a`, `amdclang++`, `WITH_HACC=ON`, `WITH_NANOFLANN=ON`,
+  `WITH_CUDAKDTREE=OFF`). **First HIP compile of the 2026-08 changes: clean,
+  0 errors** — the §9.2 watchpoints (atomicMinFloat/atomicMaxFloat CAS
+  helpers, rocThrust sorts with device lambdas, `clampCoord`/`packCoord3`,
+  hipcub) all built without modification.
+- Both test drivers are now **site-aware** (`/appl/lumi` detection): LUMI
+  modules + `install/lib-linux_x64` runtime libs + ROCm, `/dev/kfd` GPU check,
+  Cray-default MPI plugin (no `--mpi=pmix`), per-rank GCD binding via
+  `lumi/gpu.sh` (`ROCR_VISIBLE_DEVICES`), `MPICH_GPU_SUPPORT_ENABLED=1`;
+  G5/G6/G7/G9 skip automatically when the binary has no `--cudakdtree`.
+- **CPU smoke suite (HIP binary without `--gpu`): 20/20 PASS** — includes T4
+  rank invariance and T5 nanoflann cycling over Cray MPICH, the T8 TCP
+  round-trip (Cray MPICH singleton init works), and the full reader matrix
+  (GADGET incl. the M10 mass assertion, TIPSY, HACC_BIN, NCHILADA,
+  GENERICIO via the freshly built `gen_genericio`); PLUTO and iPIC3D skip
+  (not in this build / no h5cc).
+- **GPU suite: 19/19 PASS** — G1–G4 (sparse/dense/sub-box/type-1/sorts all
+  match the CPU reference within tolerance; per-particle min/max semantics
+  hold on AMD), G8, G10 (.nvdb), G11 (protocol with `--gpu` server), G12,
+  G13 (CUB: sparse header count == active voxels; dense CPU/GPU counts equal),
+  G14 (raw export CPU fallback). G5/G6/G7/G9 skipped (no cudaKDTree on HIP).
+- **GPU-aware MPI on AMD validated in the same run**: this build defines
+  `WITH_CUDA_AWARE_MPI` (via `WITH_HIP_AWARE_MPI`), so G8's 2-rank cases
+  exercised the device-pointer `MPI_Reduce` and the sparse
+  `serializeGPU`/`deserializeGPU` RDMA merge through GPU-aware Cray MPICH
+  (`MPICH_GPU_SUPPORT_ENABLED=1`) — both bit-consistent with the 1-rank
+  references. The GPUDirect k-NN cycling path stays CUDA-only (cukd).
+- Site note: the first allocation for this session requested a non-existent
+  gres type (`gpu:a100` — a Karolina leftover; LUMI-G exposes `gpu:mi250:8`),
+  which pends forever with Reason=Priority and StartTime=N/A. Fixed live via
+  `scontrol update JobId=... TresPerNode=gres/gpu:mi250:8`; check the submit
+  scripts.
+
+### Final coverage matrix
+
+| Build | Compile | CPU suite | GPU suite | GPU-aware MPI paths |
+|---|---|---|---|---|
+| A — CUDA (Barbora, V100) | clean | 18/18 | 26/26 | staged fallback validated |
+| B — CUDA-aware (Barbora, NVHPC-23.5/UCX 1.14) | clean | — | targeted B1–B4 | device Reduce + RDMA merge + GPUDirect cycling, all 0-diff |
+| C — HIP + HIP-aware (LUMI, MI250X) | clean | 20/20 | 19/19 (+4 cukd skips) | device Reduce + RDMA merge via Cray GTL, 0-diff |

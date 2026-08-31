@@ -960,3 +960,14 @@ back to the CPU path instead of erroring. GPU suite grew to G13 (CUB) + G14
 (raw export): **26/26 PASS**; CPU builds and smoke suite unaffected (18/18).
 Still open: HIP/LUMI build (Build C) — a concrete AMD-session checklist is in
 GPU_Test_Plan.md §9.
+
+### Build C / HIP validation (LUMI-G, 2026-08-29) — GPU_Test_Plan complete
+
+Executed on LUMI (1 node, 8x MI250X GCD): the HIP build of the 2026-08 changes
+compiled cleanly on the first attempt (amdclang++/gfx90a, `WITH_HIP_AWARE_MPI`
+= GPU-aware Cray MPICH); the site-aware test drivers report **CPU suite 20/20**
+and **GPU suite 19/19** (cudaKDTree tests auto-skip on HIP). G8 additionally
+validated the GPU-aware MPI paths (device-pointer reduce + sparse RDMA merge)
+on AMD hardware. With Barbora's Build A (26/26) and Build B results, every
+build flavor of the converter is now compiled and regression-tested —
+GPU_Test_Plan.md §10 has the full matrix.

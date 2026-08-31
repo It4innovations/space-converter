@@ -19,31 +19,60 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(dirname "$HERE")"
 BLENDER_ROOT="$(cd "$REPO/../.." && pwd)"
 
-SC_BIN="${SC_BIN:-$BLENDER_ROOT/install/space_converter_bar_gpu/bin/space_converter}"
 SC_OUT="${SC_OUT:-$REPO/temp/gpu_tests}"
 
-# Runtime environment: toolchain of build_spaceconverter_bar_gpu.sh, plus a
-# newer libstdc++ for the prebuilt OpenVDB (built with a newer GCC)
-if command -v ml >/dev/null 2>&1; then
-    ml GCC/13.3.0 2>/dev/null || true
-    ml OpenMPI/5.0.3-GCC-13.3.0 2>/dev/null || true
-    ml CUDA/12.6.0 2>/dev/null || true
+# ── Site detection: LUMI (HIP / Cray MPICH) vs Barbora-style (CUDA / OpenMPI)
+if [ -d /appl/lumi ]; then
+    SC_SITE="lumi"
+    SC_BIN="${SC_BIN:-$BLENDER_ROOT/install/space_converter_lumi_hip/bin/space_converter}"
+    if command -v ml >/dev/null 2>&1; then
+        ml LUMI/25.09 partition/G 2>/dev/null || true
+        ml PrgEnv-gnu 2>/dev/null || true
+        ml rocm/6.4.4 2>/dev/null || true
+    fi
+    LIB_DIR="$BLENDER_ROOT/install/lib-linux_x64"
+    export LD_LIBRARY_PATH="$LIB_DIR/openvdb/lib:$LIB_DIR/tbb/lib:${ROCM_PATH:-/opt/rocm}/lib:${LD_LIBRARY_PATH:-}"
+    # GPU-aware Cray MPICH (required by WITH_HIP_AWARE_MPI builds)
+    export MPICH_GPU_SUPPORT_ENABLED=1
+    GPU_BIND="$REPO/scripts/space_converter/lumi/gpu.sh"
+else
+    SC_SITE="barbora"
+    SC_BIN="${SC_BIN:-$BLENDER_ROOT/install/space_converter_bar_gpu/bin/space_converter}"
+    # Runtime environment: toolchain of build_spaceconverter_bar_gpu.sh, plus a
+    # newer libstdc++ for the prebuilt OpenVDB (built with a newer GCC)
+    if command -v ml >/dev/null 2>&1; then
+        ml GCC/13.3.0 2>/dev/null || true
+        ml OpenMPI/5.0.3-GCC-13.3.0 2>/dev/null || true
+        ml CUDA/12.6.0 2>/dev/null || true
+    fi
+    CYCLES_LIB="$BLENDER_ROOT/src/cyclesphi/lib/linux_x64"
+    export LD_LIBRARY_PATH="$CYCLES_LIB/openvdb/lib:$CYCLES_LIB/tbb/lib:${LD_LIBRARY_PATH:-}"
+    GCC14_LIB="/apps/all/GCCcore/14.3.0/lib64"
+    [ -d "$GCC14_LIB" ] && export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$GCC14_LIB"
+    GPU_BIND=""
 fi
-CYCLES_LIB="$BLENDER_ROOT/src/cyclesphi/lib/linux_x64"
-export LD_LIBRARY_PATH="$CYCLES_LIB/openvdb/lib:$CYCLES_LIB/tbb/lib:${LD_LIBRARY_PATH:-}"
-GCC14_LIB="/apps/all/GCCcore/14.3.0/lib64"
-[ -d "$GCC14_LIB" ] && export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$GCC14_LIB"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-2}"
 
-# Nested-srun launcher (same pattern as run_smoke_tests.sh)
+# Nested-srun launcher (same pattern as run_smoke_tests.sh). On LUMI the
+# default (Cray) MPI plugin is used and each rank is pinned to its own GCD via
+# the gpu.sh wrapper (ROCR_VISIBLE_DEVICES).
 if [ -n "${SLURM_JOB_ID:-}" ]; then
     SC_JOBID="$SLURM_JOB_ID"
     SLURM_UNSET_FLAGS=$(compgen -e | grep "^SLURM_\|^SRUN_" | sed "s/^/-u /")
-    launch() {
-        local n=$1; shift
-        # shellcheck disable=SC2086
-        env $SLURM_UNSET_FLAGS srun --jobid="$SC_JOBID" --overlap --mpi=pmix -n "$n" -N1 "$@"
-    }
+    if [ "$SC_SITE" = "lumi" ]; then
+        launch() {
+            local n=$1; shift
+            # shellcheck disable=SC2086
+            env $SLURM_UNSET_FLAGS MPICH_GPU_SUPPORT_ENABLED=1 \
+                srun --jobid="$SC_JOBID" --overlap -n "$n" -N1 --gpus-per-node=8 "$GPU_BIND" "$@"
+        }
+    else
+        launch() {
+            local n=$1; shift
+            # shellcheck disable=SC2086
+            env $SLURM_UNSET_FLAGS srun --jobid="$SC_JOBID" --overlap --mpi=pmix -n "$n" -N1 "$@"
+        }
+    fi
 elif command -v mpirun >/dev/null 2>&1; then
     launch() { local n=$1; shift; mpirun -n "$n" "$@"; }
 else
@@ -66,8 +95,8 @@ if ! "$SC_BIN" -h 2>&1 | grep -q -- "--gpu"; then
     echo "SC_BIN has no --gpu support (need a WITH_GPU_CUDA build): $SC_BIN"
     exit 98
 fi
-if ! nvidia-smi -L >/dev/null 2>&1; then
-    echo "no visible GPU on this node"
+if ! nvidia-smi -L >/dev/null 2>&1 && ! [ -e /dev/kfd ]; then
+    echo "no visible GPU (NVIDIA or AMD) on this node"
     exit 98
 fi
 
@@ -176,6 +205,9 @@ for variant in "--sort-by-radius" "--sort-by-non-overlap" "--sort-by-radius --so
     fi
 done
 
+# ── G5/G6/G9 need cudaKDTree (CUDA-only; HIP builds skip them) ───────────────
+if "$SC_BIN" -h 2>&1 | grep -q -- "--cudakdtree"; then
+HAVE_CUKD=1
 # ── G5: cudaKDTree k-NN, single rank, backend comparison ─────────────────────
 note "G5: k-NN radius backends (GPU tree vs host tree vs nanoflann)"
 KNN=(--calc-radius-neigh 6 --dense-type 6 --dense-file 1)
@@ -218,6 +250,10 @@ else
 fi
 
 # ── G7 is covered by G5 (GPU k-NN radii reach the device after the upload-order fix)
+else
+HAVE_CUKD=0
+echo "== G5/G6/G7: SKIP (build has no cudaKDTree — expected for HIP builds)"
+fi
 
 # ── G8: GPU multi-rank reduction ─────────────────────────────────────────────
 note "G8: GPU rank invariance (dense + sparse, 1 vs 2 ranks)"
@@ -235,6 +271,7 @@ else
 fi
 
 # ── G9: voxel-centric dense loop (KD-tree per voxel) ─────────────────────────
+if [ "$HAVE_CUKD" = 1 ]; then
 note "G9: --dense-loop-over-voxels on GPU"
 run_case "$SC_OUT/g9.log" 1 --export-data 0 0 --dense-type 6 --dense-file 1 \
     --gpu --cudakdtree --calc-radius-neigh 8 --dense-loop-over-voxels; keep_raw "$SC_OUT/g9.raw"
@@ -242,6 +279,9 @@ if [ -s "$SC_OUT/g9.raw" ] && ! grep -qiE "nan|inf" <(grep "minI" "$SC_OUT/g9.lo
     ok "voxel-centric GPU loop produced a finite grid"
 else
     bad "G9 — see g9.log"
+fi
+else
+echo "== G9: SKIP (no cudaKDTree in this build)"
 fi
 
 # ── G10: GPU NanoVDB output ──────────────────────────────────────────────────
