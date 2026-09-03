@@ -41,7 +41,8 @@
 //   get_particle_mass(id) -> particle mass from the per-type "mass" field, simulation
 //                            code units, all types (Gas, Dark, Stars)
 //   get_particle_rho(id)  -> gas density from "GasDensity" (code units); 0 for non-gas types
-//   get_particle_hsml(id) -> gas smoothing length ("smoothlength", falling back to "soft");
+//   get_particle_hsml(id) -> "smoothlength" for gas and, when the run computed
+//                            densities, for dark matter too; "soft" otherwise;
 //                            gravitational softening ("soft") for Dark and Stars
 //   particle id space     -> rank-local, grouped by type: [Gas..., Dark..., Stars...]
 //                            (each type contributes this rank's slice of that type)
@@ -237,7 +238,15 @@ namespace changa {
 				//getSoft(bdata_dark, filename, world_rank, world_size);
 				getData(nch_data->data_map[ParticleType::Dark][BlockType::Soft], basedir, "/dark", "/soft", world_rank, world_size);
 				//getPhi(bdata_dark, filename, world_rank, world_size);
-				getData(nch_data->data_map[ParticleType::Dark][BlockType::Phi], basedir, "/dark", "/phi", world_rank, world_size);
+				// ChaNGa writes the potential as "pot"; "phi" is the tipsy spelling.
+				getData(nch_data->data_map[ParticleType::Dark][BlockType::Phi], basedir, "/dark", "/phi", world_rank, world_size, true);
+				if (nch_data->data_map[ParticleType::Dark][BlockType::Phi].data == nullptr)
+					getData(nch_data->data_map[ParticleType::Dark][BlockType::Phi], basedir, "/dark", "/pot", world_rank, world_size, true);
+				// Dark matter carries an SPH-style smoothing length and density when the
+				// run was made with bDoDensity; they are what gives a splat its adaptive
+				// radius, so dense regions stay sharp while voids are smoothed.
+				getData(nch_data->data_map[ParticleType::Dark][BlockType::HSmooth], basedir, "/dark", "/smoothlength", world_rank, world_size, true);
+				getData(nch_data->data_map[ParticleType::Dark][BlockType::Rho], basedir, "/dark", "/den", world_rank, world_size, true);
 
 
 				//if (nSph > 0) {
@@ -381,6 +390,8 @@ namespace changa {
 					case BlockType::Mass:
 					case BlockType::Soft:
 					case BlockType::Phi:
+					case BlockType::HSmooth:
+					case BlockType::Rho:
 						nch_data->get_value(pt, bt, id - offset, value);
 						RETURN_NORM_VALUE(value);
 					}
@@ -448,6 +459,8 @@ namespace changa {
 					case BlockType::Mass:
 					case BlockType::Soft:
 					case BlockType::Phi:
+					case BlockType::HSmooth:
+					case BlockType::Rho:
 						nch_data->get_value(pt, bt, id - offset, value);
 						RETURN_ORIG_VALUE(value);
 					}
@@ -510,6 +523,8 @@ namespace changa {
 					case BlockType::Mass:
 					case BlockType::Soft:
 					case BlockType::Phi:
+					case BlockType::HSmooth:
+					case BlockType::Rho:
 						RETURN_COMP_VALUE(value);
 					}
 					break;
@@ -646,7 +661,12 @@ namespace changa {
 				// voxel, because fill_voxels() truncates the radius to whole voxels.
 				ParticleType pt = (ParticleType)get_particle_type(id);
 
-				if (pt == ParticleType::Gas)
+				// Gas always has one; dark matter has one too when the run computed
+				// densities ("smoothlength"), and it is a far better splat radius than
+				// the gravitational softening - it adapts to the local sampling, which
+				// is exactly what keeps a deep zoom sharp without shot noise.
+				if (pt == ParticleType::Gas ||
+					nch_data->data_map[pt][BlockType::HSmooth].data != nullptr)
 					return get_particle_norm_value(BlockType::HSmooth, id);
 
 				return get_particle_norm_value(BlockType::Soft, id);

@@ -60,6 +60,8 @@ namespace space_converter {
 		std::cout << "\t--bbox-sphere x y z r              : Keep only particles inside this sphere (world space)" << std::endl;
 		std::cout << "\t--offset-position X Y Z            : Subtract this offset from all particle positions" << std::endl;
 		std::cout << "\t--radius-const R                   : Fixed particle radius in voxel units (0 = use per-particle radius) [0]" << std::endl;
+		std::cout << "\t--filter-min V                     : Skip particles whose exported block value is < V" << std::endl;
+		std::cout << "\t--filter-max V                     : Skip particles whose exported block value is > V" << std::endl;
 		std::cout << "\t--no-norm-value                    : Store vector blocks as 3-component grids instead of magnitudes" << std::endl;
 
 		// === Neighbor Search Options ===
@@ -400,6 +402,16 @@ namespace space_converter {
 				if (space_data.particle_radius_const < 0.0) {
 					arg_error("--radius-const must be >= 0");
 				}
+			}
+			// Value-range filter: particles whose exported block value falls
+			// outside [filter_min, filter_max] are skipped. The fields already
+			// existed for the TCP client; these expose them on the command line
+			// (e.g. select recently formed stars by their TForm value).
+			else if (arg == "--filter-min") {
+				space_data.filter_min = parse_float(i, argc, argv, "--filter-min");
+			}
+			else if (arg == "--filter-max") {
+				space_data.filter_max = parse_float(i, argc, argv, "--filter-max");
 			}
 			// === Neighbor Search Configuration ===
 			else if (arg == "--calc-radius-neigh") {
