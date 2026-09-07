@@ -291,6 +291,40 @@ namespace space_converter {
 				virtual float get_particle_norm_value(int blocknr, uint64_t id);
 
 				/**
+				 * @brief Export one component of a multi-element block instead of
+				 *        the block's scalar reduction.
+				 *
+				 * Blocks that carry several numbers per particle - a vector, or a
+				 * binned spectrum - otherwise reach the grid only as a magnitude.
+				 * Selecting a component lets each of them be exported as its own
+				 * grid, so a quantity built out of several of them can be assembled
+				 * downstream (in a shader, say) instead of inside a reader.
+				 *
+				 * @param component Component index, or -1 for the scalar reduction
+				 */
+				void set_block_component(int component) { block_component = component; }
+
+				/**
+				 * @brief Treat the block as storing log10 of the quantity.
+				 *
+				 * A deposit is a sum, so a block kept in log units has to be decoded
+				 * before it is splatted - summing logarithms gives a geometric mean
+				 * instead. It also maps the log10(0) = -inf that some codes write for
+				 * "nothing here" onto a clean zero.
+				 */
+				void set_block_exp10(bool on) { block_exp10 = on; }
+
+				/**
+				 * @brief Constant factor applied to the block value before depositing.
+				 *
+				 * Some blocks are stored in units that put the grid outside what a
+				 * float holds - a spectral normalisation around 1e-30 is dropped
+				 * entirely - and rescaling on the way in is the cheapest fix. It is a
+				 * plain unit change: every voxel is multiplied by the same number.
+				 */
+				void set_block_scale(double scale) { block_scale = scale; }
+
+				/**
 				 * @brief Get value for particle in data block
 				 * @param blocknr Data block number
 				 * @param id Particle ID
@@ -322,6 +356,23 @@ namespace space_converter {
 				// ============================================================
 
 				/** @brief Print CPU processing steps for debugging */
+				/// Largest number of components a block may carry for
+				/// set_block_component() to reach into it; the per-particle buffer
+				/// is a stack array of this size, so it is a cap, not an allocation.
+				static const int kMaxBlockComponents = 64;
+
+				/// Component selected by set_block_component(), -1 = none
+				int block_component = -1;
+
+				/// Whether the block stores log10 of the quantity
+				bool block_exp10 = false;
+
+				/// Constant factor applied by decode_block_value()
+				double block_scale = 1.0;
+
+				/// Apply the block's storage encoding (see set_block_exp10)
+				float decode_block_value(float v) const;
+
 				virtual void print_CPU_steps() = 0;
 
 				/** @brief Get normalized particle value (internal implementation) */

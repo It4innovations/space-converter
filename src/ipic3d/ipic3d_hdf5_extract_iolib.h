@@ -52,6 +52,8 @@ namespace ipic3d {
         Pyy = 10,       // Pressure tensor component, from /moments/species_N/pYY
         Pyz = 11,       // Pressure tensor component, from /moments/species_N/pYZ
         Pzz = 12,       // Pressure tensor component, from /moments/species_N/pZZ
+        JField = 13,    // Current density (Jx, Jy, Jz), from /moments/species_N/J{x,y,z}
+                        // - the field that makes current sheets visible in a plasma run
 
         BTMax           // Maximum value for BlockType (used for validation or iteration)
     };

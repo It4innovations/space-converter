@@ -732,6 +732,10 @@ namespace space_converter {
 		// double t_convert = omp_get_wtime();
 
 		// Convert particles to grid using specified parameters
+		convert_vdb_base->set_block_component(space_data.block_component);
+		convert_vdb_base->set_block_exp10(space_data.block_exp10);
+		convert_vdb_base->set_block_scale(space_data.block_scale);
+
 		convert_vdb_base->convert_iolib_to_grid(
 			space_data.particle_type,
 			space_data.particle_radius_multiplier,

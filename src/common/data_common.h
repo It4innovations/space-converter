@@ -239,6 +239,14 @@ namespace space_converter {
 			MessageType message_type = MessageType::eEmpty;  // Type of message for inter-process communication
 			int particle_type = 0;        // Particle type identifier
 			int block_name_id = 0;        // Data block identifier
+			// Component of a multi-element block to export, -1 = the block's own
+			// scalar reduction (the value itself, or the magnitude of a vector)
+			int block_component = -1;
+			// The block stores log10 of the quantity; undo that before depositing
+			bool block_exp10 = false;
+			// Constant factor applied to the block value before depositing, for
+			// blocks whose natural units land outside what a float grid holds
+			double block_scale = 1.0;
 
 			// ========== Grid Configuration ==========
 			float grid_transform = 1.0f;  // Grid transformation scale
@@ -329,6 +337,9 @@ namespace space_converter {
 				std::cout << "message_type: " << static_cast<int>(message_type) << std::endl;
 				std::cout << "particle_type: " << particle_type << std::endl;
 				std::cout << "block_name_id: " << block_name_id << std::endl;
+				std::cout << "block_component: " << block_component << std::endl;
+				std::cout << "block_exp10: " << block_exp10 << std::endl;
+				std::cout << "block_scale: " << block_scale << std::endl;
 
 				// Grid Configuration
 				std::cout << "grid_transform: " << grid_transform << std::endl;

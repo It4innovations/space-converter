@@ -79,12 +79,14 @@ namespace ipic3d {
             std::vector<double> bx, by, bz;             // /fields/B{x,y,z}
             std::vector<double> rho;                    // /moments/species_N/rho
             std::vector<double> pxx, pxy, pxz, pyy, pyz, pzz; // /moments/species_N/p{XX,XY,XZ,YY,YZ,ZZ}
+            std::vector<double> jx, jy, jz;             // /moments/species_N/J{x,y,z}
             size_t count = 0;                           // Number of grid points
 
             bool has_efield() const { return !ex.empty(); }
             bool has_bfield() const { return !bx.empty(); }
             bool has_rho() const { return !rho.empty(); }
             bool has_pxx() const { return !pxx.empty(); }
+            bool has_j() const { return !jx.empty(); }
             bool has_pxy() const { return !pxy.empty(); }
             bool has_pxz() const { return !pxz.empty(); }
             bool has_pyy() const { return !pyy.empty(); }
@@ -173,6 +175,10 @@ namespace ipic3d {
                 double v[3] = { g.bx[i], g.by[i], g.bz[i] };
                 RETURN_NORM_VECTOR3(v);
             }
+            case IPIC3DBlockType::JField: {
+                double v[3] = { g.jx[i], g.jy[i], g.jz[i] };
+                RETURN_NORM_VECTOR3(v);
+            }
             case IPIC3DBlockType::Rho:
                 RETURN_NORM_VALUE(g.rho[i]);
             case IPIC3DBlockType::Pxx:
@@ -226,6 +232,10 @@ namespace ipic3d {
                 double v[3] = { g.bx[i], g.by[i], g.bz[i] };
                 RETURN_ORIG_VECTOR3(v);
             }
+            case IPIC3DBlockType::JField: {
+                double v[3] = { g.jx[i], g.jy[i], g.jz[i] };
+                RETURN_ORIG_VECTOR3(v);
+            }
             case IPIC3DBlockType::Rho:
                 RETURN_ORIG_VALUE(g.rho[i]);
             case IPIC3DBlockType::Pxx:
@@ -265,6 +275,7 @@ namespace ipic3d {
             switch (blocknr) {
             case IPIC3DBlockType::EField:
             case IPIC3DBlockType::BField:
+            case IPIC3DBlockType::JField:
                 RETURN_COMP_VECTOR3(nullptr);
             case IPIC3DBlockType::Rho:
             case IPIC3DBlockType::Pxx:
@@ -356,6 +367,8 @@ namespace ipic3d {
                 return "EField";
             case IPIC3DBlockType::BField:
                 return "BField";
+            case IPIC3DBlockType::JField:
+                return "JField";
             case IPIC3DBlockType::Rho:
                 return "Rho";
             case IPIC3DBlockType::Pxx:
@@ -394,6 +407,7 @@ namespace ipic3d {
                 if (g.has_efield()) types_and_blocks[IPIC3DParticleType::PTMax * IPIC3DBlockType::EField + s] = 1;
                 if (g.has_bfield()) types_and_blocks[IPIC3DParticleType::PTMax * IPIC3DBlockType::BField + s] = 1;
                 if (g.has_rho()) types_and_blocks[IPIC3DParticleType::PTMax * IPIC3DBlockType::Rho + s] = 1;
+                if (g.has_j()) types_and_blocks[IPIC3DParticleType::PTMax * IPIC3DBlockType::JField + s] = 1;
                 if (g.has_pxx()) types_and_blocks[IPIC3DParticleType::PTMax * IPIC3DBlockType::Pxx + s] = 1;
                 if (g.has_pxy()) types_and_blocks[IPIC3DParticleType::PTMax * IPIC3DBlockType::Pxy + s] = 1;
                 if (g.has_pxz()) types_and_blocks[IPIC3DParticleType::PTMax * IPIC3DBlockType::Pxz + s] = 1;
@@ -487,7 +501,12 @@ namespace ipic3d {
             dst.v.insert(dst.v.end(), src.v.begin() + start, src.v.begin() + start + count);
             dst.w.insert(dst.w.end(), src.w.begin() + start, src.w.begin() + start + count);
             dst.q.insert(dst.q.end(), src.q.begin() + start, src.q.begin() + start + count);
-            dst.id.insert(dst.id.end(), src.id.begin() + start, src.id.begin() + start + count);
+            if (src.id.size() >= start + count) {
+                dst.id.insert(dst.id.end(), src.id.begin() + start, src.id.begin() + start + count);
+            }
+            else {
+                dst.id.insert(dst.id.end(), count, 0);
+            }
         }
 
         // Helper function to read a dataset from HDF5
@@ -548,7 +567,15 @@ namespace ipic3d {
                 read_hdf5_dataset(file_id, species_path + "/v" + cycle_suffix, out.v);
                 read_hdf5_dataset(file_id, species_path + "/w" + cycle_suffix, out.w);
                 read_hdf5_dataset(file_id, species_path + "/q" + cycle_suffix, out.q);
-                read_hdf5_dataset(file_id, species_path + "/ID" + cycle_suffix, out.id);
+                // ID is optional: iPIC3D only writes it when particle tracking is on,
+                // and nothing downstream needs it for rasterizing density or moments.
+                // Requiring it aborted the whole run on datasets that simply lack it.
+                if (H5Lexists(file_id, (species_path + "/ID").c_str(), H5P_DEFAULT) > 0) {
+                    read_hdf5_dataset(file_id, species_path + "/ID" + cycle_suffix, out.id);
+                }
+                else {
+                    out.id.assign(out.x.size(), 0);
+                }
                 out.count = out.x.size();
             } catch (const std::exception& e) {
                 H5Fclose(file_id);
@@ -734,6 +761,7 @@ namespace ipic3d {
                     }
                 };
                 read_moment("rho", out.rho);
+                read_moment("Jx", out.jx); read_moment("Jy", out.jy); read_moment("Jz", out.jz);
                 read_moment("pXX", out.pxx); read_moment("pXY", out.pxy); read_moment("pXZ", out.pxz);
                 read_moment("pYY", out.pyy); read_moment("pYZ", out.pyz); read_moment("pZZ", out.pzz);
 

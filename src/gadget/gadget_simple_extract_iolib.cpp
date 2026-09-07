@@ -121,6 +121,10 @@ extern "C"
 #	define GADGET_MAX_BLOCKS IO_LASTENTRY
 #endif
 
+// Cap on the components of one block that the reader hands out at a time; it
+// matches ConvertVDBBase::kMaxBlockComponents, which sizes the caller's buffer.
+#define MAX_BLOCK_ELEMENTS 64
+
 namespace gadget_simple {
 
 	// Endianness helpers (defined below, used by the block readers above them)
@@ -316,6 +320,21 @@ namespace gadget_simple {
 			}
 		}
 
+		// One component of a block with an arbitrary number of elements per
+		// particle (the CR spectra carry one value per momentum bin).
+		double get_dvalue_n(size_t i, size_t c) {
+			if (c >= num_elements) {
+				return 0;
+			}
+			if (size_of_elem == 8) {
+				return ((double*)data.data())[i * num_elements + c];
+			}
+			else if (size_of_elem == 4) {
+				return ((float*)data.data())[i * num_elements + c];
+			}
+			return 0;
+		}
+
 		void get_dvalue3(size_t i, double v[3]) {
 			if (num_elements != 3) {
 				if (i == 0)
@@ -414,6 +433,7 @@ namespace gadget_simple {
 
 	int nfiles = 0;
 	std::vector<blockdata_t> knownblocks;
+
 
 	//std::vector<componentlist_t> components_list;
 	//io_header  snapheader;
@@ -1824,6 +1844,19 @@ namespace gadget_simple {
 				RETURN_NORM_VECTOR3(v);
 			}
 
+			// A block with more components than a vector - a binned spectrum, say.
+			// Its scalar reduction is the magnitude, the same rule vectors follow;
+			// a single bin is reached with --block-comp.
+			const size_t nelem = gadget_datas[pt][blocknr].get_nelem();
+			if (nelem > 3) {
+				double v[MAX_BLOCK_ELEMENTS];
+				const size_t n = (nelem < MAX_BLOCK_ELEMENTS) ? nelem : MAX_BLOCK_ELEMENTS;
+				for (size_t c = 0; c < n; c++) {
+					v[c] = gadget_datas[pt][blocknr].get_dvalue_n(id - offset, c);
+				}
+				RETURN_NORM_DVECTORN(v, (int)n);
+			}
+
 			RETURN_NORM_EMPTY;
 		}
 
@@ -1849,6 +1882,15 @@ namespace gadget_simple {
 				float v[3];
 				gadget_datas[pt][blocknr].get_fvalue3(id - offset, v);
 				RETURN_ORIG_VECTOR3(v);
+			}
+
+			const size_t nelem = gadget_datas[pt][blocknr].get_nelem();
+			if (nelem > 3) {
+				const size_t n = (nelem < MAX_BLOCK_ELEMENTS) ? nelem : MAX_BLOCK_ELEMENTS;
+				for (size_t c = 0; c < n; c++) {
+					out_value[c] = (float)gadget_datas[pt][blocknr].get_dvalue_n(id - offset, c);
+				}
+				return (int)n;
 			}
 
 			RETURN_ORIG_EMPTY;

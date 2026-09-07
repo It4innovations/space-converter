@@ -53,6 +53,13 @@ namespace space_converter {
 		std::cout << "\t--anim-merge                       : Merge all animation frames into one output" << std::endl;
 		std::cout << "\t--raw-particles N                  : Export raw particles: 0=none, 1=RAW, 2=VDB points, 3=VTP [0]" << std::endl;
 		std::cout << "\t--export, --export-data TYPE BLOCK : Batch mode: extract particle TYPE / data BLOCK and exit" << std::endl;
+		std::cout << "\t--block-comp N             : Export component N of a multi-element block (a vector" << std::endl;
+		std::cout << "\t                             component, or one bin of a spectrum) instead of its" << std::endl;
+		std::cout << "\t                             magnitude" << std::endl;
+		std::cout << "\t--block-exp10              : The block stores log10 of the quantity; decode it before" << std::endl;
+		std::cout << "\t                             depositing (also maps log10(0) = -inf onto zero)" << std::endl;
+		std::cout << "\t--block-scale K            : Multiply the block value by K before depositing, for blocks" << std::endl;
+		std::cout << "\t                             whose units fall outside what a float grid holds" << std::endl;
 		std::cout << "\t--dense-type N                     : SPH splat kernel: 0=off(sparse), 1=Cubic, 2=Quintic, 3..6=WendlandC2..C8 [0]" << std::endl;
 		std::cout << "\t--dense-norm N                     : Density normalization: 0=none, 1=count, 2=SPH, 3=voxel volume [0]" << std::endl;
 		std::cout << "\t--simple-density                   : Deposit weight 1 per particle (implies dense mode)" << std::endl;
@@ -60,6 +67,7 @@ namespace space_converter {
 		std::cout << "\t--bbox-sphere x y z r              : Keep only particles inside this sphere (world space)" << std::endl;
 		std::cout << "\t--offset-position X Y Z            : Subtract this offset from all particle positions" << std::endl;
 		std::cout << "\t--radius-const R                   : Fixed particle radius in voxel units (0 = use per-particle radius) [0]" << std::endl;
+		std::cout << "\t--radius-mult M                    : Scale the per-particle radius (0 = leave it alone) [0]" << std::endl;
 		std::cout << "\t--filter-min V                     : Skip particles whose exported block value is < V" << std::endl;
 		std::cout << "\t--filter-max V                     : Skip particles whose exported block value is > V" << std::endl;
 		std::cout << "\t--no-norm-value                    : Store vector blocks as 3-component grids instead of magnitudes" << std::endl;
@@ -351,6 +359,28 @@ namespace space_converter {
 				}
 				from_cl.remote = false;
 			}
+			else if (arg == "--block-comp") {
+				// Which component of a multi-element block to export. Blocks that
+				// carry a vector or a binned spectrum otherwise reach the grid only
+				// as a magnitude; one grid per component lets a quantity built out
+				// of several of them be assembled in a shader instead of in a reader.
+				space_data.block_component = parse_int(i, argc, argv, "--block-comp");
+				if (space_data.block_component < 0) {
+					arg_error("--block-comp N must be >= 0");
+				}
+			}
+			else if (arg == "--block-exp10") {
+				// The block holds log10 of the quantity (spectral normalisations are
+				// often stored that way to keep them in range). Decoding before the
+				// deposit is what makes the grid a sum rather than a geometric mean.
+				space_data.block_exp10 = true;
+			}
+			else if (arg == "--block-scale") {
+				space_data.block_scale = parse_double(i, argc, argv, "--block-scale");
+				if (!(space_data.block_scale > 0.0)) {
+					arg_error("--block-scale K must be > 0");
+				}
+			}
 			// === Density Computation Options ===
 			else if (arg == "--dense-type") {
 				space_data.dense_type = (common::SpaceData::DenseType)parse_int_range(i, argc, argv, "--dense-type", 0, 6);
@@ -396,6 +426,16 @@ namespace space_converter {
 				space_data.offset_position[0] = parse_float(i, argc, argv, "--offset-position");
 				space_data.offset_position[1] = parse_float(i, argc, argv, "--offset-position");
 				space_data.offset_position[2] = parse_float(i, argc, argv, "--offset-position");
+			}
+			else if (arg == "--radius-mult") {
+				// Deep zooms resolve individual particles: the grid gets finer than the
+				// interparticle spacing, so each SPH kernel draws as its own blob.
+				// Inflating the radii past the simulation's own smoothing is what makes
+				// the structure read as continuous again.
+				space_data.particle_radius_multiplier = (float)parse_double(i, argc, argv, "--radius-mult");
+				if (space_data.particle_radius_multiplier < 0.0f) {
+					arg_error("--radius-mult must be >= 0");
+				}
 			}
 			else if (arg == "--radius-const") {
 				space_data.particle_radius_const = parse_double(i, argc, argv, "--radius-const");

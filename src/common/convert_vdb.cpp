@@ -1421,11 +1421,38 @@ namespace space_converter {
 			 * Handles special case for density block with k-NN precomputed values.
 			 */
 			float ConvertVDBBase::get_particle_norm_value(int blocknr, uint64_t id) {
-				if (blocknr == get_particle_rho_blocknr()) {
+				if (blocknr == get_particle_rho_blocknr() && !block_exp10 &&
+					block_component < 0 && block_scale == 1.0) {
 					return get_particle_rho(id);
 				}
 
-				return get_particle_norm_value_internal(blocknr, id);
+				if (block_component >= 0) {
+					// One component of a multi-element block. Done here rather than in
+					// each reader so it works for every format: the readers already
+					// hand out the components, this only picks one of them.
+					const int n = get_particle_value_comp_internal(blocknr, id);
+					if (block_component >= n || n > kMaxBlockComponents) {
+						return 0.0f;
+					}
+
+					float values[kMaxBlockComponents];
+					if (get_particle_value_internal(blocknr, id, values) <= block_component) {
+						return 0.0f;
+					}
+					return decode_block_value(values[block_component]);
+				}
+
+				return decode_block_value(get_particle_norm_value_internal(blocknr, id));
+			}
+
+			float ConvertVDBBase::decode_block_value(float v) const {
+				double d = v;
+				if (block_exp10) {
+					// log10(0) is written as -inf by some codes; pow turns that into 0
+					d = pow(10.0, d);
+				}
+				d *= block_scale;
+				return std::isfinite(d) ? (float)d : 0.0f;
 			}
 
 			int ConvertVDBBase::get_particle_value(int blocknr, uint64_t id, float* out_value) {
