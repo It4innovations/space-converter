@@ -100,6 +100,12 @@ namespace plutovtk {
 			// Read VTK file
 			auto reader = vtkSmartPointer<vtkRectilinearGridReader>::New();
 			reader->SetFileName(vtk_file.c_str());
+			// PLUTO writes every variable as its own SCALARS (or VECTORS, with
+			// VTK_VECTOR_DUMP) section of one CELL_DATA block; the legacy reader
+			// only loads the first section of each attribute type unless asked.
+			reader->ReadAllScalarsOn();
+			reader->ReadAllVectorsOn();
+			reader->ReadAllFieldsOn();
 			reader->Update();
 
 			vtk_grid = reader->GetOutput();

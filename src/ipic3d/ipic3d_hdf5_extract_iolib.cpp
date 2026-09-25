@@ -100,6 +100,7 @@ namespace ipic3d {
             double Lx = 0.0, Ly = 0.0, Lz = 0.0;
             int Nxc = 0, Nyc = 0, Nzc = 0;
             int XLEN = 1, YLEN = 1, ZLEN = 1;
+            bool periodic[3] = { false, false, false };
             bool loaded = false;
         };
 
@@ -121,6 +122,11 @@ namespace ipic3d {
         std::vector<IdSegment> id_segments;
         size_t g_local_total = 0;
         GridSettings grid_settings;
+
+        // HDF5 group holding the particle species (iPIC3D writes the full particle
+        // output to /particles and the downsampled one - ParticlesDownsampleOutputTag
+        // position_DS + velocity_DS + q_DS - to /particles_DS); set by init_lib.
+        std::string particles_group = "/particles";
         int64_t g_total_particles = 0;
         double steps_time[2];
 
@@ -343,7 +349,7 @@ namespace ipic3d {
 
         double get_particle_rho(uint64_t id) {
             int species; bool is_grid; size_t i;
-            if (resolve_id(id, species, is_grid, i) && is_grid) {
+            if (resolve_id(id, species, is_grid, i) && is_grid && grid_data_by_species[species].has_rho()) {
                 return grid_data_by_species[species].rho[i];
             }
             return 1.0;
@@ -444,6 +450,23 @@ namespace ipic3d {
             }
         }
 
+        // H5Lexists that walks the path one component at a time: H5Lexists itself only
+        // tolerates a missing last component, and raises (and prints) an HDF5 error when
+        // an intermediate group is missing - e.g. /particles/species_0/x in a file that
+        // has no /particles at all.
+        static htri_t h5_path_exists(hid_t loc_id, const char* path, hid_t lapl_id) {
+            std::string p(path);
+            size_t pos = (!p.empty() && p[0] == '/') ? 1 : 0;
+            while (pos <= p.size()) {
+                size_t next = p.find('/', pos);
+                if (next == std::string::npos) next = p.size();
+                htri_t e = H5Lexists(loc_id, p.substr(0, next).c_str(), lapl_id);
+                if (e <= 0) return e;
+                pos = next + 1;
+            }
+            return 1;
+        }
+
         // Replace "{}" placeholders in pattern with the given file number.
         std::string format_filename(const std::string& pattern, int number) {
             std::string result = pattern;
@@ -531,6 +554,8 @@ namespace ipic3d {
                 memtype = H5T_NATIVE_UINT64;
             } else if (std::is_same<T, int64_t>::value) {
                 memtype = H5T_NATIVE_INT64;
+            } else if (std::is_same<T, int>::value) {
+                memtype = H5T_NATIVE_INT;
             } else {
                 H5Sclose(dataspace_id);
                 H5Dclose(dataset_id);
@@ -560,6 +585,13 @@ namespace ipic3d {
 
             try {
                 out.species_type = species_id;
+                // A grid-only file (fields and moments, no particle dump) has no
+                // /particles group; that species then simply has no real particles.
+                if (h5_path_exists(file_id, species_path.c_str(), H5P_DEFAULT) <= 0) {
+                    out.count = 0;
+                    H5Fclose(file_id);
+                    return;
+                }
                 read_hdf5_dataset(file_id, species_path + "/x" + cycle_suffix, out.x);
                 read_hdf5_dataset(file_id, species_path + "/y" + cycle_suffix, out.y);
                 read_hdf5_dataset(file_id, species_path + "/z" + cycle_suffix, out.z);
@@ -570,7 +602,7 @@ namespace ipic3d {
                 // ID is optional: iPIC3D only writes it when particle tracking is on,
                 // and nothing downstream needs it for rasterizing density or moments.
                 // Requiring it aborted the whole run on datasets that simply lack it.
-                if (H5Lexists(file_id, (species_path + "/ID").c_str(), H5P_DEFAULT) > 0) {
+                if (h5_path_exists(file_id, (species_path + "/ID").c_str(), H5P_DEFAULT) > 0) {
                     read_hdf5_dataset(file_id, species_path + "/ID" + cycle_suffix, out.id);
                 }
                 else {
@@ -589,7 +621,7 @@ namespace ipic3d {
         // does not exist. Used for /fields and /moments datasets, which are optional.
         template<typename T>
         bool try_read_hdf5_dataset(hid_t file_id, const std::string& dataset_path, std::vector<T>& data) {
-            if (H5Lexists(file_id, dataset_path.c_str(), H5P_DEFAULT) <= 0) {
+            if (h5_path_exists(file_id, dataset_path.c_str(), H5P_DEFAULT) <= 0) {
                 return false;
             }
             try {
@@ -636,6 +668,10 @@ namespace ipic3d {
             if (try_read_hdf5_scalar(file_id, "/topology/XLEN", tmp)) s.XLEN = (int)tmp;
             if (try_read_hdf5_scalar(file_id, "/topology/YLEN", tmp)) s.YLEN = (int)tmp;
             if (try_read_hdf5_scalar(file_id, "/topology/ZLEN", tmp)) s.ZLEN = (int)tmp;
+            const char* periodic_names[3] = { "/topology/periodicX", "/topology/periodicY", "/topology/periodicZ" };
+            for (int a = 0; a < 3; a++) {
+                if (try_read_hdf5_scalar(file_id, periodic_names[a], tmp)) s.periodic[a] = tmp != 0.0;
+            }
 
             s.loaded = true;
             H5Fclose(file_id);
@@ -644,19 +680,28 @@ namespace ipic3d {
 
         // Read this file's MPI-rank coordinate within the iPIC3D cartesian topology
         // (used to place its local field/moment grid tile within the global domain).
-        void read_topology_coord(hid_t file_id, int coord[3]) {
+        // iPIC3D writes /topology/cartesian_coord into proc<rank>.hdf only when it also
+        // writes restart data (CallFinalize or RestartOutputCycle > 0). Without it the
+        // coordinate follows from the file's rank: iPIC3D numbers the files by
+        // cartesian rank, and MPI_Cart_create (dims = XLEN, YLEN, ZLEN, reorder = 0)
+        // orders ranks row-major, z fastest.
+        void read_topology_coord(hid_t file_id, int file_index, const GridSettings& s, int coord[3]) {
             coord[0] = coord[1] = coord[2] = 0;
             std::vector<int> data;
             if (try_read_hdf5_dataset(file_id, "/topology/cartesian_coord", data) && data.size() >= 3) {
                 coord[0] = data[0];
                 coord[1] = data[1];
                 coord[2] = data[2];
+            } else if (s.loaded && file_index >= 0 && s.XLEN * s.YLEN * s.ZLEN > 1) {
+                coord[2] = file_index % s.ZLEN;
+                coord[1] = (file_index / s.ZLEN) % s.YLEN;
+                coord[0] = file_index / (s.ZLEN * s.YLEN);
             }
         }
 
         // Read one 3D grid dataset (e.g. /fields/Bx/cycle_N) and report its dimensions.
         bool read_grid_dataset(hid_t file_id, const std::string& dataset_path, std::vector<double>& data, hsize_t dims[3]) {
-            if (H5Lexists(file_id, dataset_path.c_str(), H5P_DEFAULT) <= 0) {
+            if (h5_path_exists(file_id, dataset_path.c_str(), H5P_DEFAULT) <= 0) {
                 return false;
             }
 
@@ -690,39 +735,78 @@ namespace ipic3d {
             return status >= 0;
         }
 
+        // True when a [nx,ny,nz] tile holds exactly its rank's nodes, boundary nodes
+        // included on both sides (local cells + 1 per axis), so that neighbouring tiles
+        // repeat the node they share. This is what iPIC3D's HDF5 output writes; the
+        // alternative is a tile padded by a 1-cell ghost layer on each side.
+        static bool is_shared_node_layout(const hsize_t dims[3], const GridSettings& s) {
+            if (!s.loaded) return false;
+            const int nc[3] = { s.Nxc, s.Nyc, s.Nzc };
+            const int len[3] = { s.XLEN, s.YLEN, s.ZLEN };
+            for (int a = 0; a < 3; a++) {
+                if (len[a] < 1 || nc[a] % len[a] != 0) return false;
+                if ((hsize_t)(nc[a] / len[a] + 1) != dims[a]) return false;
+            }
+            return true;
+        }
+
         // Compute the world-space position of every point in a [nx,ny,nz] local grid tile,
         // given this tile's coordinate in the cartesian process topology. Points are
         // placed at the grid nodes, which is correct for iPIC3D's node-centered
         // field/moment datasets (not at cell centers).
-        // NOTE: assumes iPIC3D's standard 1-cell ghost layer on each side of every local
-        // field/moment tile; adjust GHOST if a given dataset's layout differs.
+        // keep[idx] is false for points that must not be deposited: the ghost layer of a
+        // padded tile, or the far-side node a shared-node tile repeats from its
+        // neighbour (depositing it twice would double the value on every tile seam).
         void compute_grid_positions(const hsize_t dims[3], const int coord[3], const GridSettings& s,
-                                     std::vector<double>& px, std::vector<double>& py, std::vector<double>& pz) {
-            const int64_t GHOST = 1;
+                                     std::vector<double>& px, std::vector<double>& py, std::vector<double>& pz,
+                                     std::vector<char>& keep) {
+            const bool shared = is_shared_node_layout(dims, s);
+            const int64_t GHOST = shared ? 0 : 1;
             size_t n = (size_t)dims[0] * dims[1] * dims[2];
             px.resize(n); py.resize(n); pz.resize(n);
+            keep.assign(n, 1);
 
-            int64_t interior_x = (int64_t)dims[0] - 2 * GHOST;
-            int64_t interior_y = (int64_t)dims[1] - 2 * GHOST;
-            int64_t interior_z = (int64_t)dims[2] - 2 * GHOST;
-            if (interior_x < 1) interior_x = (int64_t)dims[0];
-            if (interior_y < 1) interior_y = (int64_t)dims[1];
-            if (interior_z < 1) interior_z = (int64_t)dims[2];
+            // Stride between the tiles of neighbouring ranks, in nodes.
+            int64_t stride[3];
+            for (int a = 0; a < 3; a++) {
+                stride[a] = shared ? (int64_t)dims[a] - 1 : (int64_t)dims[a] - 2 * GHOST;
+                if (stride[a] < 1) stride[a] = (int64_t)dims[a];
+            }
+            const int len[3] = { s.XLEN, s.YLEN, s.ZLEN };
+
+            // Whether local node index i along axis a is owned by this tile. The node
+            // at the far face of the domain is kept only on a non-periodic axis: on a
+            // periodic one it is the node at the near face over again.
+            auto owned = [&](int a, hsize_t i) {
+                if (shared) return i + 1 < dims[a] || (coord[a] == len[a] - 1 && !s.periodic[a]);
+                return (int64_t)i >= GHOST && (int64_t)i < (int64_t)dims[a] - GHOST;
+            };
 
             size_t idx = 0;
             for (hsize_t i = 0; i < dims[0]; i++) {
-                double gx = (coord[0] * interior_x + ((int64_t)i - GHOST)) * s.Dx;
+                double gx = (coord[0] * stride[0] + ((int64_t)i - GHOST)) * s.Dx;
                 for (hsize_t j = 0; j < dims[1]; j++) {
-                    double gy = (coord[1] * interior_y + ((int64_t)j - GHOST)) * s.Dy;
+                    double gy = (coord[1] * stride[1] + ((int64_t)j - GHOST)) * s.Dy;
                     for (hsize_t k = 0; k < dims[2]; k++) {
-                        double gz = (coord[2] * interior_z + ((int64_t)k - GHOST)) * s.Dz;
+                        double gz = (coord[2] * stride[2] + ((int64_t)k - GHOST)) * s.Dz;
                         px[idx] = gx;
                         py[idx] = gy;
                         pz[idx] = gz;
+                        keep[idx] = owned(0, i) && owned(1, j) && owned(2, k);
                         idx++;
                     }
                 }
             }
+        }
+
+        // Drop the entries of v whose keep flag is false (no-op for an absent dataset).
+        static void compact(std::vector<double>& v, const std::vector<char>& keep) {
+            if (v.size() != keep.size()) return;
+            size_t o = 0;
+            for (size_t i = 0; i < v.size(); i++) {
+                if (keep[i]) v[o++] = v[i];
+            }
+            v.resize(o);
         }
 
         // Open one HDF5 file and read all /fields and /moments/species_N datasets for the
@@ -739,11 +823,17 @@ namespace ipic3d {
 
             try {
                 int coord[3];
-                read_topology_coord(file_id, coord);
+                read_topology_coord(file_id, file_index, settings, coord);
 
                 hsize_t dims[3] = { 0, 0, 0 };
                 bool have_dims = false;
+                // Per-species moments live under /moments/species_N; runs that only
+                // write the species-summed moments keep them directly under /moments.
                 std::string moments_path = "/moments/species_" + std::to_string(species_id);
+                if (h5_path_exists(file_id, "/moments", H5P_DEFAULT) > 0 &&
+                    h5_path_exists(file_id, moments_path.c_str(), H5P_DEFAULT) <= 0) {
+                    moments_path = "/moments";
+                }
 
                 auto read_field = [&](const char* name, std::vector<double>& dst) {
                     hsize_t local_dims[3];
@@ -754,9 +844,16 @@ namespace ipic3d {
                 read_field("Ex", out.ex); read_field("Ey", out.ey); read_field("Ez", out.ez);
                 read_field("Bx", out.bx); read_field("By", out.by); read_field("Bz", out.bz);
 
+                // A moment missing from /moments/species_N falls back to the species-summed
+                // one under /moments (e.g. FieldOutputTag "J + rho_s" writes the total J
+                // flat and only rho per species); like E and B, it is then the same grid
+                // in every species.
                 auto read_moment = [&](const char* name, std::vector<double>& dst) {
                     hsize_t local_dims[3];
-                    if (read_grid_dataset(file_id, moments_path + "/" + name + cycle_suffix, dst, local_dims)) {
+                    bool ok = read_grid_dataset(file_id, moments_path + "/" + name + cycle_suffix, dst, local_dims);
+                    if (!ok && moments_path != "/moments")
+                        ok = read_grid_dataset(file_id, std::string("/moments/") + name + cycle_suffix, dst, local_dims);
+                    if (ok) {
                         if (!have_dims) { dims[0] = local_dims[0]; dims[1] = local_dims[1]; dims[2] = local_dims[2]; have_dims = true; }
                     }
                 };
@@ -766,8 +863,15 @@ namespace ipic3d {
                 read_moment("pYY", out.pyy); read_moment("pYZ", out.pyz); read_moment("pZZ", out.pzz);
 
                 if (have_dims) {
-                    compute_grid_positions(dims, coord, settings, out.px, out.py, out.pz);
-                    out.count = (size_t)dims[0] * dims[1] * dims[2];
+                    std::vector<char> keep;
+                    compute_grid_positions(dims, coord, settings, out.px, out.py, out.pz, keep);
+                    for (std::vector<double>* v : { &out.px, &out.py, &out.pz,
+                                                    &out.ex, &out.ey, &out.ez, &out.bx, &out.by, &out.bz,
+                                                    &out.rho, &out.jx, &out.jy, &out.jz,
+                                                    &out.pxx, &out.pxy, &out.pxz, &out.pyy, &out.pyz, &out.pzz }) {
+                        compact(*v, keep);
+                    }
+                    out.count = out.px.size();
                 } else {
                     out.count = 0;
                 }
@@ -794,6 +898,9 @@ namespace ipic3d {
             dst.by.insert(dst.by.end(), src.by.begin(), src.by.end());
             dst.bz.insert(dst.bz.end(), src.bz.begin(), src.bz.end());
             dst.rho.insert(dst.rho.end(), src.rho.begin(), src.rho.end());
+            dst.jx.insert(dst.jx.end(), src.jx.begin(), src.jx.end());
+            dst.jy.insert(dst.jy.end(), src.jy.begin(), src.jy.end());
+            dst.jz.insert(dst.jz.end(), src.jz.begin(), src.jz.end());
             dst.pxx.insert(dst.pxx.end(), src.pxx.begin(), src.pxx.end());
             dst.pxy.insert(dst.pxy.end(), src.pxy.begin(), src.pxy.end());
             dst.pxz.insert(dst.pxz.end(), src.pxz.begin(), src.pxz.end());
@@ -801,6 +908,78 @@ namespace ipic3d {
             dst.pyz.insert(dst.pyz.end(), src.pyz.begin(), src.pyz.end());
             dst.pzz.insert(dst.pzz.end(), src.pzz.begin(), src.pzz.end());
             dst.count += src.count;
+        }
+
+        // Append periodic images of the grid points lying within pad_cells cells of a
+        // periodic face, shifted by one domain length to the far side. A deposit
+        // with a kernel of up to that many cells is then periodic-correct inside the
+        // domain, so an export box of exactly one period gives a tile that joins its
+        // own copies without a seam. Every copy comes from this rank's own points.
+        void add_periodic_images(GridData& g, const GridSettings& s, double pad_cells) {
+            if (!s.loaded || pad_cells <= 0.0 || g.count == 0) return;
+            const double L[3] = { s.Lx, s.Ly, s.Lz };
+            const double pad[3] = { pad_cells * s.Dx, pad_cells * s.Dy, pad_cells * s.Dz };
+            std::vector<double>* fields[] = { &g.ex, &g.ey, &g.ez, &g.bx, &g.by, &g.bz,
+                                              &g.rho, &g.jx, &g.jy, &g.jz,
+                                              &g.pxx, &g.pxy, &g.pxz, &g.pyy, &g.pyz, &g.pzz };
+            const size_t n = g.count;
+            for (size_t i = 0; i < n; i++) {
+                const double p[3] = { g.px[i], g.py[i], g.pz[i] };
+                // per axis: which shifts (in domain lengths) this point needs
+                int shifts[3][2]; int ns[3];
+                for (int a = 0; a < 3; a++) {
+                    ns[a] = 0;
+                    shifts[a][ns[a]++] = 0;
+                    if (!s.periodic[a] || L[a] <= 0.0) continue;
+                    if (p[a] < pad[a]) shifts[a][ns[a]++] = 1;
+                    else if (p[a] > L[a] - pad[a]) shifts[a][ns[a]++] = -1;
+                }
+                for (int ix = 0; ix < ns[0]; ix++)
+                    for (int iy = 0; iy < ns[1]; iy++)
+                        for (int iz = 0; iz < ns[2]; iz++) {
+                            if (ix == 0 && iy == 0 && iz == 0) continue;
+                            g.px.push_back(p[0] + shifts[0][ix] * L[0]);
+                            g.py.push_back(p[1] + shifts[1][iy] * L[1]);
+                            g.pz.push_back(p[2] + shifts[2][iz] * L[2]);
+                            for (std::vector<double>* f : fields) {
+                                if (f->size() >= n) f->push_back((*f)[i]);
+                            }
+                        }
+            }
+            g.count = g.px.size();
+        }
+
+        // The same periodic images for real particles: a copy of every particle within
+        // pad_cells cells of a periodic face, shifted by one domain length, so a particle
+        // deposit is periodic-correct at the domain faces too.
+        void add_periodic_particle_images(ParticleData& d, const GridSettings& s, double pad_cells) {
+            const size_t n = d.x.size();
+            if (!s.loaded || pad_cells <= 0.0 || n == 0) return;
+            const double L[3] = { s.Lx, s.Ly, s.Lz };
+            const double pad[3] = { pad_cells * s.Dx, pad_cells * s.Dy, pad_cells * s.Dz };
+            const bool has_id = d.id.size() >= n;
+            for (size_t i = 0; i < n; i++) {
+                const double p[3] = { d.x[i], d.y[i], d.z[i] };
+                int shifts[3][2]; int ns[3];
+                for (int a = 0; a < 3; a++) {
+                    ns[a] = 0;
+                    shifts[a][ns[a]++] = 0;
+                    if (!s.periodic[a] || L[a] <= 0.0) continue;
+                    if (p[a] < pad[a]) shifts[a][ns[a]++] = 1;
+                    else if (p[a] > L[a] - pad[a]) shifts[a][ns[a]++] = -1;
+                }
+                for (int ix = 0; ix < ns[0]; ix++)
+                    for (int iy = 0; iy < ns[1]; iy++)
+                        for (int iz = 0; iz < ns[2]; iz++) {
+                            if (ix == 0 && iy == 0 && iz == 0) continue;
+                            d.x.push_back(p[0] + shifts[0][ix] * L[0]);
+                            d.y.push_back(p[1] + shifts[1][iy] * L[1]);
+                            d.z.push_back(p[2] + shifts[2][iz] * L[2]);
+                            d.u.push_back(d.u[i]); d.v.push_back(d.v[i]); d.w.push_back(d.w[i]);
+                            d.q.push_back(d.q[i]);
+                            if (has_id) d.id.push_back(d.id[i]);
+                        }
+            }
         }
 
         // If settings_file is empty, derive "settings.hdf" living next to hdf5_file.
@@ -814,11 +993,17 @@ namespace ipic3d {
         std::vector<int> discover_species(hid_t file_id) {
             std::vector<int> species;
             for (int s = 0; s < IPIC3DParticleType::PTMax; s++) {
-                std::string p = "/particles/species_" + std::to_string(s);
+                std::string p = particles_group + "/species_" + std::to_string(s);
                 std::string m = "/moments/species_" + std::to_string(s);
-                if (H5Lexists(file_id, p.c_str(), H5P_DEFAULT) > 0 || H5Lexists(file_id, m.c_str(), H5P_DEFAULT) > 0) {
+                if (h5_path_exists(file_id, p.c_str(), H5P_DEFAULT) > 0 || h5_path_exists(file_id, m.c_str(), H5P_DEFAULT) > 0) {
                     species.push_back(s);
                 }
+            }
+            // No per-species data, only /fields and species-summed /moments: load that
+            // grid once, under the first species slot.
+            if (species.empty() && (h5_path_exists(file_id, "/fields", H5P_DEFAULT) > 0 ||
+                                    h5_path_exists(file_id, "/moments", H5P_DEFAULT) > 0)) {
+                species.push_back(0);
             }
             return species;
         }
@@ -827,7 +1012,7 @@ namespace ipic3d {
         // "/particles/species_0/x" or "/fields/Bx"). Returns -1 if the group is missing
         // or has no cycle_* entries.
         int discover_last_cycle(hid_t file_id, const std::string& group_path) {
-            if (H5Lexists(file_id, group_path.c_str(), H5P_DEFAULT) <= 0) return -1;
+            if (h5_path_exists(file_id, group_path.c_str(), H5P_DEFAULT) <= 0) return -1;
 
             hid_t group_id = H5Gopen(file_id, group_path.c_str(), H5P_DEFAULT);
             if (group_id < 0) return -1;
@@ -866,17 +1051,22 @@ namespace ipic3d {
 
             int cycle = -1;
             for (int s : species) {
-                cycle = std::max(cycle, discover_last_cycle(file_id, "/particles/species_" + std::to_string(s) + "/x"));
+                cycle = std::max(cycle, discover_last_cycle(file_id, particles_group + "/species_" + std::to_string(s) + "/x"));
                 cycle = std::max(cycle, discover_last_cycle(file_id, "/moments/species_" + std::to_string(s) + "/rho"));
             }
             cycle = std::max(cycle, discover_last_cycle(file_id, "/fields/Bx"));
+            cycle = std::max(cycle, discover_last_cycle(file_id, "/moments/rho"));
             cycle_id = (cycle < 0) ? 0 : cycle;
 
             H5Fclose(file_id);
         }
 
         void init_lib(std::string hdf5_file, int world_rank, int world_size,
-                      int num_files, std::string settings_file) {
+                      int num_files, std::string settings_file, int cycle, double periodic_pad,
+                      std::string particles_group_name, bool load_grid) {
+            particles_group = "/" + particles_group_name;
+            while (particles_group.size() > 1 && particles_group[1] == '/') particles_group.erase(0, 1);
+            while (particles_group.size() > 1 && particles_group.back() == '/') particles_group.pop_back();
 #ifdef WITH_OPENMP
             steps_time[0] = omp_get_wtime();
 #endif
@@ -906,6 +1096,7 @@ namespace ipic3d {
             std::vector<int> species_list;
             int cycle_id;
             discover_species_and_cycle(hdf5_file, (int)probe_file_index, species_list, cycle_id);
+            if (cycle >= 0) cycle_id = cycle;
             std::string cycle_suffix = "/cycle_" + std::to_string(cycle_id);
 
             if (world_rank == 0) {
@@ -914,6 +1105,7 @@ namespace ipic3d {
                 for (size_t i = 0; i < species_list.size(); i++) printf("%s%d", i ? "," : "", species_list[i]);
                 printf("]\n");
                 printf("Settings file: %s (%s)\n", settings_path.c_str(), settings.loaded ? "loaded" : "not found, using defaults");
+                printf("Particles group: %s, grid (fields/moments): %s\n", particles_group.c_str(), load_grid ? "loaded" : "skipped (--no-grid)");
             }
 
             particle_data_by_species.assign(IPIC3DParticleType::PTMax, ParticleData());
@@ -924,7 +1116,7 @@ namespace ipic3d {
             }
 
             for (int species_id : species_list) {
-                std::string species_path = "/particles/species_" + std::to_string(species_id);
+                std::string species_path = particles_group + "/species_" + std::to_string(species_id);
                 ParticleData& result = particle_data_by_species[species_id];
                 GridData& grid_result = grid_data_by_species[species_id];
 
@@ -938,9 +1130,11 @@ namespace ipic3d {
                         read_particle_file(hdf5_file, (int)(file_start + i), species_path, cycle_suffix, species_id, file_data);
                         append_particle_range(file_data, result, 0, file_data.count);
 
-                        GridData file_grid;
-                        read_grid_file(hdf5_file, (int)(file_start + i), species_id, cycle_suffix, settings, file_grid);
-                        append_grid_data(file_grid, grid_result);
+                        if (load_grid) {
+                            GridData file_grid;
+                            read_grid_file(hdf5_file, (int)(file_start + i), species_id, cycle_suffix, settings, file_grid);
+                            append_grid_data(file_grid, grid_result);
+                        }
                     }
                 } else {
                     // Fewer files than ranks: a group of ranks shares each file and
@@ -969,14 +1163,16 @@ namespace ipic3d {
                     // The grid (field/moment) tile belongs to the whole file, not to a
                     // particle sub-range, so only the first rank in the sharing group
                     // loads it once to avoid duplicating the same grid points.
-                    if (local_index == 0) {
+                    if (local_index == 0 && load_grid) {
                         GridData file_grid;
                         read_grid_file(hdf5_file, file_index, species_id, cycle_suffix, settings, file_grid);
                         append_grid_data(file_grid, grid_result);
                     }
                 }
 
+                add_periodic_particle_images(result, settings, periodic_pad);
                 result.count = result.x.size();
+                add_periodic_images(grid_result, settings, periodic_pad);
             }
 
             // Build the combined id space: for each species, its particles followed

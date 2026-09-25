@@ -91,14 +91,24 @@ namespace ipic3d {
         // @return The global particle count.
         size_t get_global_num_particles();
 
-        // Initialize the iPIC3D library. Every species and the latest cycle present in
-        // the file are discovered and loaded automatically (no species/cycle selection).
+        // Initialize the iPIC3D library. Every species present in the file is discovered
+        // and loaded automatically; so is the latest cycle unless one is requested.
+        // Files without /particles or /moments/species_N (only /fields and flat
+        // /moments/{rho,Jx,Jy,Jz,...}) are loaded as a single grid under Species_0.
         // @param settings_file: Path to the companion settings.hdf file containing grid
         //        geometry (/collective/Dx,Dy,Dz,Lx,Ly,Lz,Nxc,Nyc,Nzc and /topology/XLEN,YLEN,ZLEN).
         //        If empty, "settings.hdf" next to hdf5_file is used; if that cannot be opened,
         //        grid points are positioned using a unit spacing fallback.
+        // @param cycle: Cycle to load (the N of the cycle_N datasets); -1 = latest.
+        // @param periodic_pad: Also load periodic images of the grid points within this
+        //        many cells of a periodic face (0 = off); see add_periodic_images.
+        // @param particles_group: HDF5 group of the particle species ("particles", or
+        //        "particles_DS" for iPIC3D's downsampled particle output).
+        // @param load_grid: false = read only the particles, not the /fields and /moments
+        //        grid points (which would otherwise join each species as phantom points).
         void init_lib(std::string hdf5_file, int world_rank, int world_size,
-            int num_files, std::string settings_file = "");
+            int num_files, std::string settings_file = "", int cycle = -1, double periodic_pad = 0.0,
+            std::string particles_group = "particles", bool load_grid = true);
 
         // Finalize and clean up the iPIC3D library.
         void finish_lib();

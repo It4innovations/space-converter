@@ -72,6 +72,10 @@ namespace ipic3d {
         std::string hdf5_file;
         std::string settings_file;
         int num_files = 1;
+        int cycle = -1;
+        double periodic_pad = 0.0;
+        std::string particles_group = "particles";
+        bool load_grid = true;
 
         for (int i = 1; i < argc; i++) {
             const std::string arg = argv[i];
@@ -84,9 +88,21 @@ namespace ipic3d {
             else if (arg == "--num-files") {
                 num_files = std::stoi(argv[++i]);
             }
+            else if (arg == "--cycle") {
+                cycle = std::stoi(argv[++i]);
+            }
+            else if (arg == "--periodic-pad") {
+                periodic_pad = std::stod(argv[++i]);
+            }
+            else if (arg == "--particles-group") {
+                particles_group = argv[++i];
+            }
+            else if (arg == "--no-grid") {
+                load_grid = false;
+            }
         }
 
-        ipic3d::io::init_lib(hdf5_file, world_rank, world_size, num_files, settings_file);
+        ipic3d::io::init_lib(hdf5_file, world_rank, world_size, num_files, settings_file, cycle, periodic_pad, particles_group, load_grid);
 
         print_CPU_steps();
     }

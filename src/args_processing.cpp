@@ -133,9 +133,14 @@ namespace space_converter {
 		std::cout << "\t--haccbin-file FILE         : HACC binary format file path" << std::endl;
 
 		std::cout << "\nIPIC3D_HDF5 args:" << std::endl;
-		std::cout << "\t--hdf5-file FILE            : iPIC3D HDF5 file path (all species, fields and moments at the latest cycle are loaded automatically)" << std::endl;
+		std::cout << "\t--hdf5-file FILE            : iPIC3D HDF5 file path (all species, fields and moments are loaded automatically)" << std::endl;
 		std::cout << "\t--num-files N               : Number of files to load" << std::endl;
 		std::cout << "\t--settings-file FILE        : Companion settings.hdf (grid geometry); defaults to settings.hdf next to --hdf5-file" << std::endl;
+		std::cout << "\t--cycle N                   : Cycle to load (the N of the cycle_N datasets) [latest]" << std::endl;
+		std::cout << "\t--periodic-pad N            : Add periodic images of the grid points and particles within N cells of a periodic face, so a" << std::endl;
+		std::cout << "\t                              kernel up to N cells wide deposits periodic-correct values at the domain faces [0]" << std::endl;
+		std::cout << "\t--particles-group NAME      : HDF5 group of the particle species, e.g. particles_DS for the downsampled output [particles]" << std::endl;
+		std::cout << "\t--no-grid                   : Read only the particles, not the /fields and /moments grid points" << std::endl;
 
 		std::cout << "\nPLUTO_VTK args:" << std::endl;
 		std::cout << "\t--vtk-file FILE             : PLUTO VTK rectilinear grid file path" << std::endl;
@@ -191,6 +196,10 @@ namespace space_converter {
 			{ "--hdf5-file", 1 },
 			{ "--num-files", 1 },
 			{ "--settings-file", 1 },
+			{ "--cycle", 1 },
+			{ "--periodic-pad", 1 },
+			{ "--particles-group", 1 },
+			{ "--no-grid", 0 },
 			// PLUTO
 			{ "--vtk-file", 1 },
 			{ "--scalar-names", -1 },
