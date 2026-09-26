@@ -34,6 +34,8 @@ option(WITH_HDF5  "Enable HDF5" OFF)
 option(WITH_HACC  "Enable HACC" OFF)
 option(WITH_IPIC3D  "Enable IPIC3D" OFF)
 option(WITH_PLUTO  "Enable PLUTO" OFF)
+option(WITH_RAMSES "Enable RAMSES" OFF)
+option(WITH_BHAC "Enable BHAC" OFF)
 option(WITH_VTK   "Enable VTK" OFF)
 
 # option(GADGET_MAX_HSML  "Enable loading of limited values from gadget files" OFF)

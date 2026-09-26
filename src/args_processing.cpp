@@ -37,7 +37,7 @@ namespace space_converter {
 	static void usage(int exit_code = 0, bool print = true)
 	{
 		if (print) {
-		std::cout << "./space_converter --data-type [GADGET, GADGET_SIMPLE, CHANGA_TIPSY, CHANGA_NCHILADA, HACC_GENERICIO, HACC_BIN, IPIC3D_HDF5, PLUTO_VTK] <options> <args>" << std::endl;
+		std::cout << "./space_converter --data-type [GADGET, GADGET_SIMPLE, CHANGA_TIPSY, CHANGA_NCHILADA, HACC_GENERICIO, HACC_BIN, IPIC3D_HDF5, PLUTO_VTK, RAMSES, BHAC] <options> <args>" << std::endl;
 
 		// === General Options ===
 		std::cout << "\noptions (defaults in brackets):" << std::endl;
@@ -66,6 +66,9 @@ namespace space_converter {
 		std::cout << "\t--bbox x1 y1 z1 x2 y2 z2           : Axis-aligned zoom box in object space [full box]" << std::endl;
 		std::cout << "\t--bbox-sphere x y z r              : Keep only particles inside this sphere (world space)" << std::endl;
 		std::cout << "\t--offset-position X Y Z            : Subtract this offset from all particle positions" << std::endl;
+		std::cout << "\t--bbox-orig x1 y1 z1 x2 y2 z2      : Fixed dataset bbox (data space) mapped onto the object space, instead of" << std::endl;
+		std::cout << "\t                                     the padded bbox of the exported particles; keeps the mapping identical" << std::endl;
+		std::cout << "\t                                     across types, filters and animation frames" << std::endl;
 		std::cout << "\t--radius-const R                   : Fixed particle radius in voxel units (0 = use per-particle radius) [0]" << std::endl;
 		std::cout << "\t--radius-mult M                    : Scale the per-particle radius (0 = leave it alone) [0]" << std::endl;
 		std::cout << "\t--filter-min V                     : Skip particles whose exported block value is < V" << std::endl;
@@ -146,6 +149,27 @@ namespace space_converter {
 		std::cout << "\t--vtk-file FILE             : PLUTO VTK rectilinear grid file path" << std::endl;
 		std::cout << "\t--scalar-names NAME...      : Cell arrays to load (default: all)" << std::endl;
 
+		std::cout << "\nRAMSES args:" << std::endl;
+		std::cout << "\t--ramses-output DIR         : RAMSES output_NNNNN directory (with --anim: a printf pattern of the output number)" << std::endl;
+		std::cout << "\t                              type 0 = AMR leaf cells, 1..5 = particle families DM, Star, Cloud, Debris, Other;" << std::endl;
+		std::cout << "\t                              blocks: Pos, Mass, Rho, Vel, Level, then the hydro variables and particle fields" << std::endl;
+		std::cout << "\t                              of the output's *_file_descriptor.txt (use --info to list them)" << std::endl;
+		std::cout << "\t--ramses-levelmax N         : Keep cells up to AMR level N as leaves (0 = all levels) [0]" << std::endl;
+		std::cout << "\t--ramses-filter F MIN MAX   : Keep only cells/particles whose hydro variable or particle field F lies in" << std::endl;
+		std::cout << "\t                              [MIN, MAX] (code units, applied while reading; repeatable), e.g." << std::endl;
+		std::cout << "\t                              --ramses-filter density 1e-6 1e30, --ramses-filter birth_time 50 1e30" << std::endl;
+		std::cout << "\t--no-gas                    : Do not read the AMR grid (amr/hydro files)" << std::endl;
+		std::cout << "\t--no-particles              : Do not read the particle files" << std::endl;
+
+		std::cout << "\nBHAC args:" << std::endl;
+		std::cout << "\t--bhac-file FILE            : BHAC dataNNNN.dat snapshot (with --anim: a printf pattern of the snapshot number)" << std::endl;
+		std::cout << "\t                              type 0 = leaf cells; blocks: Pos, Mass, Rho (d/lfac), B (b1 b2 b3 as a Cartesian" << std::endl;
+		std::cout << "\t                              vector), Level, then the stored variables (wnames, use --info to list them)" << std::endl;
+		std::cout << "\t--bhac-par FILE             : The run's .par file: base grid, domain, typeaxial and wnames (required)" << std::endl;
+		std::cout << "\t--bhac-coord C              : Code coordinates of a spherical grid: mks, sph (= ks, bl) or cart [mks]" << std::endl;
+		std::cout << "\t--bhac-mks H R0             : MKS parameters coordpar(h_), coordpar(R0_) of the run [0 0]" << std::endl;
+		std::cout << "\t--bhac-rrange RMIN RMAX     : Keep only cells with RMIN <= r <= RMAX (code units, RMAX 0 = no limit) [0 0]" << std::endl;
+
 		// === Examples ===
 		std::cout << "\nexamples:" << std::endl;
 		std::cout << "  # Batch extraction of block 1 for particle type 0 into OpenVDB:" << std::endl;
@@ -203,6 +227,18 @@ namespace space_converter {
 			// PLUTO
 			{ "--vtk-file", 1 },
 			{ "--scalar-names", -1 },
+			// RAMSES
+			{ "--ramses-output", 1 },
+			{ "--ramses-levelmax", 1 },
+			{ "--ramses-filter", 3 },
+			{ "--no-gas", 0 },
+			{ "--no-particles", 0 },
+			// BHAC
+			{ "--bhac-file", 1 },
+			{ "--bhac-par", 1 },
+			{ "--bhac-coord", 1 },
+			{ "--bhac-mks", 2 },
+			{ "--bhac-rrange", 2 },
 		};
 
 		int g_parse_rank = 0;  ///< MPI rank, so parse errors are printed once
@@ -430,6 +466,19 @@ namespace space_converter {
 			}
 			else if (arg == "--no-norm-value") {
 				space_data.use_norm_value = false;
+			}
+			else if (arg == "--bbox-orig") {
+				space_data.use_bbox_orig = true;
+				for (int a = 0; a < 3; a++)
+					space_data.bbox_orig_fixed_min[a] = parse_float(i, argc, argv, "--bbox-orig");
+				for (int a = 0; a < 3; a++)
+					space_data.bbox_orig_fixed_max[a] = parse_float(i, argc, argv, "--bbox-orig");
+
+				for (int a = 0; a < 3; a++) {
+					if (space_data.bbox_orig_fixed_min[a] >= space_data.bbox_orig_fixed_max[a]) {
+						arg_error("--bbox-orig: min must be < max on every axis");
+					}
+				}
 			}
 			else if (arg == "--offset-position") {
 				space_data.offset_position[0] = parse_float(i, argc, argv, "--offset-position");

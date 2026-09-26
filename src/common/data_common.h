@@ -321,6 +321,11 @@ namespace space_converter {
 			bool use_simple_density = false;        // Use simplified density calculation
 			bool use_norm_value = true;		// Use normalized values
 			float offset_position[3] = { 0.0f,0.0f,0.0f };  // Position offset
+			// Fixed data-space bbox (--bbox-orig) instead of the one found from the
+			// particles of the exported type, so every export shares one mapping
+			bool use_bbox_orig = false;
+			float bbox_orig_fixed_min[3] = { 0.0f,0.0f,0.0f };
+			float bbox_orig_fixed_max[3] = { 0.0f,0.0f,0.0f };
 
 			/**
 			 * @brief Print all current SpaceData configuration values.
@@ -410,6 +415,9 @@ namespace space_converter {
 				std::cout << "use_simple_density: " << (use_simple_density ? "true" : "false") << std::endl;
 				std::cout << "use_norm_value: " << (use_norm_value ? "true" : "false") << std::endl;
 				std::cout << "offset_position: [" << offset_position[0] << ", " << offset_position[1] << ", " << offset_position[2] << "]" << std::endl;
+				std::cout << "use_bbox_orig: " << (use_bbox_orig ? "true" : "false") << std::endl;
+				std::cout << "bbox_orig_fixed_min: [" << bbox_orig_fixed_min[0] << ", " << bbox_orig_fixed_min[1] << ", " << bbox_orig_fixed_min[2] << "]" << std::endl;
+				std::cout << "bbox_orig_fixed_max: [" << bbox_orig_fixed_max[0] << ", " << bbox_orig_fixed_max[1] << ", " << bbox_orig_fixed_max[2] << "]" << std::endl;
 
 				std::cout << "================================\n" << std::endl;
 			}

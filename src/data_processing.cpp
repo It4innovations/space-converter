@@ -46,6 +46,14 @@
 #	include "pluto/pluto_vtk_convert_vdb.h"
 #endif
 
+#ifdef WITH_RAMSES
+#	include "ramses/ramses_convert_vdb.h"
+#endif
+
+#ifdef WITH_BHAC
+#	include "bhac/bhac_convert_vdb.h"
+#endif
+
 #ifdef WITH_OPENMP
 #	include <omp.h>
 #endif
@@ -216,6 +224,8 @@ namespace space_converter {
 	 *   - HACC_BIN: HACC binary format
 	 *   - IPIC3D_HDF5: iPIC3D HDF5 format (if compiled with support)
 	 *   - PLUTO_VTK: PLUTO VTK rectilinear grid format (if compiled with support)
+	 *   - RAMSES: RAMSES AMR output directory (if compiled with support)
+	 *   - BHAC: BHAC native .dat snapshot (if compiled with support)
 	 */
 	common::vdb::ConvertVDBBase* init_converter(int argc, char** argv, space_converter::FromCL& from_cl, common::SpaceData& space_data)
 	{
@@ -255,8 +265,18 @@ namespace space_converter {
 			convert_vdb_base = new plutovtk::ConvertVDBPlutoVTK();
 		}
 #endif
+#ifdef WITH_RAMSES
+		else if (from_cl.data_type == "RAMSES") {
+			convert_vdb_base = new ramses::ConvertVDBRamses();
+		}
+#endif
+#ifdef WITH_BHAC
+		else if (from_cl.data_type == "BHAC") {
+			convert_vdb_base = new bhac::ConvertVDBBhac();
+		}
+#endif
 		else {
-			throw std::runtime_error("Unknown data type [GADGET, CHANGA_TIPSY, CHANGA_NCHILADA, HACC_GENERICIO, HACC_BIN, IPIC3D_HDF5, PLUTO_VTK]");
+			throw std::runtime_error("Unknown data type [GADGET, CHANGA_TIPSY, CHANGA_NCHILADA, HACC_GENERICIO, HACC_BIN, IPIC3D_HDF5, PLUTO_VTK, RAMSES, BHAC]");
 		}
 
 		// Other params
@@ -585,13 +605,16 @@ namespace space_converter {
 
 		// Expand bounding box by 1 unit in each direction. floor/ceil (not int
 		// truncation) so negative coordinates are padded outward, not inward.
-		space_data.bbox_min_orig[0] = static_cast<int>(std::floor(bbox_min_orig[0] - 1.0f));
-		space_data.bbox_min_orig[1] = static_cast<int>(std::floor(bbox_min_orig[1] - 1.0f));
-		space_data.bbox_min_orig[2] = static_cast<int>(std::floor(bbox_min_orig[2] - 1.0f));
-
-		space_data.bbox_max_orig[0] = static_cast<int>(std::ceil(bbox_max_orig[0] + 1.0f));
-		space_data.bbox_max_orig[1] = static_cast<int>(std::ceil(bbox_max_orig[1] + 1.0f));
-		space_data.bbox_max_orig[2] = static_cast<int>(std::ceil(bbox_max_orig[2] + 1.0f));
+		// A fixed --bbox-orig replaces the data bbox (no padding).
+		const float pad = space_data.use_bbox_orig ? 0.0f : 1.0f;
+		for (int a = 0; a < 3; a++) {
+			if (space_data.use_bbox_orig) {
+				bbox_min_orig[a] = space_data.bbox_orig_fixed_min[a];
+				bbox_max_orig[a] = space_data.bbox_orig_fixed_max[a];
+			}
+			space_data.bbox_min_orig[a] = static_cast<int>(std::floor(bbox_min_orig[a] - pad));
+			space_data.bbox_max_orig[a] = static_cast<int>(std::ceil(bbox_max_orig[a] + pad));
+		}
 
 		// Calculate the largest dimension to create a symmetric (cubic) bounding box
 		space_data.bbox_size_orig = std::max((double)space_data.bbox_max_orig[0] - (double)space_data.bbox_min_orig[0], (double)space_data.bbox_max_orig[1] - (double)space_data.bbox_min_orig[1]);
@@ -932,8 +955,10 @@ namespace space_converter {
 					// DEBUG_PRINT_GPU_ARRAY(grid_main_gpu->d_data_density, grid_main.dense_grid->size(), "grid_main_gpu->d_data_density after mpi_reduce");
 					// DEBUG_PRINT_GPU_ARRAY(grid_main_gpu_sum->d_data_density, grid_main.dense_grid->size(), "grid_main_gpu_sum->d_data_density after mpi_reduce");
 					
-					// Reduce temp buffer if both grids have it allocated
-					if (grid_main_gpu->d_data_temp != nullptr && grid_main_gpu_sum->d_data_temp != nullptr) {
+					// Reduce the temp (weight) buffer. Collective: every rank must take part,
+					// so decide on the local grid only (the sum grid exists on rank 0 only;
+					// the receive buffer is ignored on the other ranks)
+					if (grid_main_gpu->d_data_temp != nullptr) {
 						mpi_reduce(grid_main_gpu->d_data_temp, grid_main_gpu_sum->d_data_temp, grid_main.dense_grid->size());
 					}
 				}
@@ -948,10 +973,13 @@ namespace space_converter {
 #endif
 					// Standard mode: sum all grids to rank 0
 					mpi_reduce(grid_main.dense_grid->data_density.data(), grid_main_sum.dense_grid->data_density.data(), grid_main.dense_grid->size());
-					// Reduce temp buffer if both grids have it allocated
-					if (!grid_main.dense_grid->data_temp.empty() && !grid_main_sum.dense_grid->data_temp.empty()) {
+					// Reduce the temp (weight) buffer. Collective: every rank must take part,
+					// so decide on the local grid only (the sum grid exists on rank 0 only;
+					// the receive buffer is ignored on the other ranks). Checking the sum
+					// grid as well made rank 0 wait alone -> deadlock with --dense-norm 1/2.
+					if (!grid_main.dense_grid->data_temp.empty()) {
 						mpi_reduce(grid_main.dense_grid->data_temp.data(), grid_main_sum.dense_grid->data_temp.data(), grid_main.dense_grid->size());
-					}		
+					}
 
 #if defined(WITH_GPU_CUDA)
 					if (grid_main_gpu_sum) {

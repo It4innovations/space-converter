@@ -242,6 +242,30 @@ else
     bad "unexpected bbox size: '${BOX_SIZE:-none}' (expected ~380-410 for a 100x200x400 box)"
 fi
 
+# ── T11: weight-normalised dense grid on several ranks ───────────────────────
+# --dense-norm 1/2 also reduce the per-voxel weight grid over MPI. That second
+# reduction was once skipped on the non-root ranks (it was conditioned on the
+# rank-0-only sum grid), so every multi-rank run hung. Each rank runs under
+# `timeout`, so a hang fails the test instead of blocking the suite.
+note "T11: --dense-norm 2 across 1..2 ranks (MPI reduction of the weight grid)"
+T11_OK=1
+T11_REF="$SC_OUT/t11_ref.raw"
+for n in 1 2; do
+    rm -f "$SC_OUT"/*.vdb "$SC_OUT"/*_float.raw 2>/dev/null
+    if ! launch "$n" timeout 300 "$SC_BIN" "${BASE_ARGS[@]}" --export-data 0 0 --dense-type 6 --dense-norm 2 \
+        --radius-const 2 --dense-file 1 >"$SC_OUT/t11_$n.log" 2>&1; then
+        bad "T11: run with $n ranks failed or hung (killed after 300 s) — see t11_$n.log"; T11_OK=0; break
+    fi
+    raw=$(ls "$SC_OUT"/*_float.raw 2>/dev/null | head -1)
+    if [ -z "$raw" ]; then bad "T11: no RAW dump with $n ranks"; T11_OK=0; break; fi
+    if [ "$n" = 1 ]; then
+        cp "$raw" "$T11_REF"
+    elif ! python3 "$HERE/compare_raw.py" "$T11_REF" "$raw" > "$SC_OUT/t11_cmp.log" 2>&1; then
+        bad "T11: normalised grid with $n ranks differs beyond tolerance — see t11_cmp.log"; T11_OK=0
+    fi
+done
+[ "$T11_OK" = 1 ] && ok "normalised dense grid completes and matches across 1..2 ranks"
+
 # ── T10: per-reader smoke tests (each runs only when the build supports it) ──
 # reader_case <label> <expected_count> <ptype> <block> <converter args...>
 reader_case() {
@@ -284,21 +308,29 @@ reader_case haccbin 800 0 0 --data-type HACC_BIN --haccbin-file "$SC_OUT/haccbin
 python3 "$HERE/gen_pluto_vtk.py" "$SC_OUT/pluto_test.vtk" >/dev/null
 reader_case pluto 1536 0 0 --data-type PLUTO_VTK --vtk-file "$SC_OUT/pluto_test.vtk"
 
+# RAMSES: 2 CPU files, 15 AMR leaf cells over two levels, 40 DM + 20 stars
+# (10 of them born before t = 0, selected with --ramses-filter)
+python3 "$HERE/gen_ramses.py" "$SC_OUT/ramses_test" >/dev/null
+reader_case ramses_gas  15 0 2 --data-type RAMSES --ramses-output "$SC_OUT/ramses_test/output_00001"
+reader_case ramses_dm   40 1 1 --data-type RAMSES --ramses-output "$SC_OUT/ramses_test/output_00001" --no-gas
+reader_case ramses_old  10 2 1 --data-type RAMSES --ramses-output "$SC_OUT/ramses_test/output_00001" --ramses-filter birth_time -1e30 0
+
 python3 "$HERE/gen_nchilada.py" "$SC_OUT/nchilada_test" >/dev/null
 reader_case nchilada_gas  600 0 0 --data-type CHANGA_NCHILADA --nc-dir "$SC_OUT/nchilada_test"
 reader_case nchilada_dark 300 1 1 --data-type CHANGA_NCHILADA --nc-dir "$SC_OUT/nchilada_test"
 
 # iPIC3D needs an HDF5-generated dataset: compile the C generator with h5cc
 # (from the HDF5 module). Counts include the synthetic grid points the reader
-# adds per species (400+1000 and 200+1000).
+# adds per species: the 10^3 tiles carry a 1-cell ghost layer that is not
+# deposited, so 8^3 = 512 points each (400+512 and 200+512).
 if command -v h5cc >/dev/null 2>&1; then
     if [ ! -x "$SC_OUT/gen_ipic3d" ] || [ "$HERE/gen_ipic3d.c" -nt "$SC_OUT/gen_ipic3d" ]; then
         h5cc -o "$SC_OUT/gen_ipic3d" "$HERE/gen_ipic3d.c" || echo "   SKIP: ipic3d (h5cc compile failed)"
     fi
     if [ -x "$SC_OUT/gen_ipic3d" ]; then
         "$SC_OUT/gen_ipic3d" "$SC_OUT/ipic3d_test" >/dev/null
-        reader_case ipic3d_sp0 1400 0 0 --data-type IPIC3D_HDF5 --hdf5-file "$SC_OUT/ipic3d_test/restart{}.hdf" --num-files 1 --settings-file "$SC_OUT/ipic3d_test/settings.hdf"
-        reader_case ipic3d_sp1 1200 1 0 --data-type IPIC3D_HDF5 --hdf5-file "$SC_OUT/ipic3d_test/restart{}.hdf" --num-files 1 --settings-file "$SC_OUT/ipic3d_test/settings.hdf"
+        reader_case ipic3d_sp0 912 0 0 --data-type IPIC3D_HDF5 --hdf5-file "$SC_OUT/ipic3d_test/restart{}.hdf" --num-files 1 --settings-file "$SC_OUT/ipic3d_test/settings.hdf"
+        reader_case ipic3d_sp1 712 1 0 --data-type IPIC3D_HDF5 --hdf5-file "$SC_OUT/ipic3d_test/restart{}.hdf" --num-files 1 --settings-file "$SC_OUT/ipic3d_test/settings.hdf"
     fi
 else
     echo "   SKIP: ipic3d (h5cc not available — load the HDF5 module)"
