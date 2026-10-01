@@ -136,6 +136,10 @@ if(WITH_BHAC)
     add_definitions(-DWITH_BHAC)
 endif()
 
+if(WITH_FIL)
+    add_definitions(-DWITH_FIL)
+endif()
+
 if(WITH_NANOFLANN)
     add_definitions(-DWITH_NANOFLANN)
 endif()
@@ -186,6 +190,10 @@ endif()
 
 if(WITH_BHAC)
     add_subdirectory(bhac)
+endif()
+
+if(WITH_FIL)
+    add_subdirectory(fil)
 endif()
 
 ########################################################
@@ -242,6 +250,10 @@ endif()
 
 if(WITH_BHAC)
     target_link_libraries(space_converter bhac_converter)
+endif()
+
+if(WITH_FIL)
+    target_link_libraries(space_converter fil_converter)
 endif()
 
 if(WITH_CUDAKDTREE)

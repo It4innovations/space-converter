@@ -36,6 +36,7 @@ namespace ramses {
         Cloud = 3,      // family 3 (sink cloud particles)
         Debris = 4,     // family 4
         Other = 5,      // family 5, undefined (127) and gas tracers (0)
+        Sink = 6,       // sink particles (sink_NNNNN.csv, read by rank 0)
 
         PTMax           // Maximum value for ParticleType (used for validation or iteration)
     };
@@ -113,7 +114,8 @@ namespace ramses {
         std::string get_dataset_name(int blocknr);
 
         // Smoothing length: gas cell size; particles: size of the cells of
-        // the AMR level they are attached to (levelp).
+        // the AMR level they are attached to (levelp); sinks: size of the
+        // cells of their level (the "level" column of the sink file).
         double get_particle_hsml(uint64_t id);
 
         // Mass: gas density x cell volume; particles: mass (code units).

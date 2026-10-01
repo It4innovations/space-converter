@@ -148,6 +148,7 @@ namespace ramses {
 		case ramses::RamsesParticleType::Cloud: return "Cloud";
 		case ramses::RamsesParticleType::Debris: return "Debris";
 		case ramses::RamsesParticleType::Other: return "Other";
+		case ramses::RamsesParticleType::Sink: return "Sink";
 		default: break;
 		}
 		return "Unknown";

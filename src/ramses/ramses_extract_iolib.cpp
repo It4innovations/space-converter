@@ -46,10 +46,11 @@
 //   get_particle_hsml(id) -> gas: cell size; particles: size of the cells of the AMR
 //                            level the particle is attached to (levelp), i.e. an
 //                            adaptive smoothing length that follows the refinement
-//   particle id space     -> per rank, [gas leaf cells][DM][Star][Cloud][Debris][Other],
+//   particle id space     -> per rank, [gas leaf cells][DM][Star][Cloud][Debris][Other][Sink],
 //                            contiguous per type in type order (the base class relies on it)
 //   MPI split             -> the ncpu RAMSES files are split into contiguous ranges
-//                            over the ranks; every rank reads its own files only
+//                            over the ranks; every rank reads its own files only; the
+//                            sink file (sink_NNNNN.csv, all sinks) is read by rank 0
 //
 // File formats (RAMSES >= 2017, "# version: 1" field descriptors): Fortran
 // unformatted sequential records with 4-byte length markers, native endianness.
@@ -219,6 +220,10 @@ namespace ramses {
 		};
 		std::vector<ResolvedFilter> gas_filters;   // index into gas_vars
 		std::vector<ResolvedFilter> part_filters;  // index into the extra particle fields, -1 = mass
+
+		// Sink fields stored as extra particle fields (index into part_extra, -1 = none)
+		int sink_extra_birth = -1;
+		int sink_extra_acc = -1;
 
 		double steps_time[2];
 
@@ -521,6 +526,59 @@ namespace ramses {
 		}
 
 		// ---------------------------------------------------------------------
+		// Sinks: output_NNNNN/sink_NNNNN.csv (code units)
+		//   # id,msink,x,y,z,vx,vy,vz,lx,ly,lz,tform,acc_rate,del_mass,rho_gas,
+		//     cs**2,etherm,vx_gas,vy_gas,vz_gas,mbh,dmfsink,level
+		// ---------------------------------------------------------------------
+		static std::string sink_file() {
+			char name[64];
+			snprintf(name, sizeof(name), "/sink_%05d.csv", iout);
+			return output_dir_path + name;
+		}
+
+		static void read_sinks(PartBuffers& b) {
+			std::ifstream f(sink_file());
+			if (!f)
+				return;
+			std::string line;
+			while (std::getline(f, line)) {
+				size_t first = line.find_first_not_of(" \t");
+				if (first == std::string::npos || line[first] == '#')
+					continue;
+				std::vector<double> c;
+				std::stringstream ss(line);
+				std::string tok;
+				while (std::getline(ss, tok, ','))
+					c.push_back(std::strtod(tok.c_str(), nullptr));
+				if (c.size() < 13)
+					continue;
+				bool keep = true;
+				for (const ResolvedFilter& flt : part_filters) {
+					double v = 0.0;
+					if (flt.index < 0) v = c[1];
+					else if (flt.index == sink_extra_birth) v = c[11];
+					else if (flt.index == sink_extra_acc) v = c[12];
+					keep = keep && v >= flt.min && v <= flt.max;
+				}
+				if (!keep)
+					continue;
+				for (int a = 0; a < 3; a++) {
+					b.pos.push_back(c[2 + a]);
+					b.vel.push_back((float)c[5 + a]);
+				}
+				b.mass.push_back(c[1]);
+				b.level.push_back((uint8_t)(c.size() >= 23 ? (int)c[22] : nlevelmax));
+				b.extra.resize(part_extra_names.size());
+				for (size_t e = 0; e < part_extra_names.size(); e++) {
+					float v = 0.0f;
+					if ((int)e == sink_extra_birth) v = (float)c[11];
+					else if ((int)e == sink_extra_acc) v = (float)c[12];
+					b.extra[e].push_back(v);
+				}
+			}
+		}
+
+		// ---------------------------------------------------------------------
 		// Public API
 		// ---------------------------------------------------------------------
 		void init_lib(const std::string& output_dir, int world_rank, int world_size,
@@ -549,6 +607,8 @@ namespace ramses {
 			hydro_desc = read_descriptor(output_dir_path + "/hydro_file_descriptor.txt");
 			part_desc = read_descriptor(output_dir_path + "/part_file_descriptor.txt");
 			read_gas = read_gas && !hydro_desc.empty();
+			const bool read_sink_file = read_particles && world_rank == 0 &&
+				std::ifstream(sink_file()).good();
 			read_particles = read_particles && !part_desc.empty();
 
 			// Hydro variables with a fixed block of their own
@@ -590,6 +650,32 @@ namespace ramses {
 				}
 			}
 
+			// Sink fields: birth time (shared with the star field of that name)
+			// and accretion rate
+			if (read_sink_file) {
+				auto add_sink_field = [&](const std::string& n) {
+					auto it = std::find(part_extra_names.begin(), part_extra_names.end(), n);
+					if (it != part_extra_names.end())
+						return (int)(it - part_extra_names.begin());
+					int pidx = (int)part_extra_names.size();
+					part_extra_names.push_back(n);
+					auto eb = std::find_if(extra_blocks.begin(), extra_blocks.end(),
+						[&](const ExtraBlock& b) { return b.name == n; });
+					if (eb != extra_blocks.end()) {
+						eb->part_var = pidx;
+					}
+					else {
+						ExtraBlock b;
+						b.name = n;
+						b.part_var = pidx;
+						extra_blocks.push_back(b);
+					}
+					return pidx;
+				};
+				sink_extra_birth = add_sink_field("birth_time");
+				sink_extra_acc = add_sink_field("accretion_rate");
+			}
+
 			// Filters -> field indices
 			for (const FieldFilter& f : filters) {
 				bool used = false;
@@ -627,6 +713,8 @@ namespace ramses {
 				if (read_particles)
 					read_cpu_particles(icpu, buffers);
 			}
+			if (read_sink_file)
+				read_sinks(buffers[Sink]);
 			ngas = gas_dx.size();
 
 			// Particles in type order
@@ -663,10 +751,11 @@ namespace ramses {
 				for (const FieldDesc& d : part_desc) printf(" %s", d.name.c_str());
 				printf("\n");
 			}
-			printf("Rank %d: RAMSES files %zu..%zu, leaf cells %zu, particles %zu (DM %llu, stars %llu)\n",
+			printf("Rank %d: RAMSES files %zu..%zu, leaf cells %zu, particles %zu (DM %llu, stars %llu, sinks %llu)\n",
 				world_rank, first + 1, first + count, ngas, npart_local,
 				(unsigned long long)(type_offset[DM + 1] - type_offset[DM]),
-				(unsigned long long)(type_offset[Star + 1] - type_offset[Star]));
+				(unsigned long long)(type_offset[Star + 1] - type_offset[Star]),
+				(unsigned long long)(type_offset[Sink + 1] - type_offset[Sink]));
 
 #ifdef WITH_OPENMP
 			steps_time[1] = omp_get_wtime();
@@ -693,6 +782,8 @@ namespace ramses {
 			part_extra_names.clear();
 			gas_filters.clear();
 			part_filters.clear();
+			sink_extra_birth = -1;
+			sink_extra_acc = -1;
 			for (int t = 0; t <= PTMax; t++)
 				type_offset[t] = 0;
 			global_num = 0;
@@ -853,7 +944,7 @@ namespace ramses {
 		}
 
 		static const char* type_name(int t) {
-			static const char* names[PTMax] = { "Gas", "DM", "Star", "Cloud", "Debris", "Other" };
+			static const char* names[PTMax] = { "Gas", "DM", "Star", "Cloud", "Debris", "Other", "Sink" };
 			return (t >= 0 && t < PTMax) ? names[t] : "Unknown";
 		}
 

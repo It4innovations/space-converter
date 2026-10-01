@@ -37,7 +37,7 @@ namespace space_converter {
 	static void usage(int exit_code = 0, bool print = true)
 	{
 		if (print) {
-		std::cout << "./space_converter --data-type [GADGET, GADGET_SIMPLE, CHANGA_TIPSY, CHANGA_NCHILADA, HACC_GENERICIO, HACC_BIN, IPIC3D_HDF5, PLUTO_VTK, RAMSES, BHAC] <options> <args>" << std::endl;
+		std::cout << "./space_converter --data-type [GADGET, GADGET_SIMPLE, CHANGA_TIPSY, CHANGA_NCHILADA, HACC_GENERICIO, HACC_BIN, IPIC3D_HDF5, PLUTO_VTK, RAMSES, BHAC, FIL] <options> <args>" << std::endl;
 
 		// === General Options ===
 		std::cout << "\noptions (defaults in brackets):" << std::endl;
@@ -151,7 +151,8 @@ namespace space_converter {
 
 		std::cout << "\nRAMSES args:" << std::endl;
 		std::cout << "\t--ramses-output DIR         : RAMSES output_NNNNN directory (with --anim: a printf pattern of the output number)" << std::endl;
-		std::cout << "\t                              type 0 = AMR leaf cells, 1..5 = particle families DM, Star, Cloud, Debris, Other;" << std::endl;
+		std::cout << "\t                              type 0 = AMR leaf cells, 1..5 = particle families DM, Star, Cloud, Debris, Other," << std::endl;
+		std::cout << "\t                              6 = sinks (sink_NNNNN.csv; extra blocks birth_time, accretion_rate);" << std::endl;
 		std::cout << "\t                              blocks: Pos, Mass, Rho, Vel, Level, then the hydro variables and particle fields" << std::endl;
 		std::cout << "\t                              of the output's *_file_descriptor.txt (use --info to list them)" << std::endl;
 		std::cout << "\t--ramses-levelmax N         : Keep cells up to AMR level N as leaves (0 = all levels) [0]" << std::endl;
@@ -169,6 +170,20 @@ namespace space_converter {
 		std::cout << "\t--bhac-coord C              : Code coordinates of a spherical grid: mks, sph (= ks, bl) or cart [mks]" << std::endl;
 		std::cout << "\t--bhac-mks H R0             : MKS parameters coordpar(h_), coordpar(R0_) of the run [0 0]" << std::endl;
 		std::cout << "\t--bhac-rrange RMIN RMAX     : Keep only cells with RMIN <= r <= RMAX (code units, RMAX 0 = no limit) [0 0]" << std::endl;
+
+		std::cout << "\nFIL args (FIL / Einstein Toolkit Carpet HDF5 3D output):" << std::endl;
+		std::cout << "\t--fil-file FILE             : Carpet HDF5 file (repeatable; one per variable, group or process, *.file_N.h5)" << std::endl;
+		std::cout << "\t                              type 0 = grid points (finest refinement level wins); blocks: Pos, Mass, Rho," << std::endl;
+		std::cout << "\t                              Level, then one block per variable and per vector group (x/y/z or [0..2]," << std::endl;
+		std::cout << "\t                              use --info to list them)" << std::endl;
+		std::cout << "\t--fil-dir DIR               : Read every 3D output file *.h5 of DIR (repeatable; 1D/2D output and" << std::endl;
+		std::cout << "\t                              checkpoints are skipped)" << std::endl;
+		std::cout << "\t--fil-vars V1,V2,...        : Variables to read, with or without the thorn prefix, e.g. rho,eps,alp,vel [all]" << std::endl;
+		std::cout << "\t--fil-iteration N           : Cactus iteration to read [the latest]; with --anim the frame number is the" << std::endl;
+		std::cout << "\t                              iteration (and replaces {} in --fil-file / --fil-dir)" << std::endl;
+		std::cout << "\t--fil-levels MIN MAX        : Read only the refinement levels MIN..MAX (finer levels are dropped and the" << std::endl;
+		std::cout << "\t                              coarser points kept in their place) [all]" << std::endl;
+		std::cout << "\t--fil-ghosts                : Keep the inter-process ghost zones (default: dropped)" << std::endl;
 
 		// === Examples ===
 		std::cout << "\nexamples:" << std::endl;
@@ -239,6 +254,13 @@ namespace space_converter {
 			{ "--bhac-coord", 1 },
 			{ "--bhac-mks", 2 },
 			{ "--bhac-rrange", 2 },
+			// FIL
+			{ "--fil-file", 1 },
+			{ "--fil-dir", 1 },
+			{ "--fil-vars", 1 },
+			{ "--fil-iteration", 1 },
+			{ "--fil-levels", 2 },
+			{ "--fil-ghosts", 0 },
 		};
 
 		int g_parse_rank = 0;  ///< MPI rank, so parse errors are printed once

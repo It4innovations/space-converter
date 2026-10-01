@@ -11,6 +11,8 @@
 #            [default: <blender root>/install/space_converter_barng_cpu/bin/space_converter]
 #   SC_OUT   scratch directory for test outputs [default: <repo>/temp/tests]
 #   SC_NP    max MPI ranks to test with (2 or 3 recommended) [default: 3]
+#   SC_NODE  run the MPI ranks on this node of the job (srun -w) [any]
+#   SC_LUMI_PARTITION  LUMI only: G (HIP build, default) or C (LUMI-C CPU builds)
 #
 # MPI ranks are started with `mpirun -n N` inside this (single-task) step when
 # mpirun is available, else `srun --overlap -n N` against the surrounding job.
@@ -28,10 +30,13 @@ SC_NP="${SC_NP:-3}"
 if [ -d /appl/lumi ]; then
     # LUMI: the HIP binary doubles as the CPU binary (run without --gpu)
     SC_BIN="${SC_BIN:-$BLENDER_ROOT/install/space_converter_lumi_hip/bin/space_converter}"
+    # SC_LUMI_PARTITION=C for the LUMI-C CPU builds (e.g. space_converter_lumic_fil)
     if command -v ml >/dev/null 2>&1; then
-        ml LUMI/25.09 partition/G 2>/dev/null || true
+        ml LUMI/25.09 partition/${SC_LUMI_PARTITION:-G} 2>/dev/null || true
         ml PrgEnv-gnu 2>/dev/null || true
-        ml rocm/6.4.4 2>/dev/null || true
+        [ "${SC_LUMI_PARTITION:-G}" = G ] && { ml rocm/6.4.4 2>/dev/null || true; }
+        # h5cc for the iPIC3D / FIL test data generators
+        ml cray-hdf5 2>/dev/null || true
     fi
     LIB_DIR="$BLENDER_ROOT/install/lib-linux_x64"
     export LD_LIBRARY_PATH="$LIB_DIR/openvdb/lib:$LIB_DIR/tbb/lib:${ROCM_PATH:-/opt/rocm}/lib:${LD_LIBRARY_PATH:-}"
@@ -69,13 +74,13 @@ if [ -n "${SLURM_JOB_ID:-}" ]; then
         launch() {
             local n=$1; shift
             # shellcheck disable=SC2086
-            env $SLURM_UNSET_FLAGS srun --jobid="$SC_JOBID" --overlap -n "$n" -N1 "$@"
+            env $SLURM_UNSET_FLAGS srun --jobid="$SC_JOBID" --overlap ${SC_NODE:+-w "$SC_NODE"} -n "$n" -N1 "$@"
         }
     else
     launch() {
         local n=$1; shift
         # shellcheck disable=SC2086
-        env $SLURM_UNSET_FLAGS srun --jobid="$SC_JOBID" --overlap --mpi=pmix -n "$n" -N1 "$@"
+        env $SLURM_UNSET_FLAGS srun --jobid="$SC_JOBID" --overlap ${SC_NODE:+-w "$SC_NODE"} --mpi=pmix -n "$n" -N1 "$@"
     }
     fi
 elif command -v mpirun >/dev/null 2>&1; then
@@ -309,11 +314,14 @@ python3 "$HERE/gen_pluto_vtk.py" "$SC_OUT/pluto_test.vtk" >/dev/null
 reader_case pluto 1536 0 0 --data-type PLUTO_VTK --vtk-file "$SC_OUT/pluto_test.vtk"
 
 # RAMSES: 2 CPU files, 15 AMR leaf cells over two levels, 40 DM + 20 stars
-# (10 of them born before t = 0, selected with --ramses-filter)
+# (10 of them born before t = 0, selected with --ramses-filter), 5 sinks
+# (sink_00001.csv, type 6; 3 of them with birth_time >= 0.015)
 python3 "$HERE/gen_ramses.py" "$SC_OUT/ramses_test" >/dev/null
 reader_case ramses_gas  15 0 2 --data-type RAMSES --ramses-output "$SC_OUT/ramses_test/output_00001"
 reader_case ramses_dm   40 1 1 --data-type RAMSES --ramses-output "$SC_OUT/ramses_test/output_00001" --no-gas
 reader_case ramses_old  10 2 1 --data-type RAMSES --ramses-output "$SC_OUT/ramses_test/output_00001" --ramses-filter birth_time -1e30 0
+reader_case ramses_sink  5 6 1 --data-type RAMSES --ramses-output "$SC_OUT/ramses_test/output_00001" --no-gas
+reader_case ramses_young 3 6 1 --data-type RAMSES --ramses-output "$SC_OUT/ramses_test/output_00001" --no-gas --ramses-filter birth_time 0.015 1e30
 
 python3 "$HERE/gen_nchilada.py" "$SC_OUT/nchilada_test" >/dev/null
 reader_case nchilada_gas  600 0 0 --data-type CHANGA_NCHILADA --nc-dir "$SC_OUT/nchilada_test"
@@ -334,6 +342,59 @@ if command -v h5cc >/dev/null 2>&1; then
     fi
 else
     echo "   SKIP: ipic3d (h5cc not available — load the HDF5 module)"
+fi
+
+# FIL (Carpet HDF5): C generator compiled with h5cc, like iPIC3D. Two
+# refinement levels (level 0 split into two components with ghost zones),
+# per-process, per-group and per-variable files plus a 2D slice file that must
+# be ignored. Finest level wins: 702 + 729 = 1431 points; levels 0..0: 729;
+# ghost zones kept: 1728. Blocks: 0 Pos, 1 Mass, 2 Rho, 3 Level, 4 alp, 5 rho,
+# 6..8 vel[0..2], 9 vel (vector, |vel| = 0.5).
+if command -v h5cc >/dev/null 2>&1; then
+    if [ ! -x "$SC_OUT/gen_fil" ] || [ "$HERE/gen_fil.c" -nt "$SC_OUT/gen_fil" ]; then
+        h5cc -o "$SC_OUT/gen_fil" "$HERE/gen_fil.c" || echo "   SKIP: fil (h5cc compile failed)"
+    fi
+    if [ -x "$SC_OUT/gen_fil" ]; then
+        FIL_DIR="$SC_OUT/fil_test"
+        rm -rf "$FIL_DIR"
+        "$SC_OUT/gen_fil" "$FIL_DIR" >/dev/null
+        reader_case fil_rho     1431 0 2 --data-type FIL --fil-dir "$FIL_DIR"
+        reader_case fil_coarse   729 0 2 --data-type FIL --fil-dir "$FIL_DIR" --fil-levels 0 0
+        reader_case fil_ghosts  1728 0 2 --data-type FIL --fil-dir "$FIL_DIR" --fil-ghosts
+        # explicit files, the 2D slice file included (its rank-2 datasets must be skipped)
+        reader_case fil_files   1431 0 5 --data-type FIL --fil-vars rho \
+            --fil-file "$FIL_DIR/hydrobase-rho.xy.h5" --fil-file "$FIL_DIR/hydrobase-rho.file_0.h5" \
+            --fil-file "$FIL_DIR/hydrobase-rho.file_1.h5"
+        reader_case fil_vel     1431 0 9 --data-type FIL --fil-dir "$FIL_DIR"
+        if grep -q "minI: 5.0000[0-9]*e-01, maxI: 5.0000[0-9]*e-01" "$SC_OUT/t10_fil_vel.log"; then
+            ok "fil_vel: vector group vel[0..2] has magnitude 0.5"
+        else
+            bad "fil_vel: expected |vel| = 0.5 — $(grep -oE 'minI: [^,]+, maxI: [^,]+' "$SC_OUT/t10_fil_vel.log" | head -1)"
+        fi
+        if grep -q "iteration 4, t 1," "$SC_OUT/t10_fil_rho.log"; then
+            ok "fil: the latest iteration (4, t = 1) is the default"
+        else
+            bad "fil: default iteration is not 4 — see t10_fil_rho.log"
+        fi
+        reader_case fil_it0     1431 0 3 --data-type FIL --fil-dir "$FIL_DIR" --fil-iteration 0
+        if grep -q "minI: 0.000000e+00, maxI: 1.000000e+00" "$SC_OUT/t10_fil_it0.log" \
+            && grep -q "iteration 0, t 0," "$SC_OUT/t10_fil_it0.log"; then
+            ok "fil_it0: iteration 0 selected, levels 0 and 1 present"
+        else
+            bad "fil_it0: iteration/level range wrong — see t10_fil_it0.log"
+        fi
+        # two ranks share the patches: the global count must not change
+        rm -f "$SC_OUT"/*.vdb 2>/dev/null
+        launch 2 "$SC_BIN" --data-type FIL --fil-dir "$FIL_DIR" --output-path "$SC_OUT" --grid-dim 32 \
+            --export-data 0 2 >"$SC_OUT/t10_fil_np2.log" 2>&1
+        if [ "$(count_of "$SC_OUT/t10_fil_np2.log")" = "1431" ]; then
+            ok "fil_np2: 1431 points over 2 ranks"
+        else
+            bad "fil_np2: count=$(count_of "$SC_OUT/t10_fil_np2.log" || echo '?') (expected 1431) — see t10_fil_np2.log"
+        fi
+    fi
+else
+    echo "   SKIP: fil (h5cc not available — load the HDF5 module)"
 fi
 
 # HACC_GENERICIO: the dataset is written by the gen_genericio tool (built and

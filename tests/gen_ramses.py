@@ -8,6 +8,7 @@ Two CPU files, periodic box (nx = 1, nboundary = 0), boxlen 10, 3 variables
   -> 15 leaf cells.
 Particles: cpu 1 30 DM + 20 stars (birth_time -9.5 .. 9.5, 10 of them < 0),
 cpu 2 10 DM -> 40 DM, 20 stars.
+Sinks: sink_00001.csv with 5 sinks (read by rank 0 as particle type 6).
 
 usage: gen_ramses.py OUT_PARENT_DIR   (creates OUT_PARENT_DIR/output_00001)
 """
@@ -142,6 +143,16 @@ def main():
                 f"levelmax    ={NLEV:11d}\nngridmax    ={100:11d}\nnstep_coarse={10:11d}\n\n"
                 f"boxlen      ={BOXLEN:23.15E}\ntime        ={0.5:23.15E}\naexp        ={1.0:23.15E}\n"
                 f"unit_l      ={3.0857e21:23.15E}\nunit_d      ={6.77e-23:23.15E}\nunit_t      ={4.7e14:23.15E}\n")
+    with open(f"{out}/sink_00001.csv", "w") as f:
+        f.write(" # id,msink,x,y,z,vx,vy,vz,lx,ly,lz,tform,acc_rate,del_mass,rho_gas,cs**2,"
+                "etherm,vx_gas,vy_gas,vz_gas,mbh,dmfsink,level \n")
+        f.write(" # 1,m,l,l,l,l t**-1,l t**-1,l t**-1,m l**2 t**-1,m l**2 t**-1,m l**2 t**-1,"
+                "t,m t**-1,m,m l**-3,l**2 t**-2,m l**2 t**-2,l t**-1,l t**-1,l t**-1,m,m,1\n")
+        for i in range(5):
+            x = 1.0 + 2.0 * i
+            vals = [0.1 * (i + 1), x, x, BOXLEN - x, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.01 * i, 1e-3, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1 * (i + 1)]
+            f.write(f"{i + 1:10d}" + "".join(f",{v:25.16E}" for v in vals) + f",{NLEV:10d}\n")
     with open(f"{out}/hydro_file_descriptor.txt", "w") as f:
         f.write("# version:  1\n# ivar, variable_name, variable_type\n")
         for i, name in enumerate(HYDRO):
