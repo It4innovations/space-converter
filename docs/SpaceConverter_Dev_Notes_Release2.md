@@ -2,18 +2,27 @@
 
 ## Comparison Basis
 
-| Main reference (Release1) | `main` at `b19c7a7` |
-| Development reference (Release2) | `origin/dev` at `1081ec2` |
+| Reference | Commit |
+|---|---|
+| Release1 baseline | `b19c7a7` (historical `main` reference) |
+| Development reference (Release2) | `dev2` at `8783323` |
+
+Updated on October 1, 2026. This comparison covers 105 commits after the Release1 baseline, including 19 commits after the previous development reference, `1081ec2`. Branch tips may move; the commit IDs above define the scope of these notes.
 
 ## Release2 Overview
 
-The development branch is a major architectural and performance update. Particle conversion has been reorganized around reusable dense and sparse voxel managers, a shared particle cache, and CPU/CUDA conversion kernels. The release adds an end-to-end GPU path, a CUB-backed sparse representation, new iPIC3D HDF5 and PLUTO VTK readers, expanded particle and dense export formats, and a substantially updated BSpace add-on.
+The development branch is a major architectural and performance update. Particle conversion has been reorganized around reusable dense and sparse voxel managers, a shared particle cache, and shared CPU/GPU conversion kernels. The release adds CUDA and AMD HIP/ROCm execution, a CUB/hipCUB-backed sparse representation, iPIC3D HDF5, PLUTO VTK, RAMSES, BHAC, and FIL/Carpet HDF5 readers, expanded particle and dense export controls, and a substantially updated BSpace add-on. Recent `dev2` work also corrects particle indexing, density normalization, MPI collectives, reader contracts, and argument validation, and adds CPU and GPU regression workflows.
 
 The build is also reorganized into an installable CMake package. HACC-related readers now live under a unified module, generic CSV and generic HDF5 readers have been removed, and the former multiresolution and conditional temporary-buffer options are no longer part of the active build configuration.
 
 ## Highlights
 
-- Added CUDA execution for dense and sparse particle-to-voxel conversion.
+- Added CUDA and HIP/ROCm execution for dense and sparse particle-to-voxel conversion.
+- Added CPU streaming through `--skip-cache-manager` for lower particle-cache memory use.
+- Added voxel-volume normalization and optimized dense SPH deposition.
+- Corrected compact particle indexing, multi-rank normalization, bbox mapping, and k-NN cycling.
+- Added component selection, log10 decoding, block scaling, value filters, fixed dataset bounds, and custom output names.
+- Added synthetic reader smoke tests, CTest registration, and CPU/GPU comparison tests.
 - Added optional CUDA-aware MPI for direct GPU-buffer reduction and transfer.
 - Added optional CUDA managed-memory allocation.
 - Added CPU, OpenMP, NanoVDB, OpenVDB, and CUB voxel-manager implementations.
@@ -22,6 +31,9 @@ The build is also reorganized into an installable CMake package. HACC-related re
 - Added a voxel-centric dense conversion mode backed by KD-tree queries.
 - Added iPIC3D HDF5 input with particle species, electromagnetic fields, charge density, and pressure moments.
 - Added PLUTO legacy VTK rectilinear-grid input.
+- Added RAMSES AMR cells, particle families, and sink input.
+- Added BHAC native block-AMR snapshots with coordinate conversion.
+- Added FIL / Einstein Toolkit Carpet HDF5 refinement hierarchies.
 - Added VTK PolyData (`.vtp`) particle output and VTK ImageData (`.vti`) dense output.
 - Added native Blender point-cloud import alongside Geometry Nodes particle visualization.
 - Updated BSpace to version 1.1.0 and Blender 5.0.
@@ -32,7 +44,7 @@ The build is also reorganized into an installable CMake package. HACC-related re
 
 ### 1.1 Unified namespace
 
-Core code and format adapters now use the top-level `space_converter` namespace. Common components are nested under `space_converter::common`, with VDB and cache functionality below it. This removes previously mixed global, `common`, and format-specific ownership.
+Core conversion code and converter adapters use the top-level `space_converter` namespace. The newer standalone RAMSES, BHAC, and FIL I/O layers retain their own `ramses`, `bhac`, and `fil` namespaces. Common components are nested under `space_converter::common`, with VDB and cache functionality below it. This removes previously mixed global, `common`, and format-specific ownership.
 
 Downstream C++ code using internal headers must update qualified names, for example:
 
@@ -95,7 +107,7 @@ Responsibilities are now separated as follows:
 A new `CacheManager` centralizes reusable particle data:
 
 - positions grouped by particle type;
-- original and reordered particle identifiers;
+- compact per-type indices and their mapping to original reader identifiers;
 - radii grouped by type;
 - per-type particle offsets;
 - density and mass arrays;
@@ -120,9 +132,13 @@ Particle positions and selected field values are collected once and reused by:
 
 Field lookup was optimized to reduce repeated virtual reader calls during voxelization.
 
+Cached positions, radii, and values use compact indices within each particle type. Sorting permutes these compact indices; `particles_reader_id_per_ptype` maps each slot back to the global reader ID. This fixes incorrect reads and out-of-bounds access for particle types other than zero and keeps cached, sorted, and streaming conversion consistent.
+
 ### 2.3 Radius sorting
 
-The new `--sort-by-radius` option sorts particle identifiers by effective particle radius. CPU and GPU implementations preserve the mapping back to original particle data.
+The new `--sort-by-radius` option sorts particle identifiers by effective particle radius. CPU and GPU implementations preserve the mapping back to original particle data. This ordering is intended to improve locality when support radii differ significantly.
+
+### 2.4 CPU streaming without the cache
 
 `--skip-cache-manager` turns the particle cache off on the CPU path. Instead of materialising
 positions, radii, values and identifiers for every particle (about 32 bytes each), the
@@ -133,15 +149,13 @@ per type) needs 4 LUMI-G nodes with the cache but fits on 2 without it. The opti
 with a note on rank 0, when something needs random access to all particles at once: `--gpu`,
 `--sort-by-radius`, `--sort-by-non-overlap`, `--calc-radius-neigh`, or raw particle export.
 
-This ordering is intended to improve memory locality and conversion behavior when support radii differ significantly.
+### 2.5 Non-overlap sorting
 
-### 2.4 Non-overlap sorting
+The new `--sort-by-non-overlap` option orders particles spatially using Morton codes to improve locality and reduce contention. The option name does not guarantee disjoint support regions; overlapping voxel updates still require synchronization.
 
-The new `--sort-by-non-overlap` option spatially reorganizes particles into groups whose voxel contributions do not overlap. This permits conversion passes with reduced or eliminated atomic-update contention.
+CPU and GPU code paths are available. The algorithm operates on cached particle data and produces an ordered compact-index sequence consumed by conversion kernels.
 
-Both CPU and CUDA code paths are available. The algorithm operates on cached positions and radii and produces an ordered particle-ID sequence consumed by conversion kernels.
-
-## 3. GPU and CUDA Support
+## 3. GPU Support: CUDA and HIP/ROCm
 
 ### 3.1 Build options
 
@@ -244,6 +258,12 @@ New files `gpu_logging.{h,cpp}` and `gpu_utility.h` provide:
 
 Verbose GPU logging remains compile-time controlled.
 
+### 3.9 GPU correctness and backend limits
+
+GPU value-range tracking now matches the CPU path, including neutral extrema for empty MPI ranks. Particle data is copied to the GPU after neighbor-derived radii have been calculated, avoiding stale smoothing lengths. Compact indices are used consistently by CPU and device sorting.
+
+HIP shares the conversion kernels and sparse sort/reduce pipeline through `gpu_device_compat.h`. The cudaKDTree backend and its voxel-centric and GPU-direct neighbor-cycling paths remain CUDA-specific; use the CPU nanoflann backend where appropriate in HIP builds. Raw-particle export falls back to the CPU path even when `--gpu` is selected.
+
 ## 4. Conversion Algorithms
 
 ### 4.1 Shared CPU/CUDA kernels
@@ -313,7 +333,26 @@ Min/max calculation was revised across:
 - CUB sparse data;
 - remote result metadata.
 
-The corrections ensure that final reduced values represent the actual converted output rather than stale local or pre-normalization ranges.
+Source-value extrema and final output extrema are tracked separately. CPU and GPU conversion report comparable particle-value ranges; dense and sparse finalization evaluates reduced grid ranges for export and remote metadata.
+
+### 4.7 Dense normalization and deposition corrections
+
+`--dense-norm` now supports:
+
+| ID | Mode | Final operation |
+|---:|---|---|
+| 0 | None | Keep accumulated values |
+| 1 | Count | Divide by accumulated particle counts |
+| 2 | SPH interpolation | Divide by accumulated SPH weights |
+| 3 | Voxel volume | Divide by `transform_scale^3` |
+
+Voxel-volume normalization gives values per voxel world volume and avoids a per-voxel weight buffer. Its physical interpretation depends on the quantity deposited and the coordinate units. Shared finalization is used for OpenVDB, NanoVDB, and dense CUB output; non-finite normalized results are replaced by zero.
+
+Dense SPH conversion hoists per-particle kernel normalization out of the voxel loops, clips traversal to the allocated grid and spherical support, and uses a single-voxel fast path for support below one voxel. Coordinates use floor rather than truncation, preventing incorrect mapping around zero. Spatial sphere filtering also applies in simple-density mode.
+
+### 4.8 Fixed dataset bounds
+
+`--bbox-orig x1 y1 z1 x2 y2 z2` sets a dataset bbox in data coordinates rather than deriving it from the selected particle type. It keeps the data-to-object mapping consistent across types, read-time filters, and animation frames. `--bbox` continues to select the extraction window in object coordinates. Automatic bbox symmetrization and remote bbox reporting now use the same uniform scale.
 
 ## 5. Data Model and Output Formats
 
@@ -365,6 +404,14 @@ Both VTP and VTI require VTK support in the build.
 ### 5.5 Raw particle serialization
 
 Raw-particle structures were moved into `raw_common.h`. Serialization and merge behavior remain field-oriented, while ownership is separated from OpenVDB/NanoVDB declarations.
+
+### 5.6 Custom output names
+
+`-f FILE` / `--output-file FILE` overrides the automatic `<type>_<dataset>` base name. A relative path is placed under `--output-path` when supplied; animation-frame and MPI-rank suffixes and the format extension are still appended. Supply the base name without an extension.
+
+### 5.7 Scalar block decoding
+
+The shared scalar extraction path adds `--block-comp N` (zero-based component selection), `--block-exp10` (decode log10-stored values), and `--block-scale K` (a positive constant factor). Selection precedes decoding and scaling, which occur before deposition and value filtering. Without component selection, the reader's scalar reduction or vector magnitude is used. Log10 negative infinity decodes to zero. These controls apply to scalar voxel extraction; raw-particle arrays retain their reader-provided components.
 
 ## 6. New Input Formats
 
@@ -424,6 +471,8 @@ Key behavior:
 
 Build requirements are controlled by `WITH_IPIC3D`; HDF5 discovery is part of this module.
 
+Recent iPIC3D changes add `--cycle N`, `--particles-group NAME`, `--no-grid`, and `--periodic-pad N`. The default remains the latest cycle in the `particles` group; a group such as `particles_DS` can select downsampled output. Grid loading can be disabled independently. Ghost points are excluded from supported padded grid tiles, and optional periodic images extend particle and grid support near periodic faces. Particle mass uses the absolute charge weight, so electron charge signs no longer produce negative mass weights.
+
 ### 6.2 PLUTO VTK
 
 New data type:
@@ -450,6 +499,36 @@ The reader:
 - partitions cells for MPI conversion.
 
 The module is controlled by `WITH_PLUTO` and `WITH_VTK`.
+
+### 6.3 RAMSES AMR
+
+`--data-type RAMSES` reads an `output_NNNNN` directory via `--ramses-output DIR`. `WITH_RAMSES` enables the module. AMR, hydro, and particle files are distributed across MPI ranks; sink CSV input is read by rank 0.
+
+| Type ID | Data |
+|---:|---|
+| 0 | AMR leaf cells |
+| 1–5 | DM, Star, Cloud, Debris, Other particle families |
+| 6 | Sinks from `sink_NNNNN.csv` |
+
+Fixed blocks are `Pos`, `Mass`, `Rho`, `Vel`, and `Level`; additional hydro and particle fields come from the output descriptors. Sink fields include birth time and accretion rate. Values remain in code units, with physical unit metadata read from the info file.
+
+`--ramses-levelmax N` caps refinement and retains coarser parents as leaves. Repeatable `--ramses-filter FIELD MIN MAX` applies inclusive read-time filtering in code units to types carrying that field. `--no-gas` and `--no-particles` skip the corresponding inputs. Animation accepts a printf-style output-directory pattern.
+
+### 6.4 BHAC native snapshots
+
+`--data-type BHAC`, enabled by `WITH_BHAC`, reads native `dataNNNN.dat` block-AMR snapshots. `--bhac-file FILE` selects the snapshot and the required `--bhac-par FILE` supplies grid, domain, coordinate, and stored-variable metadata. Each MPI rank reads its assigned leaf blocks.
+
+Type 0 represents leaf cells. Blocks include `Pos`, `Mass`, `Rho`, `B`, `Level`, and the stored variables. `Rho` uses `d/lfac` when both are present; mass uses density times flat-space coordinate cell volume. Magnetic components are transformed to a Cartesian vector with the coordinate Jacobian.
+
+`--bhac-coord mks|sph|cart`, `--bhac-mks H R0`, and `--bhac-rrange RMIN RMAX` control coordinate conversion and radial selection. These quantities and volume conventions use code coordinates rather than a relativistic proper-volume integral. Animation supports printf-style snapshot paths.
+
+### 6.5 FIL / Einstein Toolkit Carpet HDF5
+
+`--data-type FIL`, enabled by `WITH_FIL` (which enables HDF5), reads 3D Carpet HDF5 output from FIL and other Einstein Toolkit codes. Repeatable `--fil-file FILE` and `--fil-dir DIR` accept variable, vector-group, and per-process files; directory discovery skips 1D/2D output and checkpoints.
+
+Type 0 contains grid points from the refinement hierarchy with finer levels taking precedence. Inter-process ghost zones are dropped by default; `--fil-ghosts` retains them. Fixed blocks are `Pos`, `Mass`, `Rho`, and `Level`, followed by scalar variables and recognized vector groups such as `vel[0..2]` or `Bx/By/Bz`. Density uses `rho`, `rho_b`, or a fallback variable; mass is density times coordinate cell volume.
+
+`--fil-vars V1,V2,...` filters variables, `--fil-iteration N` selects an iteration (latest by default), and `--fil-levels MIN MAX` restricts refinement. MPI partitioning balances patches by point count. In animation mode, the frame selects the iteration and replaces `{}` in file or directory paths.
 
 ## 7. Input Module Reorganization
 
@@ -479,7 +558,7 @@ The following generic inputs were removed:
 - `CSV`
 - generic `HDF5`
 
-Their old source directories and CMake targets are no longer built. HDF5 is now used specifically by the iPIC3D adapter.
+Their old source directories and CMake targets are no longer built. HDF5 is now used by the format-specific iPIC3D and FIL adapters.
 
 Applications or scripts using `--data-type CSV`, `--csv-file`, or the old generic `HDF5` mode must migrate to a supported scientific format adapter.
 
@@ -501,11 +580,25 @@ The GADGET and simplified GADGET readers received:
 
 Tipsy and NChilada adapters were migrated to the shared namespace and manager interfaces. XDR size handling was corrected, and sparse GPU compatibility fixes were applied without changing the high-level input names.
 
+### 7.5 Reader correctness fixes
+
+Recent `dev2` work corrects GADGET_SIMPLE record navigation, mass-table offsets, block/type coverage, read-length checking, and cleanup. The CodeBase GADGET reader now handles non-gas masses and guards gas-only SPH fields. NChilada checks field counts and handles large indices; Tipsy auxiliary byte swapping follows the snapshot byte order. GenericIO metadata and missing-field handling, PLUTO coordinate/data access and scalar selection, and iPIC3D availability/count/spacing contracts were corrected.
+
+Reader return helpers are consolidated in `src/common/reader_return_macros.h`. These changes complement the shared compact-index convention and reduce format-specific differences in scalar/component access.
+
 ## 8. Command-Line Changes
 
 ### 8.1 Added options
 
 ```text
+--output-file FILE  (alias: -f)
+--block-comp N
+--block-exp10
+--block-scale K
+--filter-min V
+--filter-max V
+--radius-mult M
+--bbox-orig x1 y1 z1 x2 y2 z2
 --cub
 --dense-file X
 --radius-const X
@@ -520,6 +613,8 @@ Tipsy and NChilada adapters were migrated to the shared namespace and manager in
 --scalar-names [names...]
 ```
 
+Format-specific additions for iPIC3D, RAMSES, BHAC, and FIL are listed in Section 6.
+
 ### 8.2 Changed options
 
 | Previous behavior | New behavior |
@@ -528,6 +623,8 @@ Tipsy and NChilada adapters were migrated to the shared namespace and manager in
 | `--dense2file` flag | `--dense-file X` selects RAW/VTI |
 | `--export-data TYPE BLOCK` | `--export` is also accepted as an alias |
 | `--particle-fix-size` semantics through remote state | Radius multiplier plus optional fixed radius |
+| TCP port default 7000 | Default 5000, matching BSpace |
+| `--dense-norm` IDs 0–2 | IDs 0–3, including voxel-volume normalization |
 
 ### 8.3 Removed or inactive options
 
@@ -535,10 +632,15 @@ Tipsy and NChilada adapters were migrated to the shared namespace and manager in
 - `--multires` and the associated `WITH_MULTIRES` feature were removed from the active build.
 - `WITH_NO_DATA_TEMP` was removed; temporary normalization allocation is runtime-controlled.
 - The CSV-specific and generic-HDF5 CLI groups were removed.
+- The unused `--server` CLI option was removed; the converter is the TCP listening side.
 
 ### 8.4 Configuration diagnostics
 
 `FromCL` and `SpaceData` now provide detailed diagnostic printing of selected modes, radii, output types, bbox values, GPU flags, sorting flags, and animation state.
+
+### 8.5 Argument validation
+
+Unknown flags, missing operands, invalid numbers, invalid enum values, and non-positive grid dimensions now fail with an argument error. Extraction mode is derived after parsing so flag order does not change the result; conflicting selections are rejected. Feature-dependent options report when they have no effect in the current build. `--radius-mult 0` leaves native/derived radii unchanged; `--radius-const` is in voxel units. Value filters are inclusive and are bypassed in simple-density mode, where the deposited value is always one.
 
 ## 9. MPI and Communication
 
@@ -580,6 +682,14 @@ The development work includes:
 - improved connection failure handling;
 - reduced noisy message logging;
 - updated raw-particle handling in BSpace.
+
+### 9.6 Collective and neighbor-search fixes
+
+All ranks now enter dense normalization-weight reduction when `--dense-norm 1` or `2` is selected, fixing a multi-rank deadlock caused by checking the root-only destination buffer on other ranks. Measurement logging no longer inserts MPI barriers into stages entered only by rank 0; timings are rank-local.
+
+Neighbor-search cycling retains candidate lists across MPI rounds and extracts results after the last round. Nanoflann density accumulation starts from a cleared buffer. The radius multiplier is broadcast with the extraction request. Remote validation checks dimensions and enum ranges and supplies a valid dense kernel when needed.
+
+The new block component/decoding/scaling controls are CLI configuration fields and do not add fields to the existing extraction-request stream.
 
 ## 10. BSpace Add-on
 
@@ -663,6 +773,14 @@ When extraction produces no imported volume payload, BSpace can create or update
 
 Extraction operators now catch and print exceptions rather than allowing an unhandled Blender operator failure. Volume-only operations are guarded so they do not run against raw particle objects.
 
+### 10.10 Density shading and connection robustness
+
+The add-on exposes `VoxelVolume` normalization and fixed Shader From Min/Max controls. When both controls are zero, the first extraction captures the range; later bbox or resolution changes can reuse it for consistent shading.
+
+Additional fixes validate selected list indices and received enum/file-type IDs, bound grid/object/density controls, and use finite float32-safe filter defaults. Socket reads raise a connection error if a payload is truncated. Temporary output uses `os.path.join` and falls back to the system temporary directory. Missing NanoVDB converter configuration raises an actionable error. CUB payloads are saved as `.cub` with an explicit unsupported-import message; native CUB volume import is not implemented.
+
+Animation export handlers are cleaned up on unregister and restored after loading a `.blend` file with export registration enabled. Frame extraction uses volume sequence handling where applicable.
+
 ## 11. Logging and Instrumentation
 
 A common logging layer was added:
@@ -728,11 +846,15 @@ OpenVDB and TBB link selection now uses configuration-aware generator expression
 
 - Boost link references were removed from active target definitions.
 - Embree support was removed from the active root configuration.
-- VTK dependency discovery was added.
-- HDF5 discovery moved to iPIC3D support.
+- VTK dependency discovery was added; manually supplied `VTK_LIBRARIES` and `VTK_INCLUDE_DIRS` can be used when a standalone VTK package configuration is unavailable.
+- HDF5 dependency use is now tied to iPIC3D and FIL support.
 - HACC controls GenericIO/Blosc integration.
 - OpenVDB was advanced from submodule commit `f564d35` to `84fc1e6`, bringing newer OpenVDB/NanoVDB APIs and fixes.
 - `submodules/braas-hpc-renderengine` was added at commit `260a7f0`.
+
+### 12.5 CTest registration
+
+`SPACE_CONVERTER_TESTS` defaults to ON and registers the `smoke_tests` CTest test with a 900-second timeout and `SC_BIN` set to the built executable. Tests run only when invoked, not during the build. The driver launches MPI jobs; execute CTest on a compute node with the required runtime environment. Use `-DSPACE_CONVERTER_TESTS=OFF` to disable registration.
 
 ## 13. Platform Script Updates
 
@@ -748,7 +870,9 @@ Common changes include:
 - updating runtime examples to new data-type names;
 - minor MPI/run-command corrections.
 
-The Leonardo profile received the largest platform-specific update, including dependency and configuration-path changes.
+The Leonardo profile includes dependency and configuration-path changes.
+
+Recent `dev2` updates add LUMI-G HIP rank binding via `ROCR_VISIBLE_DEVICES`, a LUMI-D CUDA build profile, a Polaris GPU-binding helper, and corrected `--gpu` launch flags. LUMI managed memory remains disabled in the provided HIP profile for performance. NChilada subset/test helpers are available in `scripts/util/nchilada_subset.py` and `scripts/space_converter/lumi/test_nchilada.sh`; LUMI-C rendering dependency build scripts were also added.
 
 ## 14. Utility Changes
 
@@ -814,9 +938,12 @@ Enable the new format adapters explicitly:
 ```cmake
 -DWITH_IPIC3D=ON
 -DWITH_PLUTO=ON
+-DWITH_RAMSES=ON
+-DWITH_BHAC=ON
+-DWITH_FIL=ON
 ```
 
-`WITH_IPIC3D` automatically enables the required HDF5 dependency, and
+`WITH_IPIC3D` and `WITH_FIL` automatically enable the required HDF5 dependency, and
 `WITH_PLUTO` automatically enables the required VTK dependency. `WITH_HDF5`
 and `WITH_VTK` remain available as lower-level dependency switches.
 
@@ -876,6 +1003,8 @@ Use `IPIC3D_HDF5` for iPIC3D restart data.
 - Replace direct NanoVDB/OpenVDB members on `VDBParticles` with `sparse_grid`.
 - Access cached particle arrays through `ConvertVDBBase::cache_manager`.
 - Implement new virtual interfaces when maintaining an external adapter.
+- Treat ordered cache IDs as compact per-type indices and use the reader-ID mapping for reader calls.
+- Internal GPU selection fields now use `use_gpu` rather than `use_gpu_cuda`.
 
 ### 16.5 Protocol compatibility
 
@@ -885,7 +1014,10 @@ Clients must be updated to understand:
 
 - CUB file type 5;
 - the changed raw-particle format-selection UI/CLI;
-- any new output path extensions such as VTP and VTI.
+- any new output path extensions such as VTP and VTI;
+- dense normalization ID 3 when using voxel-volume normalization.
+
+Update server launch commands for the default port 5000 or pass `--port` explicitly. Remove `--server`. Keep CLI block decoding/scaling settings separate from the unchanged remote request layout.
 
 ## 17. Known Operational Considerations
 
@@ -896,7 +1028,9 @@ Clients must be updated to understand:
 - PLUTO VTK support expects the legacy rectilinear-grid organization implemented by the reader.
 - iPIC3D loading depends on correct restart/settings file organization and HDF5 availability.
 - GPU results should be validated against the CPU path within floating-point tolerance because reduction order differs.
-- No dedicated repository-level automated test suite was added in this branch; validation currently depends on builds, sample runs, and CPU/GPU comparison workflows.
+- Automated smoke and GPU suites now exist, but optional readers and CUDA-only KD-tree paths are skipped when unavailable in a build. BHAC has no dedicated synthetic generator/case in the current smoke suite and needs representative-snapshot validation.
+- FIL support targets 3D Carpet HDF5 output; checkpoint and slice files are not volume inputs.
+- RAMSES, BHAC, and FIL expose code-unit quantities; density and cell-volume conventions must be considered when interpreting exports.
 
 ## 18. Recommended Release Validation
 
@@ -918,10 +1052,40 @@ Before promoting the development branch:
 14. Test remote min/max updates and the interactive bbox object.
 15. Install the CMake package and compile a minimal external `find_package` consumer.
 16. Run all updated HPC build and launch profiles on their target platforms.
+17. Build HIP conversion with and without GPU-aware MPI and compare against the same binary's CPU path.
+18. Run the synthetic smoke suite for cached/streaming conversion, nonzero particle types, non-cubic bounds, TCP requests, and multi-rank normalization.
+19. Exercise RAMSES AMR/family/sink selection, FIL iteration/refinement/ghost/vector selection, and representative BHAC coordinate transforms.
+20. Validate component extraction, log10 decoding, scaling, inclusive value filters, fixed dataset bounds, and custom names across animation frames.
+21. Check voxel-volume normalization and fixed BSpace shader ranges at different zoom levels and grid resolutions.
+
+### 18.1 Automated workflows and recorded results
+
+See [the smoke-test guide](../tests/README.md), [the GPU test plan and results](GPU_Test_Plan.md), and [the code-analysis implementation record](SpaceConverter_Code_Analysis_2026-08.md). The smoke driver provides deterministic reader fixtures, argument checks, MPI rank comparisons, cache/streaming comparisons, TCP checks, bbox checks, and normalization-deadlock coverage. The GPU driver covers CPU/GPU agreement, sorting, neighbor search where available, CUB, raw export fallback, and device-buffer communication.
+
+Run from a suitable compute-node allocation with the intended executable:
+
+```bash
+SC_BIN=/path/to/space_converter bash tests/run_smoke_tests.sh
+SC_BIN=/path/to/gpu/space_converter bash tests/run_gpu_tests.sh
+# Alternative for the CMake-registered smoke suite:
+ctest --test-dir /path/to/build --output-on-failure
+```
+
+The repository records the following earlier validation results; these are not new test runs for this documentation update:
+
+| Configuration / recorded scope | Result |
+|---|---|
+| CUDA on Barbora V100 | CPU 18/18; GPU 26/26 |
+| CUDA-aware MPI on Barbora | Targeted B1–B4 device reduction, sparse merge, and neighbor cycling passed |
+| HIP + HIP-aware MPI on LUMI MI250X | CPU 20/20; GPU 19/19, with four CUDA KD-tree cases skipped |
+| Full CPU reader suite on Karolina, September 25, 2026 | 27 passed, none skipped |
+| LUMI-C CPU build including FIL, September 29, 2026 | 32 passed, 0 failed |
+
+Coverage differs between configurations and revisions; the recorded totals do not establish full validation of every option added through `8783323`.
 
 ## 19. Commit Themes
 
-The 86 development commits fall into these broad groups:
+The 105 commits from `b19c7a7` through `8783323` fall into these broad groups:
 
 - initial cleanup and removal of obsolete CSV/generic-HDF5 paths;
 - CMake, Zlib, OpenVDB, and package-link fixes;
@@ -937,6 +1101,12 @@ The 86 development commits fall into these broad groups:
 - logging and profiling;
 - CUB representation and serialization;
 - cross-platform OpenMP, macOS, Linux, and HPC fixes;
-- final remote, min/max, transform, and reader corrections.
+- remote, min/max, transform, and reader corrections;
+- HIP/ROCm and LUMI/Polaris GPU execution;
+- CPU streaming and dense density/performance fixes;
+- code-analysis fixes, strict parsing, protocol hardening, and automated regression tests;
+- custom output naming, block decoding/scaling, filters, and fixed dataset bounds;
+- expanded iPIC3D cycle/periodic/group selection;
+- RAMSES, BHAC, and FIL adapters and associated reader fixtures.
 
 This release should be treated as a major development milestone rather than a small maintenance update because it changes build options, internal APIs, supported input names, output selection, Blender requirements, and execution architecture.
