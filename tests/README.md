@@ -63,6 +63,15 @@ default `<repo>/temp/tests`), `SC_NP` (max ranks for T4, default 3), `SC_NODE`
 `SC_LUMI_PARTITION` (LUMI only: `G` for the HIP build (default), `C` for the
 LUMI-C CPU builds; `cray-hdf5` is loaded for the `h5cc`-built generators).
 
+Barbora CPU nodes with the FIL and FIL_GRACE readers (build:
+`scripts/build_spaceconverter_bar_cpu_fil_grace.sh`; 44 pass, 0 fail, 2026-10-06):
+
+```bash
+ssh <node of the job> "cd <repo>; export SLURM_JOB_ID=<JOBID>; \
+    SC_BIN=/mnt/proj1/open-36-34/milanjaros/projects/blender/install/space_converter_bar_cpu_fil_grace/bin/space_converter \
+    SC_NODE=<node> bash tests/run_smoke_tests.sh"
+```
+
 LUMI-C with the FIL reader (build: `scripts/build_spaceconverter_lumic_fil.sh`;
 32 pass, 0 fail, 2026-09-29):
 

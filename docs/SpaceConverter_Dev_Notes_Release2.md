@@ -34,6 +34,7 @@ The build is also reorganized into an installable CMake package. HACC-related re
 - Added RAMSES AMR cells, particle families, and sink input.
 - Added BHAC native block-AMR snapshots with coordinate conversion.
 - Added FIL / Einstein Toolkit Carpet HDF5 refinement hierarchies.
+- Added FIL_GRACE (GRACE HDF5 volume output) block-structured AMR meshes.
 - Added VTK PolyData (`.vtp`) particle output and VTK ImageData (`.vti`) dense output.
 - Added native Blender point-cloud import alongside Geometry Nodes particle visualization.
 - Updated BSpace to version 1.1.0 and Blender 5.0.
@@ -530,6 +531,14 @@ Type 0 contains grid points from the refinement hierarchy with finer levels taki
 
 `--fil-vars V1,V2,...` filters variables, `--fil-iteration N` selects an iteration (latest by default), and `--fil-levels MIN MAX` restricts refinement. MPI partitioning balances patches by point count. In animation mode, the frame selects the iteration and replaces `{}` in file or directory paths.
 
+### 6.6 FIL_GRACE (GRACE HDF5 volume output)
+
+`--data-type FIL_GRACE`, enabled by `WITH_FIL_GRACE` (which enables HDF5), reads the 3D volume output of GRACE (https://github.com/GRACE-astro/grace), the Kokkos / p4est successor of FIL: one HDF5 file per output, `volume_out_NNNNNN.h5`, selected with `--fil-grace-file FILE`. The file holds the cells of all blocks (p4est leaves) of the block-structured AMR mesh: `/Points` (block vertices), `/Cells`, one dataset per scalar or vector variable, and optionally `/Level`. Only 3D Cartesian meshes are supported.
+
+Type 0 contains the cells of the blocks; the leaves do not overlap, so every cell is kept. Fixed blocks are `Pos`, `Mass`, `Rho`, and `Level`, followed by one block per scalar dataset and one per vector dataset (magnitude or components). Density uses `rho`, `dens`, or the first scalar; mass is density times coordinate cell volume; the smoothing length is the cell size of the block. Without `/Level` the levels are derived from the cell sizes, relative to the coarsest block.
+
+`--fil-grace-vars V1,V2,...` selects datasets (in that order), `--fil-grace-levels MIN MAX` and `--fil-grace-region X0 Y0 Z0 X1 Y1 Z1` restrict the blocks that are read, and `--fil-grace-mirror AXES` adds the mirror images about the planes x, y, z = 0 for runs with reflection symmetry (the mirrored vector component changes sign). MPI ranks read contiguous ranges of blocks. In animation mode the frame number is the iteration and replaces `{}` in the file path, zero-padded to six digits.
+
 ## 7. Input Module Reorganization
 
 ### 7.1 Unified HACC module
@@ -941,9 +950,10 @@ Enable the new format adapters explicitly:
 -DWITH_RAMSES=ON
 -DWITH_BHAC=ON
 -DWITH_FIL=ON
+-DWITH_FIL_GRACE=ON
 ```
 
-`WITH_IPIC3D` and `WITH_FIL` automatically enable the required HDF5 dependency, and
+`WITH_IPIC3D`, `WITH_FIL`, and `WITH_FIL_GRACE` automatically enable the required HDF5 dependency, and
 `WITH_PLUTO` automatically enables the required VTK dependency. `WITH_HDF5`
 and `WITH_VTK` remain available as lower-level dependency switches.
 
@@ -1080,6 +1090,7 @@ The repository records the following earlier validation results; these are not n
 | HIP + HIP-aware MPI on LUMI MI250X | CPU 20/20; GPU 19/19, with four CUDA KD-tree cases skipped |
 | Full CPU reader suite on Karolina, September 25, 2026 | 27 passed, none skipped |
 | LUMI-C CPU build including FIL, September 29, 2026 | 32 passed, 0 failed |
+| Barbora CPU build including FIL and FIL_GRACE, October 6, 2026 | 44 passed, 0 failed |
 
 Coverage differs between configurations and revisions; the recorded totals do not establish full validation of every option added through `8783323`.
 

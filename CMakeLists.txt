@@ -37,6 +37,7 @@ option(WITH_PLUTO  "Enable PLUTO" OFF)
 option(WITH_RAMSES "Enable RAMSES" OFF)
 option(WITH_BHAC "Enable BHAC" OFF)
 option(WITH_FIL "Enable FIL (Carpet HDF5)" OFF)
+option(WITH_FIL_GRACE "Enable FIL_GRACE (GRACE HDF5 volume output)" OFF)
 option(WITH_VTK   "Enable VTK" OFF)
 
 # option(GADGET_MAX_HSML  "Enable loading of limited values from gadget files" OFF)
@@ -196,6 +197,11 @@ endif()
 
 if(WITH_FIL)
     # FIL (Carpet HDF5) requires HDF5
+    set(WITH_HDF5 ON)
+endif()
+
+if(WITH_FIL_GRACE)
+    # FIL_GRACE (GRACE HDF5 volume output) requires HDF5
     set(WITH_HDF5 ON)
 endif()
 

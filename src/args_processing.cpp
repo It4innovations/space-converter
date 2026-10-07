@@ -37,7 +37,7 @@ namespace space_converter {
 	static void usage(int exit_code = 0, bool print = true)
 	{
 		if (print) {
-		std::cout << "./space_converter --data-type [GADGET, GADGET_SIMPLE, CHANGA_TIPSY, CHANGA_NCHILADA, HACC_GENERICIO, HACC_BIN, IPIC3D_HDF5, PLUTO_VTK, RAMSES, BHAC, FIL] <options> <args>" << std::endl;
+		std::cout << "./space_converter --data-type [GADGET, GADGET_SIMPLE, CHANGA_TIPSY, CHANGA_NCHILADA, HACC_GENERICIO, HACC_BIN, IPIC3D_HDF5, PLUTO_VTK, RAMSES, BHAC, FIL, FIL_GRACE] <options> <args>" << std::endl;
 
 		// === General Options ===
 		std::cout << "\noptions (defaults in brackets):" << std::endl;
@@ -185,6 +185,18 @@ namespace space_converter {
 		std::cout << "\t                              coarser points kept in their place) [all]" << std::endl;
 		std::cout << "\t--fil-ghosts                : Keep the inter-process ghost zones (default: dropped)" << std::endl;
 
+		std::cout << "\nFIL_GRACE args (FIL_GRACE / GRACE HDF5 volume output):" << std::endl;
+		std::cout << "\t--fil-grace-file FILE       : Volume output volume_out_NNNNNN.h5 (with --anim: {} is replaced by the" << std::endl;
+		std::cout << "\t                              iteration, zero-padded to 6 digits)" << std::endl;
+		std::cout << "\t                              type 0 = cells of the AMR blocks; blocks: Pos, Mass, Rho, Level, then one" << std::endl;
+		std::cout << "\t                              block per scalar and per vector dataset (use --info to list them)" << std::endl;
+		std::cout << "\t--fil-grace-vars V1,V2,...  : Datasets to read, in this order, e.g. rho,press,alp,Bvec [all]" << std::endl;
+		std::cout << "\t--fil-grace-levels MIN MAX  : Read only the blocks of the refinement levels MIN..MAX (MAX -1 = finest) [all]" << std::endl;
+		std::cout << "\t--fil-grace-region X0 Y0 Z0 X1 Y1 Z1 : Read only the blocks that intersect this box (code units) [all]" << std::endl;
+		std::cout << "\t--fil-grace-mirror AXES     : Add the mirror images about the planes x, y, z = 0 (e.g. z for a run with" << std::endl;
+		std::cout << "\t                              reflection symmetry in z; the mirrored vector component changes sign)" << std::endl;
+		std::cout << "\t--fil-grace-block-size N    : Cells per block edge [derived from the file]" << std::endl;
+
 		// === Examples ===
 		std::cout << "\nexamples:" << std::endl;
 		std::cout << "  # Batch extraction of block 1 for particle type 0 into OpenVDB:" << std::endl;
@@ -261,6 +273,13 @@ namespace space_converter {
 			{ "--fil-iteration", 1 },
 			{ "--fil-levels", 2 },
 			{ "--fil-ghosts", 0 },
+			// FIL_GRACE
+			{ "--fil-grace-file", 1 },
+			{ "--fil-grace-vars", 1 },
+			{ "--fil-grace-levels", 2 },
+			{ "--fil-grace-region", 6 },
+			{ "--fil-grace-mirror", 1 },
+			{ "--fil-grace-block-size", 1 },
 		};
 
 		int g_parse_rank = 0;  ///< MPI rank, so parse errors are printed once

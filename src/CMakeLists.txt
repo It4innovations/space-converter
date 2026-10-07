@@ -140,6 +140,10 @@ if(WITH_FIL)
     add_definitions(-DWITH_FIL)
 endif()
 
+if(WITH_FIL_GRACE)
+    add_definitions(-DWITH_FIL_GRACE)
+endif()
+
 if(WITH_NANOFLANN)
     add_definitions(-DWITH_NANOFLANN)
 endif()
@@ -194,6 +198,10 @@ endif()
 
 if(WITH_FIL)
     add_subdirectory(fil)
+endif()
+
+if(WITH_FIL_GRACE)
+    add_subdirectory(fil_grace)
 endif()
 
 ########################################################
@@ -254,6 +262,10 @@ endif()
 
 if(WITH_FIL)
     target_link_libraries(space_converter fil_converter)
+endif()
+
+if(WITH_FIL_GRACE)
+    target_link_libraries(space_converter fil_grace_converter)
 endif()
 
 if(WITH_CUDAKDTREE)

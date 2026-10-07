@@ -397,6 +397,59 @@ else
     echo "   SKIP: fil (h5cc not available — load the HDF5 module)"
 fi
 
+# FIL_GRACE (GRACE HDF5 volume output): C generator compiled with h5cc. 11 blocks
+# of 4^3 cells on two levels, z >= 0 only (reflection symmetry): 704 cells;
+# mirror z: 1408; levels 0..0: 192; a region that only the block x > 0, y > 0
+# intersects: 64. Blocks: 0 Pos, 1 Mass, 2 Rho, 3 Level, 4 alp, 5 rho, 6 Bvec
+# (vector, |Bvec| = 0.5). The second file has no /Level dataset (levels from
+# the cell sizes: level 1 = 8 blocks = 512 cells).
+if command -v h5cc >/dev/null 2>&1; then
+    if [ ! -x "$SC_OUT/gen_fil_grace" ] || [ "$HERE/gen_fil_grace.c" -nt "$SC_OUT/gen_fil_grace" ]; then
+        h5cc -o "$SC_OUT/gen_fil_grace" "$HERE/gen_fil_grace.c" || echo "   SKIP: fil_grace (h5cc compile failed)"
+    fi
+    if [ -x "$SC_OUT/gen_fil_grace" ]; then
+        FG_DIR="$SC_OUT/fil_grace_test"
+        rm -rf "$FG_DIR"
+        "$SC_OUT/gen_fil_grace" "$FG_DIR" >/dev/null
+        FG_FILE="$FG_DIR/volume_out_000004.h5"
+        reader_case fil_grace_rho      704 0 2 --data-type FIL_GRACE --fil-grace-file "$FG_FILE"
+        if grep -q "iteration 4, t 1," "$SC_OUT/t10_fil_grace_rho.log"; then
+            ok "fil_grace: iteration 4, t = 1 read from the file attributes"
+        else
+            bad "fil_grace: iteration / time wrong — see t10_fil_grace_rho.log"
+        fi
+        reader_case fil_grace_mirror  1408 0 2 --data-type FIL_GRACE --fil-grace-file "$FG_FILE" --fil-grace-mirror z
+        reader_case fil_grace_coarse   192 0 2 --data-type FIL_GRACE --fil-grace-file "$FG_FILE" --fil-grace-levels 0 0
+        reader_case fil_grace_region    64 0 2 --data-type FIL_GRACE --fil-grace-file "$FG_FILE" \
+            --fil-grace-region 0.5 0.5 0 4 4 4
+        reader_case fil_grace_bvec     704 0 6 --data-type FIL_GRACE --fil-grace-file "$FG_FILE"
+        if grep -q "minI: 5.0000[0-9]*e-01, maxI: 5.0000[0-9]*e-01" "$SC_OUT/t10_fil_grace_bvec.log"; then
+            ok "fil_grace_bvec: vector dataset Bvec has magnitude 0.5"
+        else
+            bad "fil_grace_bvec: expected |Bvec| = 0.5 — $(grep -oE 'minI: [^,]+, maxI: [^,]+' "$SC_OUT/t10_fil_grace_bvec.log" | head -1)"
+        fi
+        # one selected dataset is block 4; no /Level dataset: levels from the cell sizes
+        reader_case fil_grace_nolevel  512 0 4 --data-type FIL_GRACE --fil-grace-file "$FG_DIR/volume_out_000008.h5" \
+            --fil-grace-vars alp --fil-grace-levels 1 1
+        if grep -q "minI: 9.5000[0-9]*e-01, maxI: 9.5000[0-9]*e-01" "$SC_OUT/t10_fil_grace_nolevel.log"; then
+            ok "fil_grace_nolevel: level 1 selected by cell size (alp = 0.95)"
+        else
+            bad "fil_grace_nolevel: expected alp = 0.95 — $(grep -oE 'minI: [^,]+, maxI: [^,]+' "$SC_OUT/t10_fil_grace_nolevel.log" | head -1)"
+        fi
+        # two ranks share the blocks: the global count must not change
+        rm -f "$SC_OUT"/*.vdb 2>/dev/null
+        launch 2 "$SC_BIN" --data-type FIL_GRACE --fil-grace-file "$FG_FILE" --output-path "$SC_OUT" --grid-dim 32 \
+            --export-data 0 2 >"$SC_OUT/t10_fil_grace_np2.log" 2>&1
+        if [ "$(count_of "$SC_OUT/t10_fil_grace_np2.log")" = "704" ]; then
+            ok "fil_grace_np2: 704 cells over 2 ranks"
+        else
+            bad "fil_grace_np2: count=$(count_of "$SC_OUT/t10_fil_grace_np2.log" || echo '?') (expected 704) — see t10_fil_grace_np2.log"
+        fi
+    fi
+else
+    echo "   SKIP: fil_grace (h5cc not available — load the HDF5 module)"
+fi
+
 # HACC_GENERICIO: the dataset is written by the gen_genericio tool (built and
 # installed next to space_converter in WITH_HACC builds — the GenericIO format
 # is self-describing with CRCs, so it is synthesized via the bundled library)

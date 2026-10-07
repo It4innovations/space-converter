@@ -58,6 +58,10 @@
 #	include "fil/fil_convert_vdb.h"
 #endif
 
+#ifdef WITH_FIL_GRACE
+#	include "fil_grace/fil_grace_convert_vdb.h"
+#endif
+
 #ifdef WITH_OPENMP
 #	include <omp.h>
 #endif
@@ -231,6 +235,7 @@ namespace space_converter {
 	 *   - RAMSES: RAMSES AMR output directory (if compiled with support)
 	 *   - BHAC: BHAC native .dat snapshot (if compiled with support)
 	 *   - FIL: FIL / Einstein Toolkit Carpet HDF5 3D output (if compiled with support)
+	 *   - FIL_GRACE: FIL_GRACE (GRACE) HDF5 volume output (if compiled with support)
 	 */
 	common::vdb::ConvertVDBBase* init_converter(int argc, char** argv, space_converter::FromCL& from_cl, common::SpaceData& space_data)
 	{
@@ -285,8 +290,13 @@ namespace space_converter {
 			convert_vdb_base = new fil::ConvertVDBFil();
 		}
 #endif
+#ifdef WITH_FIL_GRACE
+		else if (from_cl.data_type == "FIL_GRACE") {
+			convert_vdb_base = new fil_grace::ConvertVDBFilGrace();
+		}
+#endif
 		else {
-			throw std::runtime_error("Unknown data type [GADGET, CHANGA_TIPSY, CHANGA_NCHILADA, HACC_GENERICIO, HACC_BIN, IPIC3D_HDF5, PLUTO_VTK, RAMSES, BHAC, FIL]");
+			throw std::runtime_error("Unknown data type [GADGET, CHANGA_TIPSY, CHANGA_NCHILADA, HACC_GENERICIO, HACC_BIN, IPIC3D_HDF5, PLUTO_VTK, RAMSES, BHAC, FIL, FIL_GRACE]");
 		}
 
 		// Other params
