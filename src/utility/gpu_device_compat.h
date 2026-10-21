@@ -176,6 +176,9 @@ namespace cub = hipcub;
 
 #define cudaStream_t                        hipStream_t
 #define cudaStreamSynchronize               hipStreamSynchronize
+#define cudaStreamCreateWithFlags           hipStreamCreateWithFlags
+#define cudaStreamDestroy                   hipStreamDestroy
+#define cudaStreamNonBlocking               hipStreamNonBlocking
 
 #define cudaEvent_t                         hipEvent_t
 #define cudaEventCreate                     hipEventCreate

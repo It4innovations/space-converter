@@ -133,7 +133,8 @@ namespace space_converter {
 	 *          output the sort-reduce manager sized 1.5x the particles (keys + values
 	 *          x3 = 36 B and ~12 B radix-sort temp per slot); for dense output the grid
 	 *          (and the sum grid of the reduction on rank 0). Streaming keeps per chunk
-	 *          particle 28 B of staging + 48 B of sort-reduce slots, plus the unique
+	 *          particle 48 B of staging (two sets of pos/radius/value + ids) + 48 B of
+	 *          sort-reduce slots, plus the unique
 	 *          voxels (at most min(particles, grid voxels)) for sparse output.
 	 */
 	static size_t choose_gpu_chunk(const space_converter::FromCL& from_cl, const common::SpaceData& space_data,
@@ -170,11 +171,11 @@ namespace space_converter {
 			return 0;
 
 		const double budget = 0.8 * free_bytes - (sparse ? unique_max * 48.0 : (double)dense_bytes);
-		const size_t per_particle = sparse ? 28 + 48 : 28;
+		const size_t per_particle = sparse ? 48 + 48 : 48;
 		size_t chunk = budget > 0 ? (size_t)(budget / per_particle) : 0;
 		if (sparse)
 			chunk = std::min(chunk, (size_t)INT_MAX - unique_max);
-		// Larger chunks gain nothing but cost page-locking time: 2^25 particles = 640 MB of
+		// Larger chunks gain nothing but cost page-locking time: 2^25 particles = 2 x 640 MB of
 		// pinned staging per rank (a 357M-particle chunk took ~10 s to pin on Karolina)
 		chunk = std::min(chunk, (size_t)1 << 25);
 		chunk = std::max(chunk, (size_t)1 << 20);

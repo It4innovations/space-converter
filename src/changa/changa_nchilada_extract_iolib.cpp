@@ -61,6 +61,10 @@ namespace changa {
 
 				uint64_t start_particle_rank = 0;
 				uint64_t num_particles_per_rank = 0;
+
+				/// Same value for every particle (min == max in the file): data holds that
+				/// single value (element 0) instead of one copy per particle
+				bool constant = false;
 			};
 
 			struct NChiladaData {
@@ -103,12 +107,13 @@ namespace changa {
 						return false;
 
 					if (data_map[pt][bt].data != nullptr) {
+						const uint64_t i = data_map[pt][bt].constant ? 0 : id;  // constant field: one stored value
 						switch (data_map[pt][bt].fh.code) {
 						case TypeHandling::float32:
-							value = static_cast<float*>(data_map[pt][bt].data)[data_map[pt][bt].fh.dimensions * id];
+							value = static_cast<float*>(data_map[pt][bt].data)[data_map[pt][bt].fh.dimensions * i];
 							break;
 						case TypeHandling::float64:
-							value = static_cast<double*>(data_map[pt][bt].data)[data_map[pt][bt].fh.dimensions * id];
+							value = static_cast<double*>(data_map[pt][bt].data)[data_map[pt][bt].fh.dimensions * i];
 							break;
 						default:
 							throw XDRException("I don't recognize the type of this field!");
@@ -124,6 +129,7 @@ namespace changa {
 						return false;
 											
 					if (data_map[pt][bt].data != nullptr) {
+						const uint64_t i = data_map[pt][bt].constant ? 0 : id;  // constant field: one stored value
 
 						if (data_map[pt][bt].fh.dimensions != 3)
 							throw XDRException("Wrong dimensions in get_vector3");
@@ -131,12 +137,12 @@ namespace changa {
 						switch (data_map[pt][bt].fh.code) {
 						case TypeHandling::float32:
 							for (unsigned int j = 0; j < data_map[pt][bt].fh.dimensions; ++j)
-								value[j] = static_cast<float*>(data_map[pt][bt].data)[data_map[pt][bt].fh.dimensions * id + j];
+								value[j] = static_cast<float*>(data_map[pt][bt].data)[data_map[pt][bt].fh.dimensions * i + j];
 
 							break;
 						case TypeHandling::float64:
 							for (unsigned int j = 0; j < data_map[pt][bt].fh.dimensions; ++j)
-								value[j] = static_cast<double*>(data_map[pt][bt].data)[data_map[pt][bt].fh.dimensions * id + j];
+								value[j] = static_cast<double*>(data_map[pt][bt].data)[data_map[pt][bt].fh.dimensions * i + j];
 							break;
 						default:
 							throw XDRException("I don't recognize the type of this field!");
@@ -150,6 +156,37 @@ namespace changa {
 
 			};
 			NChiladaData* nch_data = nullptr;
+
+			// readField() expands a field whose min == max (ChaNGa stores just that pair) to
+			// one copy per particle; keep the single value instead, laid out like readField()
+			// (value, min, max) so deleteField() frees it with the same type
+			template <typename T>
+			static void* shrink_constant_field(void* data, uint64_t n, bool& constant)
+			{
+				T* d = static_cast<T*>(data);
+				if (!(d[n] == d[n + 1]))
+					return data;
+				T* c = new T[3];
+				c[0] = d[n];
+				c[1] = d[n];
+				c[2] = d[n + 1];
+				delete[] d;
+				constant = true;
+				return c;
+			}
+
+			static void shrink_constant(NChiladaBlockData& bdata)
+			{
+				const uint64_t n = bdata.num_particles_per_rank;
+				if (bdata.fh.code == TypeHandling::float32)
+					bdata.data = bdata.fh.dimensions == 3
+						? shrink_constant_field<Vector3D<float> >(bdata.data, n, bdata.constant)
+						: shrink_constant_field<float>(bdata.data, n, bdata.constant);
+				else if (bdata.fh.code == TypeHandling::float64)
+					bdata.data = bdata.fh.dimensions == 3
+						? shrink_constant_field<Vector3D<double> >(bdata.data, n, bdata.constant)
+						: shrink_constant_field<double>(bdata.data, n, bdata.constant);
+			}
 
 			void readFieldData(std::string filename, NChiladaBlockData& bdata, int world_rank, int world_size)
 			{
@@ -193,6 +230,7 @@ namespace changa {
 				if (bdata.data == 0) {
 					throw XDRException("Had problems reading in the field");
 				}
+				shrink_constant(bdata);
 				xdr_destroy(&xdrs);
 				fclose(infile);
 				//return data;

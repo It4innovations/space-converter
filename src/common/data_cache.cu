@@ -66,37 +66,50 @@ namespace space_converter {
                 free_stream_buffers();
                 stream_capacity = capacity;
 
-                CUDA_CHECK_ERROR(cudaMallocHost(&h_stream_pos, 3 * capacity * sizeof(float)));
-                CUDA_CHECK_ERROR(cudaMallocHost(&h_stream_values, capacity * sizeof(float)));
-                CUDA_CHECK_ERROR(CUDA_MALLOC(&d_stream_pos, 3 * capacity * sizeof(float)));
-                CUDA_CHECK_ERROR(CUDA_MALLOC(&d_stream_values, capacity * sizeof(float)));
-                if (with_radius) {
-                    CUDA_CHECK_ERROR(cudaMallocHost(&h_stream_radius, capacity * sizeof(float)));
-                    CUDA_CHECK_ERROR(CUDA_MALLOC(&d_stream_radius, capacity * sizeof(float)));
+                for (int s = 0; s < STREAM_SETS; s++) {
+                    CUDA_CHECK_ERROR(cudaMallocHost(&h_stream_pos[s], 3 * capacity * sizeof(float)));
+                    CUDA_CHECK_ERROR(cudaMallocHost(&h_stream_values[s], capacity * sizeof(float)));
+                    CUDA_CHECK_ERROR(CUDA_MALLOC(&d_stream_pos[s], 3 * capacity * sizeof(float)));
+                    CUDA_CHECK_ERROR(CUDA_MALLOC(&d_stream_values[s], capacity * sizeof(float)));
+                    if (with_radius) {
+                        CUDA_CHECK_ERROR(cudaMallocHost(&h_stream_radius[s], capacity * sizeof(float)));
+                        CUDA_CHECK_ERROR(CUDA_MALLOC(&d_stream_radius[s], capacity * sizeof(float)));
+                    }
                 }
 
                 // The gathered chunk is already in sort order: identity ids
                 CUDA_CHECK_ERROR(CUDA_MALLOC(&d_stream_ids, capacity * sizeof(size_t)));
                 thrust::sequence(thrust::device, d_stream_ids, d_stream_ids + capacity, (size_t)0);
+
+                // Uploads on their own stream, independent of the legacy default stream the
+                // conversion kernels use, so the next chunk is copied while one is converted
+                cudaStream_t stream = nullptr;
+                CUDA_CHECK_ERROR(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+                stream_copy = stream;
                 CUDA_SYNC_CHECK();
             }
 
-            void CacheManager::upload_stream_chunk(size_t count) {
-                CUDA_CHECK_ERROR(cudaMemcpy(d_stream_pos, h_stream_pos, 3 * count * sizeof(float), cudaMemcpyHostToDevice));
-                CUDA_CHECK_ERROR(cudaMemcpy(d_stream_values, h_stream_values, count * sizeof(float), cudaMemcpyHostToDevice));
-                if (d_stream_radius != nullptr) {
-                    CUDA_CHECK_ERROR(cudaMemcpy(d_stream_radius, h_stream_radius, count * sizeof(float), cudaMemcpyHostToDevice));
+            void CacheManager::upload_stream_chunk(int set, size_t count) {
+                cudaStream_t stream = static_cast<cudaStream_t>(stream_copy);
+                CUDA_CHECK_ERROR(cudaMemcpyAsync(d_stream_pos[set], h_stream_pos[set], 3 * count * sizeof(float), cudaMemcpyHostToDevice, stream));
+                CUDA_CHECK_ERROR(cudaMemcpyAsync(d_stream_values[set], h_stream_values[set], count * sizeof(float), cudaMemcpyHostToDevice, stream));
+                if (d_stream_radius[set] != nullptr) {
+                    CUDA_CHECK_ERROR(cudaMemcpyAsync(d_stream_radius[set], h_stream_radius[set], count * sizeof(float), cudaMemcpyHostToDevice, stream));
                 }
+                CUDA_CHECK_ERROR(cudaStreamSynchronize(stream));
             }
 
             void CacheManager::free_stream_buffers() {
-                if (h_stream_pos) { CUDA_CHECK_ERROR(cudaFreeHost(h_stream_pos)); h_stream_pos = nullptr; }
-                if (h_stream_radius) { CUDA_CHECK_ERROR(cudaFreeHost(h_stream_radius)); h_stream_radius = nullptr; }
-                if (h_stream_values) { CUDA_CHECK_ERROR(cudaFreeHost(h_stream_values)); h_stream_values = nullptr; }
-                if (d_stream_pos) { CUDA_CHECK_ERROR(cudaFree(d_stream_pos)); d_stream_pos = nullptr; }
-                if (d_stream_radius) { CUDA_CHECK_ERROR(cudaFree(d_stream_radius)); d_stream_radius = nullptr; }
-                if (d_stream_values) { CUDA_CHECK_ERROR(cudaFree(d_stream_values)); d_stream_values = nullptr; }
+                for (int s = 0; s < STREAM_SETS; s++) {
+                    if (h_stream_pos[s]) { CUDA_CHECK_ERROR(cudaFreeHost(h_stream_pos[s])); h_stream_pos[s] = nullptr; }
+                    if (h_stream_radius[s]) { CUDA_CHECK_ERROR(cudaFreeHost(h_stream_radius[s])); h_stream_radius[s] = nullptr; }
+                    if (h_stream_values[s]) { CUDA_CHECK_ERROR(cudaFreeHost(h_stream_values[s])); h_stream_values[s] = nullptr; }
+                    if (d_stream_pos[s]) { CUDA_CHECK_ERROR(cudaFree(d_stream_pos[s])); d_stream_pos[s] = nullptr; }
+                    if (d_stream_radius[s]) { CUDA_CHECK_ERROR(cudaFree(d_stream_radius[s])); d_stream_radius[s] = nullptr; }
+                    if (d_stream_values[s]) { CUDA_CHECK_ERROR(cudaFree(d_stream_values[s])); d_stream_values[s] = nullptr; }
+                }
                 if (d_stream_ids) { CUDA_CHECK_ERROR(cudaFree(d_stream_ids)); d_stream_ids = nullptr; }
+                if (stream_copy) { CUDA_CHECK_ERROR(cudaStreamDestroy(static_cast<cudaStream_t>(stream_copy))); stream_copy = nullptr; }
                 stream_capacity = 0;
             }
 

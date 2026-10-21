@@ -47,6 +47,8 @@
 
 #include <mpi.h>
 #include <algorithm>
+#include <chrono>
+#include <thread>
 
 #ifdef WITH_CUDAKDTREE
 #	include "cudakdtree_tool.h"
@@ -66,6 +68,14 @@
 namespace space_converter {
 	namespace common {
 		namespace vdb {
+
+#ifdef WITH_GPU_CUDA
+			/// Wall-clock seconds (the GPU streaming timers; works without OpenMP)
+			static double wtime()
+			{
+				return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+			}
+#endif
 
 			/**
 			 * @brief Read precomputed particle radii and densities from binary files
@@ -678,9 +688,10 @@ namespace space_converter {
 
 					// Resident cache (gpu_chunk == 0): one call over the device copies.
 					// GPU streaming (gpu_chunk > 0): the particles stay in host memory; chunks of
-					// them are gathered in sort order into pinned buffers, uploaded and converted
-					// one after another. The grid accumulates across the calls (accumulate flag),
-					// min/max and the particle count are per-call outputs combined here.
+					// them are gathered in sort order into pinned buffers, uploaded and converted.
+					// Two buffer sets form a pipeline: a helper thread gathers and uploads chunk
+					// k+1 while the GPU converts chunk k. The grid accumulates across the calls
+					// (accumulate flag), min/max and the particle count are combined here.
 					const bool streaming = cache_manager.gpu_chunk > 0;
 					const size_t chunk = streaming ? std::min(cache_manager.gpu_chunk, num_particles) : num_particles;
 					const std::vector<float>& h_pos = cache_manager.pos_particles_per_ptype[particle_type];
@@ -690,10 +701,36 @@ namespace space_converter {
 						? &cache_manager.radius_particles_per_ptype[particle_type] : nullptr;
 					const std::vector<float>* h_values = cache_manager.values_particles.empty() ? nullptr : &cache_manager.values_particles;
 
+					// Gather chunk [start, start + count) into staging set 'set' and upload it.
+					// Runs on the helper thread (its own OpenMP team) during the previous chunk.
+					double t_gather = 0.0, t_upload = 0.0, t_convert = 0.0, t_wait = 0.0;
+					auto stage_chunk = [&](int set, size_t start, size_t count) {
+						const double t0 = wtime();
+						float* s_pos = cache_manager.h_stream_pos[set];
+						float* s_radius = cache_manager.h_stream_radius[set];
+						float* s_values = cache_manager.h_stream_values[set];
+#pragma omp parallel for
+						for (long long k = 0; k < (long long)count; k++) {
+							const size_t id = h_ids[start + k];
+							s_pos[3 * k + 0] = h_pos[3 * id + 0];
+							s_pos[3 * k + 1] = h_pos[3 * id + 1];
+							s_pos[3 * k + 2] = h_pos[3 * id + 2];
+							if (h_radius) s_radius[k] = (*h_radius)[id];
+							s_values[k] = h_values ? (*h_values)[id] : 0.0f;
+						}
+						const double t1 = wtime();
+						cache_manager.upload_stream_chunk(set, count);
+						t_gather += t1 - t0;
+						t_upload += wtime() - t1;
+					};
+
+					const double t_stream = wtime();
+					std::thread stager;
 					if (streaming) {
 						cache_manager.alloc_stream_buffers(chunk, h_radius != nullptr);
 						if (cache_manager.world_rank == 0)
 							printf("GPU streaming: rank 0 converts %zu particles in chunks of %zu\n", num_particles, chunk);
+						stage_chunk(0, 0, chunk);
 					}
 
 					min_value = FLT_MAX;
@@ -702,6 +739,7 @@ namespace space_converter {
 
 					for (size_t start = 0; start < num_particles; start += chunk) {
 						const size_t count = std::min(chunk, num_particles - start);
+						const int set = (int)((start / chunk) % common::cache::CacheManager::STREAM_SETS);
 						float chunk_min = FLT_MAX;
 						float chunk_max = -FLT_MAX;
 						size_t chunk_count = 0;
@@ -712,24 +750,21 @@ namespace space_converter {
 						const float* d_value_particles;
 
 						if (streaming) {
-							float* s_pos = cache_manager.h_stream_pos;
-							float* s_radius = cache_manager.h_stream_radius;
-							float* s_values = cache_manager.h_stream_values;
-	#pragma omp parallel for
-							for (long long k = 0; k < (long long)count; k++) {
-								const size_t id = h_ids[start + k];
-								s_pos[3 * k + 0] = h_pos[3 * id + 0];
-								s_pos[3 * k + 1] = h_pos[3 * id + 1];
-								s_pos[3 * k + 2] = h_pos[3 * id + 2];
-								if (h_radius) s_radius[k] = (*h_radius)[id];
-								s_values[k] = h_values ? (*h_values)[id] : 0.0f;
+							// Chunk 'start' is staged (by the previous iteration's helper thread);
+							// stage the next one into the other set while this one is converted
+							if (stager.joinable()) {
+								const double t0 = wtime();
+								stager.join();
+								t_wait += wtime() - t0;
 							}
-							cache_manager.upload_stream_chunk(count);
+							const size_t next = start + chunk;
+							if (next < num_particles)
+								stager = std::thread(stage_chunk, 1 - set, next, std::min(chunk, num_particles - next));
 
-							d_pos_particles = cache_manager.d_stream_pos;
+							d_pos_particles = cache_manager.d_stream_pos[set];
 							d_particles_id_ordered = cache_manager.d_stream_ids;
-							d_radius_particles = h_radius ? cache_manager.d_stream_radius : nullptr;
-							d_value_particles = h_values ? cache_manager.d_stream_values : nullptr;
+							d_radius_particles = h_radius ? cache_manager.d_stream_radius[set] : nullptr;
+							d_value_particles = h_values ? cache_manager.d_stream_values[set] : nullptr;
 						}
 						else {
 							// Use GPU kernel with cached GPU particle positions
@@ -739,6 +774,7 @@ namespace space_converter {
 							d_value_particles = cache_manager.d_values_particles;
 						}
 
+						const double t_conv0 = wtime();
 						kernel::convert_iolib_to_grid_gpu(
 							d_pos_particles,
 							d_particles_id_ordered,
@@ -792,6 +828,7 @@ namespace space_converter {
 	#endif
 							start > 0
 						);
+						t_convert += wtime() - t_conv0;
 
 						min_value = std::min(min_value, chunk_min);
 						max_value = std::max(max_value, chunk_max);
@@ -799,7 +836,15 @@ namespace space_converter {
 					}
 
 					if (streaming) {
+						if (stager.joinable())
+							stager.join();
 						cache_manager.free_stream_buffers();
+						// Where the streamed conversion spends its time (rank 0): the helper
+						// thread's gather + upload overlap the conversion, 'wait' is what the
+						// conversion still waited for them
+						if (cache_manager.world_rank == 0)
+							printf("GPU streaming: rank 0 total %.3f s, convert %.3f s, gather %.3f s, upload %.3f s, waited for staging %.3f s\n",
+								wtime() - t_stream, t_convert, t_gather, t_upload, t_wait);
 					}
 
 					//printf("===convert_iolib_to_grid: CONVERT GPU: %f [s]\n", omp_get_wtime() - t);

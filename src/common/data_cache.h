@@ -114,15 +114,19 @@ namespace space_converter {
                 /// longer grows with the number of local particles. 0 = resident cache.
                 size_t gpu_chunk = 0;
 
-                /// Streaming buffers: pinned host staging and device copies of one chunk
-                float* h_stream_pos = nullptr;
-                float* h_stream_radius = nullptr;
-                float* h_stream_values = nullptr;
-                float* d_stream_pos = nullptr;
-                float* d_stream_radius = nullptr;
-                float* d_stream_values = nullptr;
+                /// Streaming buffers, two sets: while the GPU converts the chunk in one set, the
+                /// next chunk is gathered and uploaded into the other. Pinned host staging and
+                /// device copies; the uploads run on their own non-blocking stream.
+                static constexpr int STREAM_SETS = 2;
+                float* h_stream_pos[STREAM_SETS] = {};
+                float* h_stream_radius[STREAM_SETS] = {};
+                float* h_stream_values[STREAM_SETS] = {};
+                float* d_stream_pos[STREAM_SETS] = {};
+                float* d_stream_radius[STREAM_SETS] = {};
+                float* d_stream_values[STREAM_SETS] = {};
                 size_t* d_stream_ids = nullptr;     ///< 0..chunk-1 (the chunk is already in sort order)
                 size_t stream_capacity = 0;
+                void* stream_copy = nullptr;        ///< cudaStream_t of the uploads
 
                 /// Stream particles from the reader instead of caching them. The per-ptype
                 /// vectors above stay empty; the conversion pulls particles in chunks, which
@@ -165,7 +169,7 @@ namespace space_converter {
                 void copy_particles_to_gpu();                               ///< Copy all particle data from CPU to GPU
                 void copy_values_to_gpu();                                  ///< Copy particle values from CPU to GPU
                 void alloc_stream_buffers(size_t capacity, bool with_radius); ///< Allocate the streaming buffers for chunks of up to capacity particles
-                void upload_stream_chunk(size_t count);                     ///< Copy the first count gathered particles of the host staging buffers to the device
+                void upload_stream_chunk(int set, size_t count);            ///< Copy the first count gathered particles of staging set 'set' to the device (waits for the copy)
                 void free_stream_buffers();                                 ///< Free the streaming buffers
                 void free_gpu_memory();                                     ///< Free all GPU memory allocations
 
