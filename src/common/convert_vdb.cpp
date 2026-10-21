@@ -1027,7 +1027,12 @@ namespace space_converter {
 					return;
 				}
 
-				if (cache_manager.skip_cache) {
+				// Only the exported type is cached (cache_ptype) but the bbox of other or all
+				// types is requested (find_bbox with -1): walk the reader as in streaming mode,
+				// so the bbox does not depend on the cache.
+				const bool uncached_type = cache_manager.cache_ptype >= 0 && particle_type != cache_manager.cache_ptype;
+
+				if (cache_manager.skip_cache || uncached_type) {
 					// Streaming mode: positions are not cached, so walk the reader once. Same
 					// reduction as find_bbox_cpu, just fed straight from the snapshot.
 					const size_t no_points = get_local_num_particles();

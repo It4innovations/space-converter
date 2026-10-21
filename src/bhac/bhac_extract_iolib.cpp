@@ -41,6 +41,11 @@
 #include "convert_common.h"
 #include "reader_return_macros.h"
 
+// MSVC defines M_PI only with _USE_MATH_DEFINES
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 // Reader data contract (see docs/SpaceConverter_Code_Analysis_2026-08.md §7):
 //   positions             -> Cartesian cell centres in code length units (M for GRMHD);
 //                            spherical grids: x = r sin(theta) cos(phi), y = r sin(theta)

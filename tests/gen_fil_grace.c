@@ -39,9 +39,18 @@
  */
 
 #include <hdf5.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef _WIN32
+#include <direct.h>
+#define MKDIR(d) _mkdir(d)
+#else
+#include <sys/stat.h>
+#define MKDIR(d) mkdir(d, 0775)
+#endif
 
 #define NB 4
 #define NQ 11
@@ -135,10 +144,11 @@ int main(int argc, char** argv) {
 		fprintf(stderr, "usage: gen_fil_grace OUT_DIR\n");
 		return 1;
 	}
-	char cmd[4096], path[4096];
-	snprintf(cmd, sizeof(cmd), "mkdir -p '%s'", argv[1]);
-	if (system(cmd) != 0)
+	char path[4096];
+	if (MKDIR(argv[1]) != 0 && errno != EEXIST) {
+		perror(argv[1]);
 		return 1;
+	}
 
 	Block b[NQ];
 	int q = 0;

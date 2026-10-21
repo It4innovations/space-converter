@@ -42,9 +42,18 @@
  */
 
 #include <hdf5.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef _WIN32
+#include <direct.h>
+#define MKDIR(d) _mkdir(d)
+#else
+#include <sys/stat.h>
+#define MKDIR(d) mkdir(d, 0775)
+#endif
 
 #define NGH 2
 
@@ -140,10 +149,10 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 	const char* dir = argv[1];
-	char cmd[1100];
-	snprintf(cmd, sizeof(cmd), "mkdir -p '%s'", dir);
-	if (system(cmd) != 0)
+	if (MKDIR(dir) != 0 && errno != EEXIST) {
+		perror(dir);
 		return 1;
+	}
 
 	/* level 0: two components with ghost zones across x = 0.5 */
 	const Patch c0 = { 0, 0, -4, 0 + NGH, { 1, 0, 1, 1, 1, 1 }, 1.0, -4, 4 };

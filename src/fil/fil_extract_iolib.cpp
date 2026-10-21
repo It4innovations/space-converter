@@ -33,7 +33,12 @@
 #include <stdexcept>
 
 #include <hdf5.h>
+
+#ifdef _WIN32
+#include <process.h>
+#else
 #include <unistd.h>
+#endif
 
 #ifdef WITH_OPENMP
 #include <omp.h>

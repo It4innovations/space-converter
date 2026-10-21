@@ -97,6 +97,11 @@ else()
     set(WITH_TBB OFF)
 endif()
 
+if(WITH_PLUTO)
+    # PLUTO requires VTK (set before the VTK lookup below)
+    set(WITH_VTK ON)
+endif()
+
 if(WITH_VTK)
     # A manual VTK can be supplied with -DVTK_INCLUDE_DIRS=... -DVTK_LIBRARIES=...
     # (e.g. the VTK bundled inside a ParaView installation, which ships the
@@ -110,6 +115,9 @@ if(WITH_VTK)
             IOXML
             IOParallelXML
         )
+        # vtk-config.cmake declares option(BUILD_SHARED_LIBS ON); keep the
+        # project's own libraries static
+        set(BUILD_SHARED_LIBS OFF)
     else()
         message(STATUS "Using manually specified VTK: ${VTK_LIBRARIES}")
     endif()
@@ -203,11 +211,6 @@ endif()
 if(WITH_FIL_GRACE)
     # FIL_GRACE (GRACE HDF5 volume output) requires HDF5
     set(WITH_HDF5 ON)
-endif()
-
-if(WITH_PLUTO)
-    # PLUTO requires VTK
-    set(WITH_VTK ON)
 endif()
 
 if(WITH_HDF5)

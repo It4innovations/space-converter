@@ -20,6 +20,9 @@
 #include "data_processing.h"
 #include "args_processing.h"
 
+#include <cstdio>
+#include <exception>
+
 /**
  * @brief Main entry point for the space converter application.
  * 
@@ -37,7 +40,7 @@
  * @param argv Array of command-line argument strings
  * @return 0 on successful completion
  */
-int main(int argc, char** argv)
+static int run(int argc, char** argv)
 {
 	// ========================================================================
 	// Initialization Phase
@@ -208,4 +211,20 @@ int main(int argc, char** argv)
 	space_converter::close_mpi(from_cl);
 
 	return 0;
+}
+
+int main(int argc, char** argv)
+{
+	// Report reader/converter errors and stop all ranks. Without this, the MSVC
+	// runtime (and MS-MPI's exception filter) end the process without printing
+	// what(), and the other ranks could wait forever in a collective call.
+	try {
+		return run(argc, argv);
+	}
+	catch (const std::exception& e) {
+		fprintf(stderr, "Error: %s\n", e.what());
+		fflush(stderr);
+		MPI_Abort(MPI_COMM_WORLD, 1);
+	}
+	return 1;
 }
