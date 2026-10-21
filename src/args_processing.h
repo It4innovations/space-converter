@@ -105,6 +105,11 @@ namespace space_converter {
 #ifdef WITH_GPU_CUDA
 		/// Flag to enable GPU acceleration for CUDA-based computations
 		bool use_gpu = false;
+
+		/// GPU particle chunk (--gpu-chunk): 0 = keep the particle cache on the device if it
+		/// fits, otherwise stream it in chunks sized to the free device memory; > 0 = always
+		/// stream in chunks of this many particles; < 0 = never stream
+		long long gpu_chunk = 0;
 #endif
 
 		bool use_sort_by_radius = false;

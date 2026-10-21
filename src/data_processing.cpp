@@ -25,6 +25,7 @@
 #include "sparse_common.h"
 
 #include <cmath>
+#include <climits>
 
 // Data format converters
 #include "gadget/gadget_convert_vdb.h"
@@ -119,6 +120,67 @@
 // 	}
 
 namespace space_converter {
+
+#ifdef WITH_GPU_CUDA
+	/**
+	 * @brief Choose between a device-resident particle cache and GPU streaming.
+	 *
+	 * @return 0 = keep the exported particle type resident on the device (previous
+	 *         behaviour), otherwise the number of particles per streamed chunk.
+	 *
+	 * @details Estimate per local particle of the exported type: resident cache
+	 *          (pos 12 B, id 8 B, radius/rho/mass 4 B each) + values 4 B; for sparse
+	 *          output the sort-reduce manager sized 1.5x the particles (keys + values
+	 *          x3 = 36 B and ~12 B radix-sort temp per slot); for dense output the grid
+	 *          (and the sum grid of the reduction on rank 0). Streaming keeps per chunk
+	 *          particle 28 B of staging + 48 B of sort-reduce slots, plus the unique
+	 *          voxels (at most min(particles, grid voxels)) for sparse output.
+	 */
+	static size_t choose_gpu_chunk(const space_converter::FromCL& from_cl, const common::SpaceData& space_data,
+		const common::cache::CacheManager& cache)
+	{
+		const int ptype = space_data.particle_type;
+		if (ptype < 0 || ptype >= (int)cache.pos_particles_per_ptype.size())
+			return 0;
+
+		const size_t n = cache.pos_particles_per_ptype[ptype].size() / 3;
+		const bool sparse = space_data.extracted_type == common::SpaceData::ExtractedType::eSparse;
+		const size_t grid_voxels = (size_t)space_data.bbox_dim * space_data.bbox_dim * space_data.bbox_dim;
+		const bool dense_temp = space_data.dense_norm == common::SpaceData::DenseNorm::eCount ||
+			space_data.dense_norm == common::SpaceData::DenseNorm::eSPHInterpolation;
+		const size_t dense_bytes = sparse ? 0 : 2 * grid_voxels * sizeof(float) * (dense_temp ? 2 : 1);
+		const size_t unique_max = std::min(n, grid_voxels);
+
+		if (from_cl.gpu_chunk > 0)
+			return std::min((size_t)from_cl.gpu_chunk, std::max(n, (size_t)1));
+
+		// The voxel-centric dense loop reads the particles through a device KD-tree
+		bool keep_resident = from_cl.gpu_chunk < 0;
+#ifdef WITH_CUDAKDTREE
+		keep_resident = keep_resident || from_cl.use_dense_loop_over_voxels;
+#endif
+
+		size_t free_bytes = 0, total_bytes = 0;
+		CUDA_CHECK_ERROR(cudaMemGetInfo(&free_bytes, &total_bytes));
+
+		const size_t resident = n * 36 + (sparse ? (n + n / 2) * 48 : dense_bytes);
+		// The sort-reduce manager counts its slots with int (CUB)
+		const bool resident_fits = resident <= (size_t)(0.9 * free_bytes) && (!sparse || n + n / 2 <= (size_t)INT_MAX);
+		if (keep_resident || resident_fits)
+			return 0;
+
+		const double budget = 0.8 * free_bytes - (sparse ? unique_max * 48.0 : (double)dense_bytes);
+		const size_t per_particle = sparse ? 28 + 48 : 28;
+		size_t chunk = budget > 0 ? (size_t)(budget / per_particle) : 0;
+		if (sparse)
+			chunk = std::min(chunk, (size_t)INT_MAX - unique_max);
+		// Larger chunks gain nothing but cost page-locking time: 2^25 particles = 640 MB of
+		// pinned staging per rank (a 357M-particle chunk took ~10 s to pin on Karolina)
+		chunk = std::min(chunk, (size_t)1 << 25);
+		chunk = std::max(chunk, (size_t)1 << 20);
+		return std::min(chunk, n);
+	}
+#endif
 
 	/**
 	 * @brief Serialize a (normalized) dense grid to the CUB binary format.
@@ -426,6 +488,11 @@ namespace space_converter {
 			return convert_vdb_base;
 		}
 
+		// Batch export (--export-data) of one particle type: cache only that type. A server
+		// (remote) run can be asked for any type, so it keeps all of them.
+		if (!from_cl.remote && space_data.particle_type >= 0)
+			convert_vdb_base->cache_manager.cache_ptype = space_data.particle_type;
+
 		LOG_MeasureStart("find_particle_positions");
 		convert_vdb_base->find_particle_positions();
 		LOG_MeasureStop("find_particle_positions");
@@ -482,7 +549,16 @@ namespace space_converter {
 		// and GPU sorts working with the initial hsml-based radii whenever
 		// --calc-radius-neigh or --calc-radius-neigh-file was used.)
 		if (convert_vdb_base->cache_manager.use_gpu) {
-			convert_vdb_base->cache_manager.copy_particles_to_gpu();
+			auto& cache = convert_vdb_base->cache_manager;
+			// Only the exported particle type is read by the GPU conversion; stream it in
+			// chunks when the resident cache would not fit the device
+			cache.gpu_ptype = space_data.particle_type;
+			cache.gpu_chunk = choose_gpu_chunk(from_cl, space_data, cache);
+			unsigned long long gpu_chunk_max = cache.gpu_chunk;
+			MPI_Allreduce(MPI_IN_PLACE, &gpu_chunk_max, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, MPI_COMM_WORLD);
+			if (gpu_chunk_max > 0 && from_cl.world_rank == 0)
+				printf("GPU streaming: particle cache kept in host memory, chunks of up to %llu particles\n", gpu_chunk_max);
+			cache.copy_particles_to_gpu();
 		}
 #endif
 
@@ -493,7 +569,8 @@ namespace space_converter {
 			//void sort_particles_by_radius_gpu();                        ///< Sort particle IDs by radius on GPU (ascending)
 			//void sort_particles_by_radius_gpu_inplace();                ///< Sort particle IDs by radius on GPU using device pointers (no CPU<->GPU copy)
 
-			if (convert_vdb_base->cache_manager.use_gpu) {
+			// GPU sorts permute the device ids; when streaming the host ids drive the chunks
+			if (convert_vdb_base->cache_manager.use_gpu && convert_vdb_base->cache_manager.gpu_chunk == 0) {
 				convert_vdb_base->cache_manager.sort_particles_by_radius_gpu_inplace();
 			}
 			else {
@@ -507,7 +584,7 @@ namespace space_converter {
 			// This minimizes overlapping voxel regions, significantly reducing atomic operation overhead
 			// Can reduce GPU processing time from 20s to ~0.005s by eliminating atomic contention
 			
-			if (convert_vdb_base->cache_manager.use_gpu) {
+			if (convert_vdb_base->cache_manager.use_gpu && convert_vdb_base->cache_manager.gpu_chunk == 0) {
 				convert_vdb_base->cache_manager.sort_particles_by_nonoverlap_gpu_inplace();
 			}
 			else {
@@ -726,9 +803,24 @@ namespace space_converter {
 
 #ifdef WITH_GPU_CUDA			
 			if (from_cl.use_gpu) {
-				grid_main.sparse_grid = std::make_shared<common::vdb::sparse::VoxelGPUManagerSortReduce>();
-				grid_main.sparse_grid->init(convert_vdb_base->get_local_num_particles()); // TODO: convert_vdb_base->get_local_num_particles()
-			} 
+				// Capacity = input of one sort-reduce. Sized from the exported particle type
+				// (get_local_num_particles() counts every type, e.g. CHANGA gas + dark matter):
+				// resident cache -> all its particles (+50% as before); GPU streaming -> one
+				// chunk + the unique voxels accumulated so far (at most min(particles, voxels))
+				const auto& cache = convert_vdb_base->cache_manager;
+				const int ptype = space_data.particle_type;
+				const size_t n = (ptype >= 0 && ptype < (int)cache.pos_particles_per_ptype.size())
+					? cache.pos_particles_per_ptype[ptype].size() / 3
+					: convert_vdb_base->get_local_num_particles();
+				const size_t grid_voxels = (size_t)space_data.bbox_dim * space_data.bbox_dim * space_data.bbox_dim;
+
+				auto gpu_manager = std::make_shared<common::vdb::sparse::VoxelGPUManagerSortReduce>();
+				if (cache.gpu_chunk > 0)
+					gpu_manager->init_capacity(cache.gpu_chunk + std::min(n, grid_voxels));
+				else
+					gpu_manager->init_capacity(std::max(n + n / 2, (size_t)1));
+				grid_main.sparse_grid = gpu_manager;
+			}
 			else 
 #endif			
 			{

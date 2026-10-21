@@ -300,6 +300,10 @@ namespace space_converter {
 				public:
 					void init(unsigned int expected_voxels) override;
 
+					// Allocate for exactly max_items key/value slots (input of one sort-reduce:
+					// voxels appended by the conversion kernel plus already accumulated ones)
+					void init_capacity(size_t max_items);
+
 					// Helper for sequential insertion
 					//void insertOrUpdatePackedSequential(uint64_t key, float value) override;
 

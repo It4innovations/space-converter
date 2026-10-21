@@ -542,7 +542,9 @@ namespace space_converter {
 					int calc_radius_neigh = 16,
 					// Pre-built KD-tree for loop-over-voxels (null = disabled)
 					void* d_kdtree_nodes = nullptr,
-					int     kdtree_N = 0
+					int     kdtree_N = 0,
+					// continue a chunked (streamed) conversion: add to the voxels of the previous calls
+					bool    accumulate = false
 				);
 
 

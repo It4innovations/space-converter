@@ -215,21 +215,26 @@ namespace space_converter {
 				}
 
 				for (int ptype = 0; ptype < ptype_count; ptype++) {
+					// Cache only the exported type when one is selected (cache_ptype): e.g. for
+					// CHANGA gas the dark matter (as many particles) would double the cache
+					if (cache_manager.cache_ptype >= 0 && ptype != cache_manager.cache_ptype) {
+						size_t n_t = 0;
+#pragma omp parallel for num_threads(num_threads) reduction(+:n_t)
+						for (size_t i = 0; i < no_points; i++) {
+							if (get_particle_type(i) == ptype)
+								n_t++;
+						}
+						cache_manager.particles_ptype_offset[ptype + 1] = cache_manager.particles_ptype_offset[ptype] + n_t;
+						cache_manager.num_particles_per_ptype[ptype] = n_t;
+						continue;
+					}
 
-					std::vector<float> points_master;
-					std::vector < std::vector<float> > points_thread(num_threads);
-
-					std::vector<float> pmass_master;
-					std::vector < std::vector<float> > pmass_thread(num_threads);
-
-					std::vector<float> rho_master;
-					std::vector < std::vector<float> > rho_thread(num_threads);
-
-					std::vector<float> radius_master;
-					std::vector < std::vector<float> > radius_thread(num_threads);
-
-					std::vector<size_t> particles_id_master;
-					std::vector < std::vector<size_t> > particles_id_thread(num_threads);
+					// Two passes with the same static schedule: count the particles of this
+					// type per thread, then every thread writes its particles straight into
+					// the exactly sized arrays at its offset. Same order as concatenating
+					// per-thread vectors, without their growth slack and the second copy
+					// (that peak, up to ~3x the cache, ran a 2-node CHANGA run out of RAM).
+					std::vector<size_t> thread_count(num_threads + 1, 0);
 
 #pragma omp parallel num_threads(num_threads)
 					{
@@ -238,8 +243,34 @@ namespace space_converter {
 #else
 						int tid = 0;
 #endif
+						size_t n_tid = 0;
+#pragma omp for schedule(static)
+						for (size_t i = 0; i < no_points; i++) {
+							if (get_particle_type(i) == ptype)
+								n_tid++;
+						}
+						thread_count[tid + 1] = n_tid;
+					}
 
-#pragma omp for
+					for (int t = 0; t < num_threads; ++t)
+						thread_count[t + 1] += thread_count[t];
+					const size_t n_type = thread_count[num_threads];
+
+					std::vector<float> points_master(3 * n_type);
+					std::vector<float> pmass_master(n_type);
+					std::vector<float> rho_master(n_type);
+					std::vector<float> radius_master(n_type);
+					std::vector<size_t> particles_id_master(n_type);
+
+#pragma omp parallel num_threads(num_threads)
+					{
+#ifdef WITH_OPENMP
+						int tid = omp_get_thread_num();
+#else
+						int tid = 0;
+#endif
+						size_t k = thread_count[tid];
+#pragma omp for schedule(static)
 						for (size_t i = 0; i < no_points; i++) {
 
 							if (get_particle_type(i) != ptype)
@@ -248,32 +279,19 @@ namespace space_converter {
 							double Pos[3];
 							get_particle_position(i, Pos);
 
-							// Collect particle positions per thread
-							points_thread[tid].push_back(Pos[0]);
-							points_thread[tid].push_back(Pos[1]);
-							points_thread[tid].push_back(Pos[2]);
+							points_master[3 * k + 0] = Pos[0];
+							points_master[3 * k + 1] = Pos[1];
+							points_master[3 * k + 2] = Pos[2];
 
-							double mass = get_particle_mass(i);
-							pmass_thread[tid].push_back(mass);
-
-							double rho = get_particle_rho(i);
-							rho_thread[tid].push_back(rho);
-
-							double radius = get_particle_hsml(i);
-							radius_thread[tid].push_back(radius);
+							pmass_master[k] = get_particle_mass(i);
+							rho_master[k] = get_particle_rho(i);
+							radius_master[k] = get_particle_hsml(i);
 
 							// Global reader id of this compact slot (needed later to
 							// query per-particle values from the reader)
-							particles_id_thread[tid].push_back(i);
+							particles_id_master[k] = i;
+							k++;
 						}
-					}
-
-					for (int t = 0; t < num_threads; ++t) {
-						points_master.insert(points_master.end(), points_thread[t].begin(), points_thread[t].end());
-						pmass_master.insert(pmass_master.end(), pmass_thread[t].begin(), pmass_thread[t].end());
-						rho_master.insert(rho_master.end(), rho_thread[t].begin(), rho_thread[t].end());
-						radius_master.insert(radius_master.end(), radius_thread[t].begin(), radius_thread[t].end());
-						particles_id_master.insert(particles_id_master.end(), particles_id_thread[t].begin(), particles_id_thread[t].end());
 					}
 
 					cache_manager.pos_particles_per_ptype[ptype] = std::move(points_master);
@@ -658,64 +676,131 @@ namespace space_converter {
 
 					//printf("===convert_iolib_to_grid: COPY TO GPU: %f [s]\n", omp_get_wtime() - t);
 
-					// Use GPU kernel with cached GPU particle positions
-					const float* d_pos_particles = cache_manager.d_pos_particles_per_ptype[particle_type];
-					const size_t* d_particles_id_ordered = cache_manager.d_particles_id_ordered_per_ptype[particle_type];
-					const float* d_radius_particles = cache_manager.d_radius_particles_per_ptype[particle_type];
-					const float* d_value_particles = cache_manager.d_values_particles;
+					// Resident cache (gpu_chunk == 0): one call over the device copies.
+					// GPU streaming (gpu_chunk > 0): the particles stay in host memory; chunks of
+					// them are gathered in sort order into pinned buffers, uploaded and converted
+					// one after another. The grid accumulates across the calls (accumulate flag),
+					// min/max and the particle count are per-call outputs combined here.
+					const bool streaming = cache_manager.gpu_chunk > 0;
+					const size_t chunk = streaming ? std::min(cache_manager.gpu_chunk, num_particles) : num_particles;
+					const std::vector<float>& h_pos = cache_manager.pos_particles_per_ptype[particle_type];
+					const std::vector<size_t>& h_ids = cache_manager.particles_id_ordered_per_ptype[particle_type];
+					const std::vector<float>* h_radius = (particle_type < (int)cache_manager.radius_particles_per_ptype.size()
+						&& !cache_manager.radius_particles_per_ptype[particle_type].empty())
+						? &cache_manager.radius_particles_per_ptype[particle_type] : nullptr;
+					const std::vector<float>* h_values = cache_manager.values_particles.empty() ? nullptr : &cache_manager.values_particles;
 
-					kernel::convert_iolib_to_grid_gpu(
-						d_pos_particles,
-						d_particles_id_ordered,
-						d_radius_particles,
-						d_value_particles,
-						num_particles,
-						particle_radius_multiplier,
-						bbox_dim,
-						bbox_min_orig,
-						bbox_size_orig,
-						dense_type,
-						dense_norm,
-						block_name_id,
-						object_size,
-						min_value,
-						max_value,
-						particles_count,
-						grid,
-						transform_scale,
-						filter_min,
-						filter_max,
-						anim_type,
-						frame_req,
-						frame,
-						bbox_sphere_pos,
-						bbox_sphere_r,
-						use_simple_density,
-						cache_manager.particle_radius_const,
+					if (streaming) {
+						cache_manager.alloc_stream_buffers(chunk, h_radius != nullptr);
+						if (cache_manager.world_rank == 0)
+							printf("GPU streaming: rank 0 converts %zu particles in chunks of %zu\n", num_particles, chunk);
+					}
 
-						bbox_x_min_norm,
-						bbox_x_max_norm,
-						bbox_y_min_norm,
-						bbox_y_max_norm,
-						bbox_z_min_norm,
-						bbox_z_max_norm,
-						scale_space_diagonal,
-						offset_position,
-#ifdef WITH_CUDAKDTREE
-						cache_manager.use_dense_loop_over_voxels,
-						cache_manager.calc_radius_neigh,
-						// Pre-built device KD-tree (nullptr if not built or wrong ptype)
-						(particle_type < (int)cache_manager.d_voxel_kdtree_per_ptype.size())
-						? cache_manager.d_voxel_kdtree_per_ptype[particle_type] : nullptr,
-						(particle_type < (int)cache_manager.d_voxel_kdtree_per_ptype.size())
-						? (int)cache_manager.particles_id_ordered_per_ptype[particle_type].size() : 0
-#else
-						false,
-						16,
-						nullptr,
-						0
-#endif
-					);
+					min_value = FLT_MAX;
+					max_value = -FLT_MAX;
+					particles_count = 0;
+
+					for (size_t start = 0; start < num_particles; start += chunk) {
+						const size_t count = std::min(chunk, num_particles - start);
+						float chunk_min = FLT_MAX;
+						float chunk_max = -FLT_MAX;
+						size_t chunk_count = 0;
+
+						const float* d_pos_particles;
+						const size_t* d_particles_id_ordered;
+						const float* d_radius_particles;
+						const float* d_value_particles;
+
+						if (streaming) {
+							float* s_pos = cache_manager.h_stream_pos;
+							float* s_radius = cache_manager.h_stream_radius;
+							float* s_values = cache_manager.h_stream_values;
+	#pragma omp parallel for
+							for (long long k = 0; k < (long long)count; k++) {
+								const size_t id = h_ids[start + k];
+								s_pos[3 * k + 0] = h_pos[3 * id + 0];
+								s_pos[3 * k + 1] = h_pos[3 * id + 1];
+								s_pos[3 * k + 2] = h_pos[3 * id + 2];
+								if (h_radius) s_radius[k] = (*h_radius)[id];
+								s_values[k] = h_values ? (*h_values)[id] : 0.0f;
+							}
+							cache_manager.upload_stream_chunk(count);
+
+							d_pos_particles = cache_manager.d_stream_pos;
+							d_particles_id_ordered = cache_manager.d_stream_ids;
+							d_radius_particles = h_radius ? cache_manager.d_stream_radius : nullptr;
+							d_value_particles = h_values ? cache_manager.d_stream_values : nullptr;
+						}
+						else {
+							// Use GPU kernel with cached GPU particle positions
+							d_pos_particles = cache_manager.d_pos_particles_per_ptype[particle_type];
+							d_particles_id_ordered = cache_manager.d_particles_id_ordered_per_ptype[particle_type];
+							d_radius_particles = cache_manager.d_radius_particles_per_ptype[particle_type];
+							d_value_particles = cache_manager.d_values_particles;
+						}
+
+						kernel::convert_iolib_to_grid_gpu(
+							d_pos_particles,
+							d_particles_id_ordered,
+							d_radius_particles,
+							d_value_particles,
+							count,
+							particle_radius_multiplier,
+							bbox_dim,
+							bbox_min_orig,
+							bbox_size_orig,
+							dense_type,
+							dense_norm,
+							block_name_id,
+							object_size,
+							chunk_min,
+							chunk_max,
+							chunk_count,
+							grid,
+							transform_scale,
+							filter_min,
+							filter_max,
+							anim_type,
+							frame_req,
+							frame,
+							bbox_sphere_pos,
+							bbox_sphere_r,
+							use_simple_density,
+							cache_manager.particle_radius_const,
+
+							bbox_x_min_norm,
+							bbox_x_max_norm,
+							bbox_y_min_norm,
+							bbox_y_max_norm,
+							bbox_z_min_norm,
+							bbox_z_max_norm,
+							scale_space_diagonal,
+							offset_position,
+	#ifdef WITH_CUDAKDTREE
+							cache_manager.use_dense_loop_over_voxels,
+							cache_manager.calc_radius_neigh,
+							// Pre-built device KD-tree (nullptr if not built or wrong ptype)
+							(particle_type < (int)cache_manager.d_voxel_kdtree_per_ptype.size())
+							? cache_manager.d_voxel_kdtree_per_ptype[particle_type] : nullptr,
+							(particle_type < (int)cache_manager.d_voxel_kdtree_per_ptype.size())
+							? (int)cache_manager.particles_id_ordered_per_ptype[particle_type].size() : 0,
+	#else
+							false,
+							16,
+							nullptr,
+							0,
+	#endif
+							start > 0
+						);
+
+						min_value = std::min(min_value, chunk_min);
+						max_value = std::max(max_value, chunk_max);
+						particles_count += chunk_count;
+					}
+
+					if (streaming) {
+						cache_manager.free_stream_buffers();
+					}
 
 					//printf("===convert_iolib_to_grid: CONVERT GPU: %f [s]\n", omp_get_wtime() - t);
 				}
@@ -991,7 +1076,10 @@ namespace space_converter {
 					}
 
 #ifdef WITH_GPU_CUDA
-					if (cache_manager.use_gpu) {
+					// Device copy missing for types that are not uploaded (only the exported type
+					// is) and with GPU streaming -> CPU kernel
+					if (cache_manager.use_gpu && ptype < (int)cache_manager.d_pos_particles_per_ptype.size()
+						&& cache_manager.d_pos_particles_per_ptype[ptype] != nullptr) {
 						// Use GPU kernel with cached GPU particle positions
 						const float* d_pos_particles = cache_manager.d_pos_particles_per_ptype[ptype];
 						kernel::find_bbox_gpu(d_pos_particles, num_particles, offset_position, bbox_min, bbox_max);

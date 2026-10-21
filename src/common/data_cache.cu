@@ -22,6 +22,7 @@
  #include "../utility/gpu_device_compat.h"
  #include <thrust/device_vector.h>
  #include <thrust/sort.h>
+ #include <thrust/sequence.h>
  #include <thrust/copy.h>
  #include <thrust/execution_policy.h>
  #include <iostream>
@@ -37,6 +38,12 @@ namespace space_converter {
                 if (d_values_particles != nullptr) {
                     CUDA_CHECK_ERROR(cudaFree(d_values_particles));
                     d_values_particles = nullptr;
+                }
+
+                // Streaming: the values travel with each chunk (upload_stream_chunk)
+                if (gpu_chunk > 0) {
+                    GPU_KERNEL_TIME_END(copy_values_to_gpu);
+                    return;
                 }
 
                 // Allocate and copy values_particles
@@ -55,17 +62,61 @@ namespace space_converter {
                 GPU_KERNEL_TIME_END(copy_values_to_gpu);
             }
 
+            void CacheManager::alloc_stream_buffers(size_t capacity, bool with_radius) {
+                free_stream_buffers();
+                stream_capacity = capacity;
+
+                CUDA_CHECK_ERROR(cudaMallocHost(&h_stream_pos, 3 * capacity * sizeof(float)));
+                CUDA_CHECK_ERROR(cudaMallocHost(&h_stream_values, capacity * sizeof(float)));
+                CUDA_CHECK_ERROR(CUDA_MALLOC(&d_stream_pos, 3 * capacity * sizeof(float)));
+                CUDA_CHECK_ERROR(CUDA_MALLOC(&d_stream_values, capacity * sizeof(float)));
+                if (with_radius) {
+                    CUDA_CHECK_ERROR(cudaMallocHost(&h_stream_radius, capacity * sizeof(float)));
+                    CUDA_CHECK_ERROR(CUDA_MALLOC(&d_stream_radius, capacity * sizeof(float)));
+                }
+
+                // The gathered chunk is already in sort order: identity ids
+                CUDA_CHECK_ERROR(CUDA_MALLOC(&d_stream_ids, capacity * sizeof(size_t)));
+                thrust::sequence(thrust::device, d_stream_ids, d_stream_ids + capacity, (size_t)0);
+                CUDA_SYNC_CHECK();
+            }
+
+            void CacheManager::upload_stream_chunk(size_t count) {
+                CUDA_CHECK_ERROR(cudaMemcpy(d_stream_pos, h_stream_pos, 3 * count * sizeof(float), cudaMemcpyHostToDevice));
+                CUDA_CHECK_ERROR(cudaMemcpy(d_stream_values, h_stream_values, count * sizeof(float), cudaMemcpyHostToDevice));
+                if (d_stream_radius != nullptr) {
+                    CUDA_CHECK_ERROR(cudaMemcpy(d_stream_radius, h_stream_radius, count * sizeof(float), cudaMemcpyHostToDevice));
+                }
+            }
+
+            void CacheManager::free_stream_buffers() {
+                if (h_stream_pos) { CUDA_CHECK_ERROR(cudaFreeHost(h_stream_pos)); h_stream_pos = nullptr; }
+                if (h_stream_radius) { CUDA_CHECK_ERROR(cudaFreeHost(h_stream_radius)); h_stream_radius = nullptr; }
+                if (h_stream_values) { CUDA_CHECK_ERROR(cudaFreeHost(h_stream_values)); h_stream_values = nullptr; }
+                if (d_stream_pos) { CUDA_CHECK_ERROR(cudaFree(d_stream_pos)); d_stream_pos = nullptr; }
+                if (d_stream_radius) { CUDA_CHECK_ERROR(cudaFree(d_stream_radius)); d_stream_radius = nullptr; }
+                if (d_stream_values) { CUDA_CHECK_ERROR(cudaFree(d_stream_values)); d_stream_values = nullptr; }
+                if (d_stream_ids) { CUDA_CHECK_ERROR(cudaFree(d_stream_ids)); d_stream_ids = nullptr; }
+                stream_capacity = 0;
+            }
+
             void CacheManager::copy_particles_to_gpu() {
                 GPU_KERNEL_TIME_START(copy_particles_to_gpu);
 
                 // Free existing GPU memory if any
                 free_gpu_memory();
 
+                // Only the exported type is read by the GPU conversion; nothing per particle
+                // stays on the device when streaming (gpu_chunk > 0)
+                auto upload_ptype = [this](size_t i) {
+                    return gpu_chunk == 0 && (gpu_ptype < 0 || (int)i == gpu_ptype);
+                };
+
                 // Allocate and copy pos_particles_per_ptype
                 d_pos_particles_per_ptype.resize(pos_particles_per_ptype.size());
                 for (size_t i = 0; i < pos_particles_per_ptype.size(); ++i) {
                     size_t size_bytes = pos_particles_per_ptype[i].size() * sizeof(float);
-                    if (size_bytes > 0) {
+                    if (size_bytes > 0 && upload_ptype(i)) {
                         CUDA_CHECK_ERROR(CUDA_MALLOC(&d_pos_particles_per_ptype[i], size_bytes));
                         CUDA_CHECK_ERROR(cudaMemcpy(d_pos_particles_per_ptype[i], pos_particles_per_ptype[i].data(),
                             size_bytes, cudaMemcpyHostToDevice));
@@ -79,7 +130,7 @@ namespace space_converter {
                 d_particles_id_ordered_per_ptype.resize(particles_id_ordered_per_ptype.size());
                 for (size_t i = 0; i < particles_id_ordered_per_ptype.size(); ++i) {
                     size_t size_bytes = particles_id_ordered_per_ptype[i].size() * sizeof(size_t);
-                    if (size_bytes > 0) {
+                    if (size_bytes > 0 && upload_ptype(i)) {
                         CUDA_CHECK_ERROR(CUDA_MALLOC(&d_particles_id_ordered_per_ptype[i], size_bytes));
                         CUDA_CHECK_ERROR(cudaMemcpy(d_particles_id_ordered_per_ptype[i], particles_id_ordered_per_ptype[i].data(),
                             size_bytes, cudaMemcpyHostToDevice));
@@ -93,7 +144,7 @@ namespace space_converter {
                 d_radius_particles_per_ptype.resize(radius_particles_per_ptype.size());
                 for (size_t i = 0; i < radius_particles_per_ptype.size(); ++i) {
                     size_t size_bytes = radius_particles_per_ptype[i].size() * sizeof(float);
-                    if (size_bytes > 0) {
+                    if (size_bytes > 0 && upload_ptype(i)) {
                         CUDA_CHECK_ERROR(CUDA_MALLOC(&d_radius_particles_per_ptype[i], size_bytes));
                         CUDA_CHECK_ERROR(cudaMemcpy(d_radius_particles_per_ptype[i], radius_particles_per_ptype[i].data(),
                             size_bytes, cudaMemcpyHostToDevice));
@@ -116,7 +167,7 @@ namespace space_converter {
                 d_rho_particles_per_ptype.resize(rho_particles_per_ptype.size());
                 for (size_t i = 0; i < rho_particles_per_ptype.size(); ++i) {
                     size_t size_bytes = rho_particles_per_ptype[i].size() * sizeof(float);
-                    if (size_bytes > 0) {
+                    if (size_bytes > 0 && upload_ptype(i)) {
                         CUDA_CHECK_ERROR(CUDA_MALLOC(&d_rho_particles_per_ptype[i], size_bytes));
                         CUDA_CHECK_ERROR(cudaMemcpy(d_rho_particles_per_ptype[i], rho_particles_per_ptype[i].data(),
                             size_bytes, cudaMemcpyHostToDevice));
@@ -130,7 +181,7 @@ namespace space_converter {
                 d_mass_particles_per_ptype.resize(mass_particles_per_ptype.size());
                 for (size_t i = 0; i < mass_particles_per_ptype.size(); ++i) {
                     size_t size_bytes = mass_particles_per_ptype[i].size() * sizeof(float);
-                    if (size_bytes > 0) {
+                    if (size_bytes > 0 && upload_ptype(i)) {
                         CUDA_CHECK_ERROR(CUDA_MALLOC(&d_mass_particles_per_ptype[i], size_bytes));
                         CUDA_CHECK_ERROR(cudaMemcpy(d_mass_particles_per_ptype[i], mass_particles_per_ptype[i].data(),
                             size_bytes, cudaMemcpyHostToDevice));
@@ -148,6 +199,7 @@ namespace space_converter {
 
             void CacheManager::free_gpu_memory() {
                 GPU_KERNEL_TIME_START(free_gpu_memory);
+                free_stream_buffers();
                 // Free pos_particles_per_ptype
                 for (auto ptr : d_pos_particles_per_ptype) {
                     if (ptr != nullptr) {

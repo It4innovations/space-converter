@@ -164,6 +164,9 @@ namespace cub = hipcub;
 #define cudaMemcpyAsync                     hipMemcpyAsync
 #define cudaMemset                          hipMemset
 #define cudaMemsetAsync                     hipMemsetAsync
+#define cudaMallocHost                      hipHostMalloc
+#define cudaFreeHost                        hipHostFree
+#define cudaMemGetInfo                      hipMemGetInfo
 
 #define cudaMemcpyKind                      hipMemcpyKind
 #define cudaMemcpyHostToDevice              hipMemcpyHostToDevice

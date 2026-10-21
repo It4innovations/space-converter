@@ -98,6 +98,7 @@ namespace space_converter {
 		std::cout << "\t--save-mpi-rank                    : Additionally save each rank's partial grid" << std::endl;
 #ifdef WITH_GPU_CUDA
 		std::cout << "\t--gpu                              : Enable GPU acceleration (CUDA or HIP, depending on the build)" << std::endl;
+		std::cout << "\t--gpu-chunk N                      : GPU particle chunk: 0 = stream only if the particle cache does not fit the GPU (default), N > 0 = chunks of N particles, -1 = never stream" << std::endl;
 #endif
 		std::cout << "\t-h, --help                         : Display this usage information" << std::endl;
 
@@ -612,6 +613,14 @@ namespace space_converter {
 				warn_unsupported("--gpu", "built without GPU support");
 #endif
 			}
+			else if (arg == "--gpu-chunk") {
+#ifdef WITH_GPU_CUDA
+				from_cl.gpu_chunk = parse_int(i, argc, argv, "--gpu-chunk");
+#else
+				(void)parse_int(i, argc, argv, "--gpu-chunk");
+				warn_unsupported("--gpu-chunk", "built without GPU support");
+#endif
+			}
 			else if (arg == "--skip-cache-manager") {
 				from_cl.skip_cache_manager = true;
 			}
@@ -694,6 +703,7 @@ namespace space_converter {
 #endif
 #ifdef WITH_GPU_CUDA
 		std::cout << "use_gpu: " << (use_gpu ? "true" : "false") << std::endl;
+		std::cout << "gpu_chunk: " << gpu_chunk << std::endl;
 #endif
 		std::cout << "skip_cache_manager: " << (skip_cache_manager ? "true" : "false") << std::endl;
 		std::cout << "use_sort_by_radius: " << (use_sort_by_radius ? "true" : "false") << std::endl;

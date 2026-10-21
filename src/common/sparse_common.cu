@@ -287,7 +287,18 @@ namespace space_converter {
 				void VoxelGPUManagerSortReduce::init(unsigned int expected_voxels)
 				{
 					// Add 50% buffer for MPI merge operations
-					m_max = (size_t)(expected_voxels * 1.5);
+					init_capacity((size_t)(expected_voxels * 1.5));
+				}
+
+				void VoxelGPUManagerSortReduce::init_capacity(size_t max_items)
+				{
+					// The CUB sort/reduce calls take an int item count
+					if (max_items > (size_t)INT_MAX) {
+						printf("[VoxelGPUManagerSortReduce] ERROR: capacity %zu exceeds the CUB int limit %d, clamped (use --gpu-chunk)\n",
+							max_items, INT_MAX);
+						max_items = (size_t)INT_MAX;
+					}
+					m_max = max_items;
 					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_keys, m_max * sizeof(uint64_t)));
 					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_vals, m_max * sizeof(float)));
 
@@ -468,7 +479,7 @@ namespace space_converter {
 					cub::DeviceRadixSort::SortPairs(d_sort_temp, m_sort_temp_bytes,
 						d_keys, d_keys_alt,
 						d_vals, d_vals_alt,
-						count);
+						(int)count);
 					GPU_CUB_TIME_END(DeviceRadixSort_SortPairs_update);
 
 					// reduce-by-key (sum values for identical keys)
@@ -479,7 +490,7 @@ namespace space_converter {
 						d_vals_alt, d_vals_out,
 						d_num_out,
 						op_sum,
-						count);
+						(int)count);
 					GPU_CUB_TIME_END(DeviceReduce_ReduceByKey_update);
 
 					int h_num_out = 0;

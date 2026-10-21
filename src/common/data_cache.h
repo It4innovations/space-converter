@@ -98,6 +98,32 @@ namespace space_converter {
                 // Flag to enable GPU acceleration for CUDA-based computations
                 bool use_gpu = false;
 
+                /// Particle type find_particle_positions() caches (-1 = every type); the other
+                /// types only get their counts. Set to the exported type when nothing needs
+                /// the others (see init_converter).
+                int cache_ptype = -1;
+
+                /// Particle type copy_particles_to_gpu() uploads (-1 = every type). The GPU
+                /// conversion only reads the exported type; uploading every type (e.g. CHANGA
+                /// dark matter next to gas) doubled the device memory.
+                int gpu_ptype = -1;
+
+                /// GPU streaming: when > 0 the particle arrays are not kept on the device.
+                /// The conversion gathers chunks of this many particles (in sort order) into
+                /// pinned host buffers and uploads one chunk at a time, so device memory no
+                /// longer grows with the number of local particles. 0 = resident cache.
+                size_t gpu_chunk = 0;
+
+                /// Streaming buffers: pinned host staging and device copies of one chunk
+                float* h_stream_pos = nullptr;
+                float* h_stream_radius = nullptr;
+                float* h_stream_values = nullptr;
+                float* d_stream_pos = nullptr;
+                float* d_stream_radius = nullptr;
+                float* d_stream_values = nullptr;
+                size_t* d_stream_ids = nullptr;     ///< 0..chunk-1 (the chunk is already in sort order)
+                size_t stream_capacity = 0;
+
                 /// Stream particles from the reader instead of caching them. The per-ptype
                 /// vectors above stay empty; the conversion pulls particles in chunks, which
                 /// removes a per-particle copy of positions, radii, values and ids (~32 B each).
@@ -138,6 +164,9 @@ namespace space_converter {
                 // Methods for GPU data transfer
                 void copy_particles_to_gpu();                               ///< Copy all particle data from CPU to GPU
                 void copy_values_to_gpu();                                  ///< Copy particle values from CPU to GPU
+                void alloc_stream_buffers(size_t capacity, bool with_radius); ///< Allocate the streaming buffers for chunks of up to capacity particles
+                void upload_stream_chunk(size_t count);                     ///< Copy the first count gathered particles of the host staging buffers to the device
+                void free_stream_buffers();                                 ///< Free the streaming buffers
                 void free_gpu_memory();                                     ///< Free all GPU memory allocations
 
                 // Sorting methods

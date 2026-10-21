@@ -512,7 +512,8 @@ namespace space_converter {
 					VoxelSparseManager* voxel_manager,
 					float& min_value,
 					float& max_value,
-					size_t& particles_count
+					size_t& particles_count,
+					bool accumulate
 				) {
 					if (num_particles == 0) {
 						// Neutral extrema so the MPI MIN/MAX reduction over ranks ignores
@@ -541,8 +542,26 @@ namespace space_converter {
 					//CUDA_CHECK_ERROR(CUDA_MALLOC(&d_particle_valid, num_particles * sizeof(size_t)));
 					//CUDA_CHECK_ERROR(CUDA_MALLOC(&d_particle_values, num_particles * sizeof(float)));
 
-					// Reset particle counter before kernel launch
-					CUDA_CHECK_ERROR(cudaMemset(voxel_manager_gpu->d_particle_count, 0, sizeof(uint64_t)));
+					// The kernel appends one key/value per accepted particle at d_keys[counter++].
+					// Normally the counter starts at 0. When accumulating a further chunk of
+					// particles (GPU streaming), the unique voxels reduced so far are copied in
+					// front and the counter starts after them, so update() sorts and reduces
+					// accumulated + new voxels together.
+					uint64_t base = 0;
+					if (accumulate && voxel_manager_gpu->m_last_count > 0) {
+						base = (uint64_t)voxel_manager_gpu->m_last_count;
+						CUDA_CHECK_ERROR(cudaMemcpy(voxel_manager_gpu->d_keys, voxel_manager_gpu->d_keys_out, base * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
+						CUDA_CHECK_ERROR(cudaMemcpy(voxel_manager_gpu->d_vals, voxel_manager_gpu->d_vals_out, base * sizeof(float), cudaMemcpyDeviceToDevice));
+					}
+					if (base + num_particles > voxel_manager_gpu->m_max) {
+						printf("[convert_to_sparse_grid_gpu] ERROR: %llu accumulated + %zu particles exceed the capacity %zu\n",
+							(unsigned long long)base, num_particles, voxel_manager_gpu->m_max);
+						min_value = FLT_MAX;
+						max_value = -FLT_MAX;
+						particles_count = 0;
+						return;
+					}
+					CUDA_CHECK_ERROR(cudaMemcpy(voxel_manager_gpu->d_particle_count, &base, sizeof(uint64_t), cudaMemcpyHostToDevice));
 
 					// Upload per-call host parameters into persistent device buffers
 					CUDA_CHECK_ERROR(cudaMemcpy(voxel_manager_gpu->d_bbox_min_orig, bbox_min_orig, 3 * sizeof(int), cudaMemcpyHostToDevice));
@@ -600,9 +619,10 @@ namespace space_converter {
 					CUDA_SYNC_CHECK();
 
 					// Read back the number of particles that passed the should_process filter
+					// (the counter started at 'base', the accumulated voxels in front)
 					uint64_t raw_count = 0;
 					CUDA_CHECK_ERROR(cudaMemcpy(&raw_count, voxel_manager_gpu->d_particle_count, sizeof(uint64_t), cudaMemcpyDeviceToHost));
-					particles_count = static_cast<size_t>(raw_count);
+					particles_count = static_cast<size_t>(raw_count - base);
 					voxel_manager_gpu->update(raw_count);
 
 					// Report the PER-PARTICLE value range, matching the CPU kernels.
@@ -656,7 +676,8 @@ namespace space_converter {
 					VoxelDenseManager* grid,
 					float& min_value,
 					float& max_value,
-					size_t& particles_count
+					size_t& particles_count,
+					bool accumulate
 				) {
 					if (num_particles == 0) {
 						// Neutral extrema so the MPI MIN/MAX reduction over ranks ignores
@@ -672,6 +693,14 @@ namespace space_converter {
 					if (!voxel_manager_gpu) {
 						printf("[convert_to_dense_grid_gpu] Error: Incompatible manager type\n");
 						return;
+					}
+
+					// The kernel splats into the grid with atomics, so further chunks of
+					// particles (GPU streaming) simply add up; only the particle counter is
+					// cumulative and is turned into a per-call count here
+					uint64_t count_before = 0;
+					if (accumulate) {
+						CUDA_CHECK_ERROR(cudaMemcpy(&count_before, voxel_manager_gpu->d_particle_count, sizeof(uint64_t), cudaMemcpyDeviceToHost));
 					}
 
 					//                // Allocate device memory for grid and particle data
@@ -812,7 +841,7 @@ namespace space_converter {
 						// Read back the number of particles that passed the should_process filter
 					uint64_t raw_count = 0;
 					CUDA_CHECK_ERROR(cudaMemcpy(&raw_count, voxel_manager_gpu->d_particle_count, sizeof(uint64_t), cudaMemcpyDeviceToHost));
-					particles_count = static_cast<size_t>(raw_count);
+					particles_count = static_cast<size_t>(raw_count - count_before);
 
 					// Report the PER-PARTICLE value range, matching the CPU kernels
 					// (previously the whole-grid voxel range, which is dominated by
@@ -871,7 +900,8 @@ namespace space_converter {
 					bool use_dense_loop_over_voxels,
 					int calc_radius_neigh,
 					void* d_kdtree_nodes,
-					int     kdtree_N
+					int     kdtree_N,
+					bool    accumulate
 				) {
 					// Route to appropriate conversion function based on grid type
 					if (grid.type == VDBParticleType::eNanoVDB || grid.type == VDBParticleType::eOpenVDB || grid.type == VDBParticleType::eCUB) {
@@ -907,7 +937,8 @@ namespace space_converter {
 							grid.sparse_grid.get(),
 							min_value,
 							max_value,
-							particles_count
+							particles_count,
+							accumulate
 						);
 					}
 					else if (grid.type == VDBParticleType::eDense) {
@@ -976,7 +1007,8 @@ namespace space_converter {
 								grid.dense_grid.get(),
 								min_value,
 								max_value,
-								particles_count
+								particles_count,
+								accumulate
 							);
 					}
 					else if (grid.type == VDBParticleType::eRawParticles) {
