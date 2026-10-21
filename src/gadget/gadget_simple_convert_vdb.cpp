@@ -112,7 +112,11 @@ namespace gadget_simple {
 
 		// Anim
 		if (use_anim) {
-			snap_file = format_filename(snap_file, anim_start + anim_step * world_rank);
+			// Clamp to anim_end so trailing ranks do not address frames past the animation range
+			int anim_frame = anim_start + anim_step * world_rank;
+			if (anim_frame > anim_end)
+				anim_frame = anim_end;
+			snap_file = format_filename(snap_file, anim_frame);
 			std::cout << "Reading step file: " << snap_file << std::endl;
 		}
 

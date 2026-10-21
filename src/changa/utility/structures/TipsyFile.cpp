@@ -710,7 +710,10 @@ bool PartialTipsyFile::loadPartialAUX(const std::string& full_path, const unsign
 		}
 	}
 
-	bool lendian = isSystemLittleEndian();
+	// Aux files are written by the same simulation as the main tipsy file, so they
+	// share its byte order: swap iff the main file was detected as non-native
+	// (loadPartial() has already set 'native' from the reader at this point).
+	bool swap_aux = !native;
 
 	for (int i = 0; i < aux_values.size(); i++) {
 		
@@ -731,7 +734,19 @@ bool PartialTipsyFile::loadPartialAUX(const std::string& full_path, const unsign
 		std::size_t totalFloats = fileSize / sizeof(float);
 		totalFloats = totalFloats - 1; // first is the count of particles
 
+		if (fullHeader.nbodies == 0 || totalFloats % fullHeader.nbodies != 0) {
+			std::cerr << "Error: Size of aux file " << filename_aux
+				<< " is not a multiple of the particle count - skipping it" << std::endl;
+			continue;
+		}
+
 		size_t num_components = totalFloats / (fullHeader.nbodies);
+		if (num_components == 2) {
+			std::cerr << "Warning: aux file " << filename_aux
+				<< " holds two 4-byte words per particle, which indicates a double-precision file - "
+				<< "double-precision aux files are not supported, skipping it" << std::endl;
+			continue;
+		}
 		if (num_components == 0 || num_components > 3) {
 			std::cerr << "Error: Wrong number of components in " << filename_aux << std::endl;
 			continue;
@@ -787,21 +802,21 @@ bool PartialTipsyFile::loadPartialAUX(const std::string& full_path, const unsign
 			for (int p = 0; p < h.nsph; ++p) {
 				for (int c = 0; c < num_components; ++c) {
 					file.read((char*)&v, sizeof(float));
-					aux_values[i].gas[c + p * num_components] = (lendian) ? swapEndianFloat(v) : v;
+					aux_values[i].gas[c + p * num_components] = (swap_aux) ? swapEndianFloat(v) : v;
 				}
 			}
 			
 			for (int p = 0; p < h.ndark; ++p) {
 				for (int c = 0; c < num_components; ++c) {
 					file.read((char*)&v, sizeof(float));
-					aux_values[i].darks[c + p * num_components] = (lendian) ? swapEndianFloat(v) : v;
+					aux_values[i].darks[c + p * num_components] = (swap_aux) ? swapEndianFloat(v) : v;
 				}
 			}
 
 			for (int p = 0; p < h.nstar; ++p) {
 				for (int c = 0; c < num_components; ++c) {
 					file.read((char*)&v, sizeof(float));
-					aux_values[i].stars[c + p * num_components] = (lendian) ? swapEndianFloat(v) : v;
+					aux_values[i].stars[c + p * num_components] = (swap_aux) ? swapEndianFloat(v) : v;
 				}
 			}
 

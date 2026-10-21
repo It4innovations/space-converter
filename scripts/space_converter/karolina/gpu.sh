@@ -12,4 +12,4 @@ if [ -z "$LOCAL_RANK" ]; then
 fi
 export CUDA_VISIBLE_DEVICES=$(( $LOCAL_RANK % 8 ))
 echo "Process $SLURM_PROCID: Local rank $LOCAL_RANK on node $SLURM_NODEID, Using GPU: $CUDA_VISIBLE_DEVICES"
-$@
+exec "$@"

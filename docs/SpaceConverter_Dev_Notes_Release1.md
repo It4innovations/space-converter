@@ -317,6 +317,7 @@ Common options:
 | `--data-type` | type | Select adapter |
 | `--grid-dim` | integer | Cubic output resolution |
 | `-o`, `--output-path` | path | Output directory |
+| `-f`, `--output-file` | path | Output file base path chosen by the user (overrides the automatic `<type>_<dataset>` naming; frame/rank suffixes and the format extension are still appended; a relative path is placed inside `--output-path`) |
 | `--server` | host | TCP host |
 | `--port` | integer | TCP port |
 | `--info` | none | Print metadata and disable remote mode |

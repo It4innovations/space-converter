@@ -143,3 +143,5 @@ core
 core.[0-9]*
 vgcore.*
 *.core
+# Local temp/scratch directory (analysis, test outputs)
+temp/

@@ -260,7 +260,9 @@ namespace space_converter {
 	void init_communication(TcpConnection& tcp_connection, space_converter::FromCL& from_cl)
 	{
 		if (from_cl.remote && from_cl.world_rank == 0) {
-			tcp_connection.init_sockets_data(from_cl.server.c_str(), from_cl.port);
+			// The converter is always the listening side; the host name parameter
+			// is only used by client-mode sockets and is therefore fixed here.
+			tcp_connection.init_sockets_data("localhost", from_cl.port);
 		}
 	}
 
@@ -396,22 +398,22 @@ namespace space_converter {
 
 				float bbox_dim = (float)space_data.object_size;
 
-				// Calculate original data dimensions
-				float dims_orig[3];
-				dims_orig[0] = space_data.bbox_max_orig[0] - space_data.bbox_min_orig[0];
-				dims_orig[1] = space_data.bbox_max_orig[1] - space_data.bbox_min_orig[1];
-				dims_orig[2] = space_data.bbox_max_orig[2] - space_data.bbox_min_orig[2];
+				// Map the per-type bbox into object space [0, object_size] with the SAME
+				// uniform scale the conversion kernels use: (pos - bbox_min_orig) /
+				// bbox_size_orig. The global bbox is cube-symmetrized, so per-axis
+				// extents equal bbox_size_orig; normalizing per axis with independent
+				// extents (the previous code) would desynchronize the client's zoom
+				// boxes from what the kernels actually cut out.
+				float size_orig = (float)space_data.bbox_size_orig;
+				if (size_orig <= 0.0f) size_orig = 1.0f;
 
-				float dims_orig_max = STDMAX(dims_orig[0], STDMAX(dims_orig[1], dims_orig[2]));
+				bbox_min[0] = (space_data_bbox.bbox_min_orig[0] - space_data.bbox_min_orig[0]) * bbox_dim / size_orig;
+				bbox_min[1] = (space_data_bbox.bbox_min_orig[1] - space_data.bbox_min_orig[1]) * bbox_dim / size_orig;
+				bbox_min[2] = (space_data_bbox.bbox_min_orig[2] - space_data.bbox_min_orig[2]) * bbox_dim / size_orig;
 
-				// Transform bounding box to normalized grid coordinates
-				bbox_min[0] = (space_data_bbox.bbox_min_orig[0] - space_data.bbox_min_orig[0]) * bbox_dim / dims_orig[0];
-				bbox_min[1] = (space_data_bbox.bbox_min_orig[1] - space_data.bbox_min_orig[1]) * bbox_dim / dims_orig[1];
-				bbox_min[2] = (space_data_bbox.bbox_min_orig[2] - space_data.bbox_min_orig[2]) * bbox_dim / dims_orig[2];
-
-				bbox_max[0] = (space_data_bbox.bbox_max_orig[0] - space_data.bbox_min_orig[0]) * bbox_dim / dims_orig[0];
-				bbox_max[1] = (space_data_bbox.bbox_max_orig[1] - space_data.bbox_min_orig[1]) * bbox_dim / dims_orig[1];
-				bbox_max[2] = (space_data_bbox.bbox_max_orig[2] - space_data.bbox_min_orig[2]) * bbox_dim / dims_orig[2];
+				bbox_max[0] = (space_data_bbox.bbox_max_orig[0] - space_data.bbox_min_orig[0]) * bbox_dim / size_orig;
+				bbox_max[1] = (space_data_bbox.bbox_max_orig[1] - space_data.bbox_min_orig[1]) * bbox_dim / size_orig;
+				bbox_max[2] = (space_data_bbox.bbox_max_orig[2] - space_data.bbox_min_orig[2]) * bbox_dim / size_orig;
 
 				// Send bounding box to client
 				tcp_connection.send_data_data((char*)&bbox_min[0], sizeof(float) * 3);
@@ -438,6 +440,26 @@ namespace space_converter {
 	 */
 	void recv_requested_data(TcpConnection& tcp_connection, space_converter::FromCL& from_cl, common::SpaceData& space_data)
 	{
+		// Extraction-request wire format (must stay in sync with the bspace addon,
+		// blender_addons/bspace/bspace_panel.py, "Extraction request wire order"):
+		//   bbox_min                    3x float
+		//   bbox_max                    3x float
+		//   bbox_dim                    int
+		//   grid_transform              float
+		//   particle_type               int
+		//   block_name_id               int
+		//   extracted_type              int (enum ExtractedType)
+		//   dense_type                  int (enum DenseType)
+		//   dense_norm                  int (enum DenseNorm)
+		//   object_size                 float
+		//   particle_radius_multiplier  float
+		//   filter_min, filter_max      2x float
+		//   frame                       int
+		//   anim_type                   int (enum AnimType)
+		//   anim_task_counter           int
+		// Every field received here MUST also be MPI_Bcast below — a field seen only
+		// by rank 0 silently diverges across ranks (this happened to
+		// particle_radius_multiplier before).
 		if (from_cl.world_rank == 0) {
 			if (from_cl.remote) {
 				// Receive spatial parameters
@@ -445,22 +467,22 @@ namespace space_converter {
 				tcp_connection.recv_data_data((char*)&space_data.bbox_max[0], sizeof(float) * 3);
 				tcp_connection.recv_data_data((char*)&space_data.bbox_dim, sizeof(int));
 				tcp_connection.recv_data_data((char*)&space_data.grid_transform, sizeof(float));
-				
+
 				// Receive data selection parameters
 				tcp_connection.recv_data_data((char*)&space_data.particle_type, sizeof(int));
 				tcp_connection.recv_data_data((char*)&space_data.block_name_id, sizeof(int));
-				
+
 				// Receive processing parameters
 				tcp_connection.recv_data_data((char*)&space_data.extracted_type, sizeof(int));
 				tcp_connection.recv_data_data((char*)&space_data.dense_type, sizeof(int));
 				tcp_connection.recv_data_data((char*)&space_data.dense_norm, sizeof(int));
 				tcp_connection.recv_data_data((char*)&space_data.object_size, sizeof(float));
 				tcp_connection.recv_data_data((char*)&space_data.particle_radius_multiplier, sizeof(float));
-				
+
 				// Receive filtering parameters
 				tcp_connection.recv_data_data((char*)&space_data.filter_min, sizeof(float));
 				tcp_connection.recv_data_data((char*)&space_data.filter_max, sizeof(float));
-				
+
 				// Receive animation parameters
 				tcp_connection.recv_data_data((char*)&space_data.frame, sizeof(int));
 				tcp_connection.recv_data_data((char*)&space_data.anim_type, sizeof(int));
@@ -479,11 +501,48 @@ namespace space_converter {
 		MPI_Bcast((char*)&space_data.dense_type, sizeof(int), MPI_BYTE, 0, MPI_COMM_WORLD);
 		MPI_Bcast((char*)&space_data.dense_norm, sizeof(int), MPI_BYTE, 0, MPI_COMM_WORLD);
 		MPI_Bcast((char*)&space_data.object_size, sizeof(float), MPI_BYTE, 0, MPI_COMM_WORLD);
+		MPI_Bcast((char*)&space_data.particle_radius_multiplier, sizeof(float), MPI_BYTE, 0, MPI_COMM_WORLD);
 		MPI_Bcast((char*)&space_data.filter_min, sizeof(float), MPI_BYTE, 0, MPI_COMM_WORLD);
 		MPI_Bcast((char*)&space_data.filter_max, sizeof(float), MPI_BYTE, 0, MPI_COMM_WORLD);
 		MPI_Bcast((char*)&space_data.frame, sizeof(int), MPI_BYTE, 0, MPI_COMM_WORLD);
 		MPI_Bcast((char*)&space_data.anim_type, sizeof(int), MPI_BYTE, 0, MPI_COMM_WORLD);
 		MPI_Bcast((char*)&space_data.anim_task_counter, sizeof(int), MPI_BYTE, 0, MPI_COMM_WORLD);
+
+		// Validate the request identically on every rank (the addon or another
+		// client may send values the CLI would have rejected). Invalid requests are
+		// clamped with a rank-0 warning rather than aborting the server loop.
+		if (from_cl.remote) {
+			if (space_data.bbox_dim < 1) {
+				if (from_cl.world_rank == 0)
+					printf("Warning: client requested grid dim %d, clamping to 1\n", space_data.bbox_dim);
+				space_data.bbox_dim = 1;
+			}
+			if (space_data.object_size <= 0.0f) {
+				if (from_cl.world_rank == 0)
+					printf("Warning: client requested object_size %f, resetting to 1000\n", space_data.object_size);
+				space_data.object_size = 1000.0f;
+			}
+			int dt = (int)space_data.dense_type;
+			if (dt < 0 || dt > 6) {
+				if (from_cl.world_rank == 0)
+					printf("Warning: client requested unknown dense_type %d, using Cubic\n", dt);
+				space_data.dense_type = common::SpaceData::DenseType::eCubic;
+			}
+			int dn = (int)space_data.dense_norm;
+			if (dn < 0 || dn > 3) {
+				if (from_cl.world_rank == 0)
+					printf("Warning: client requested unknown dense_norm %d, using none\n", dn);
+				space_data.dense_norm = common::SpaceData::DenseNorm::eNone;
+			}
+			// A dense extraction with no splat kernel would silently produce an
+			// (almost) empty grid: W_norm(eNone) == 0 for every radius >= 1 voxel.
+			if (space_data.extracted_type == common::SpaceData::ExtractedType::eDense &&
+				space_data.dense_type == common::SpaceData::DenseType::eNone) {
+				if (from_cl.world_rank == 0)
+					printf("Warning: dense extraction with dense_type=none would be empty, using Cubic\n");
+				space_data.dense_type = common::SpaceData::DenseType::eCubic;
+			}
+		}
 	}
 
 	// ============================================================================

@@ -26,6 +26,8 @@ ml openmpi
 
 ROOT_DIR=${PWD}
 
+cosmo25_nc_path=  # TODO: set path to the NChilada data directory
+
 echo "===================RUN"
 
 lib_dir=${ROOT_DIR}/install
@@ -33,8 +35,9 @@ install=${ROOT_DIR}/install/space_converter
 src=${ROOT_DIR}/src
 data=${ROOT_DIR}/data
 out=${ROOT_DIR}/out
+mkdir -p ${out}
 
 export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${lib_dir}/openvdb/lib64
 
-srun -u ${install}/bin/space_converter --data-type CHANGA_NCHILADA --nc-dir ${cosmo25_nc_path}
+srun -u ${install}/bin/space_converter --data-type CHANGA_NCHILADA --nc-dir ${cosmo25_nc_path} --output-path ${out} --grid-dim 1000 --port 5000
 

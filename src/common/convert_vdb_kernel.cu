@@ -51,6 +51,30 @@ namespace space_converter {
 				// Using declarations for cleaner code
 				using common::vdb::sparse::packCoord3;
 
+				/// Atomic float min via compare-and-swap (no native float atomicMin)
+				__device__ inline void atomicMinFloat(float* addr, float value)
+				{
+					int* addr_as_int = (int*)addr;
+					int old = *addr_as_int, assumed;
+					do {
+						assumed = old;
+						old = atomicCAS(addr_as_int, assumed,
+							__float_as_int(fminf(__int_as_float(assumed), value)));
+					} while (assumed != old);
+				}
+
+				/// Atomic float max via compare-and-swap (no native float atomicMax)
+				__device__ inline void atomicMaxFloat(float* addr, float value)
+				{
+					int* addr_as_int = (int*)addr;
+					int old = *addr_as_int, assumed;
+					do {
+						assumed = old;
+						old = atomicCAS(addr_as_int, assumed,
+							__float_as_int(fmaxf(__int_as_float(assumed), value)));
+					} while (assumed != old);
+				}
+
 				/**
 				 * @brief CUDA kernel to find bounding box on GPU
 				 *
@@ -248,7 +272,9 @@ namespace space_converter {
 
 					uint64_t* voxel_keys,      // Output: packed voxel coordinates
 					float* voxel_values,       // Output: voxel values
-					uint64_t* particle_count   // Output: number of processed particles
+					uint64_t* particle_count,  // Output: number of processed particles
+					float* min_value_out,      // Output: min of per-particle values (same semantics as the CPU path)
+					float* max_value_out       // Output: max of per-particle values
 				) {
 					size_t idx_c = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -324,6 +350,13 @@ namespace space_converter {
 						uint64_t out_idx = atomicAdd((unsigned long long*)particle_count, 1ULL);
 						voxel_keys[out_idx] = packCoord3(px, py, pz);
 						voxel_values[out_idx] = v_orig;
+
+						// Track the range of the per-particle values that passed the
+						// filters — the same semantics the CPU kernels report (the voxel
+						// value range after accumulation is reported separately as
+						// min/max_value_reduced)
+						atomicMinFloat(min_value_out, v_orig);
+						atomicMaxFloat(max_value_out, v_orig);
 					}
 				}
 
@@ -371,7 +404,9 @@ namespace space_converter {
 					size_t* grid_offset,
 					size_t* grid_dims,
 
-					uint64_t* particle_count  // Output: number of processed particles
+					uint64_t* particle_count,  // Output: number of processed particles
+					float* min_value_out,      // Output: min of per-particle values
+					float* max_value_out       // Output: max of per-particle values
 				) {
 					size_t idx_c = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -414,6 +449,9 @@ namespace space_converter {
 
 					if (should_process) {
 						atomicAdd((unsigned long long*)particle_count, 1ULL);
+						// Per-particle value range (same semantics as the CPU path)
+						atomicMinFloat(min_value_out, v_orig);
+						atomicMaxFloat(max_value_out, v_orig);
 						// Splat particle into dense grid using SPH kernel function
 						fill_voxels(
 							grid_data_density,
@@ -477,8 +515,10 @@ namespace space_converter {
 					size_t& particles_count
 				) {
 					if (num_particles == 0) {
-						min_value = 0.0f;
-						max_value = 0.0f;
+						// Neutral extrema so the MPI MIN/MAX reduction over ranks ignores
+						// empty ranks (0 would pollute the global minimum)
+						min_value = FLT_MAX;
+						max_value = -FLT_MAX;
 						particles_count = 0;
 						return;
 					}
@@ -508,6 +548,12 @@ namespace space_converter {
 					CUDA_CHECK_ERROR(cudaMemcpy(voxel_manager_gpu->d_bbox_min_orig, bbox_min_orig, 3 * sizeof(int), cudaMemcpyHostToDevice));
 					CUDA_CHECK_ERROR(cudaMemcpy(voxel_manager_gpu->d_offset_position, offset_position, 3 * sizeof(float), cudaMemcpyHostToDevice));
 					CUDA_CHECK_ERROR(cudaMemcpy(voxel_manager_gpu->d_bbox_sphere_pos, bbox_sphere_pos, 3 * sizeof(float), cudaMemcpyHostToDevice));
+
+					// Per-particle value range accumulators (CPU-path semantics)
+					float h_minmax_init[2] = { FLT_MAX, -FLT_MAX };
+					float* d_minmax = nullptr;
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_minmax, 2 * sizeof(float)));
+					CUDA_CHECK_ERROR(cudaMemcpy(d_minmax, h_minmax_init, 2 * sizeof(float), cudaMemcpyHostToDevice));
 
 					// Launch kernel
 					int blockSize = 256;
@@ -545,9 +591,9 @@ namespace space_converter {
 
 						voxel_manager_gpu->d_keys,
 						voxel_manager_gpu->d_vals,
-						voxel_manager_gpu->d_particle_count
-						//d_particle_valid,
-						//d_particle_values
+						voxel_manager_gpu->d_particle_count,
+						d_minmax + 0,
+						d_minmax + 1
 						);
 					GPU_KERNEL_TIME_END(convert_to_sparse_grid_kernel_cuda);
 					//CUDA_CHECK_LAST_ERROR();
@@ -559,10 +605,14 @@ namespace space_converter {
 					particles_count = static_cast<size_t>(raw_count);
 					voxel_manager_gpu->update(raw_count);
 
-					particles_count = raw_count;
-
-					// Get min/max using CUB (operates on d_vals_out which contains reduced values)
-					voxel_manager_gpu->find_min_max(min_value, max_value);
+					// Report the PER-PARTICLE value range, matching the CPU kernels.
+					// (A previous version reported the accumulated voxel-value range here,
+					// so min/max differed between CPU and GPU runs of the same dataset.)
+					float h_minmax[2] = { FLT_MAX, -FLT_MAX };
+					CUDA_CHECK_ERROR(cudaMemcpy(h_minmax, d_minmax, 2 * sizeof(float), cudaMemcpyDeviceToHost));
+					CUDA_CHECK_ERROR(cudaFree(d_minmax));
+					min_value = h_minmax[0];
+					max_value = h_minmax[1];
 				}
 
 				/**
@@ -609,8 +659,10 @@ namespace space_converter {
 					size_t& particles_count
 				) {
 					if (num_particles == 0) {
-						min_value = 0.0f;
-						max_value = 0.0f;
+						// Neutral extrema so the MPI MIN/MAX reduction over ranks ignores
+						// empty ranks (0 would pollute the global minimum)
+						min_value = FLT_MAX;
+						max_value = -FLT_MAX;
 						particles_count = 0;
 						return;
 					}
@@ -663,6 +715,12 @@ namespace space_converter {
 					//sync d_offset
 					CUDA_CHECK_ERROR(cudaMemcpy(voxel_manager_gpu->d_offset, voxel_manager_gpu->offset, 3 * sizeof(size_t), cudaMemcpyHostToDevice));
 
+					// Per-particle value range accumulators (CPU-path semantics)
+					float h_minmax_init[2] = { FLT_MAX, -FLT_MAX };
+					float* d_minmax = nullptr;
+					CUDA_CHECK_ERROR(CUDA_MALLOC(&d_minmax, 2 * sizeof(float)));
+					CUDA_CHECK_ERROR(cudaMemcpy(d_minmax, h_minmax_init, 2 * sizeof(float), cudaMemcpyHostToDevice));
+
 					// Launch kernel
 					int blockSize = 256;
 					int numBlocks = (num_particles + blockSize - 1) / blockSize;
@@ -705,7 +763,9 @@ namespace space_converter {
 						voxel_manager_gpu->d_data_temp, //    float* grid_data_temp,
 						voxel_manager_gpu->d_offset, //    size_t* grid_offset,
 						voxel_manager_gpu->d_dims, //size_t* grid_dims,
-						voxel_manager_gpu->d_particle_count //    uint64_t* particle_count
+						voxel_manager_gpu->d_particle_count, //    uint64_t* particle_count
+						d_minmax + 0,
+						d_minmax + 1
 						);
 					GPU_KERNEL_TIME_END(convert_to_dense_grid_kernel_cuda);
 					//CUDA_CHECK_LAST_ERROR();
@@ -749,13 +809,19 @@ namespace space_converter {
 					//                    }
 					//                }
 
-									// Read back the number of particles that passed the should_process filter
+						// Read back the number of particles that passed the should_process filter
 					uint64_t raw_count = 0;
 					CUDA_CHECK_ERROR(cudaMemcpy(&raw_count, voxel_manager_gpu->d_particle_count, sizeof(uint64_t), cudaMemcpyDeviceToHost));
 					particles_count = static_cast<size_t>(raw_count);
-					//min_value = (count > 0) ? min : 0.0f;
-					//max_value = (count > 0) ? max : 0.0f;
-					voxel_manager_gpu->find_min_max(min_value, max_value);
+
+					// Report the PER-PARTICLE value range, matching the CPU kernels
+					// (previously the whole-grid voxel range, which is dominated by
+					// zeros and differs from CPU runs)
+					float h_minmax[2] = { FLT_MAX, -FLT_MAX };
+					CUDA_CHECK_ERROR(cudaMemcpy(h_minmax, d_minmax, 2 * sizeof(float), cudaMemcpyDeviceToHost));
+					CUDA_CHECK_ERROR(cudaFree(d_minmax));
+					min_value = h_minmax[0];
+					max_value = h_minmax[1];
 				}
 
 				/**
@@ -770,30 +836,20 @@ namespace space_converter {
 					const float* value_particles,
 					size_t num_particles,
 					float particle_radius_multiplier,
-					std::string grid_name,
-					float grid_transform,
-					float* bbox_min,
-					float* bbox_max,
 					int bbox_dim,
 					int* bbox_min_orig,
 					double bbox_size_orig,
-					common::SpaceData::ExtractedType extracted_type,
-					common::SpaceData::ExtractedParticleType extracted_particle_type,
 					common::SpaceData::DenseType dense_type,
 					common::SpaceData::DenseNorm dense_norm,
 					int block_name_id,
 					float object_size,
 					float& min_value,
 					float& max_value,
-					float min_value_global,
-					float max_value_global,
 					size_t& particles_count,
 					VDBParticles& grid,
 					double& transform_scale,
 					float filter_min,
 					float filter_max,
-					float min_rho,
-					float max_rho,
 					common::SpaceData::AnimType anim_type,
 					int frame_req,
 					int frame,

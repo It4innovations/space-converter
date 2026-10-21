@@ -60,6 +60,7 @@ namespace space_converter {
                 // Clear CPU data
                 pos_particles_per_ptype.clear();
                 particles_id_ordered_per_ptype.clear();
+                particles_reader_id_per_ptype.clear();
                 radius_particles_per_ptype.clear();
                 particles_ptype_offset.clear();
                 rho_particles_per_ptype.clear();
@@ -95,22 +96,12 @@ namespace space_converter {
                         continue;
                     }
 
-                    // Create index array
-                    std::vector<size_t> indices(ids.size());
-                    std::iota(indices.begin(), indices.end(), 0);
-
-                    // Sort indices by radius values (ascending)
-                    std::sort(indices.begin(), indices.end(),
-                        [&radii](size_t i1, size_t i2) {
-                            return radii[i1] < radii[i2];
+                    // ids are compact per-type indices — sort them by the radius of the
+                    // particle they refer to (ascending). Composes with other sorts.
+                    std::sort(ids.begin(), ids.end(),
+                        [&radii](size_t a, size_t b) {
+                            return radii[a] < radii[b];
                         });
-
-                    // Reorder particle IDs according to sorted indices
-                    std::vector<size_t> sorted_ids(ids.size());
-                    for (size_t i = 0; i < indices.size(); ++i) {
-                        sorted_ids[i] = ids[indices[i]];
-                    }
-                    ids = std::move(sorted_ids);
                 }
             }
 
@@ -170,12 +161,13 @@ namespace space_converter {
                         continue; // Invalid data
                     }
 
-                    // Find bounding box for position normalization
+                    // Find bounding box for position normalization (ids are compact
+                    // per-type indices into the positions array)
                     float min_coord = std::numeric_limits<float>::max();
                     float max_coord = std::numeric_limits<float>::lowest();
 
                     for (size_t i = 0; i < n_particles; ++i) {
-                        size_t idx = ids[i] * 3;
+                        size_t idx = i * 3;
                         for (int dim = 0; dim < 3; ++dim) {
                             float coord = positions[idx + dim];
                             min_coord = std::min(min_coord, coord);
@@ -183,32 +175,20 @@ namespace space_converter {
                         }
                     }
 
-                    // Compute Morton codes for all particles
+                    // Morton code per compact particle slot
                     std::vector<uint64_t> morton_codes(n_particles);
                     for (size_t i = 0; i < n_particles; ++i) {
-                        size_t idx = ids[i] * 3;
-                        float x = positions[idx + 0];
-                        float y = positions[idx + 1];
-                        float z = positions[idx + 2];
-                        morton_codes[i] = compute_morton_code_3d(x, y, z, min_coord, max_coord);
+                        size_t idx = i * 3;
+                        morton_codes[i] = compute_morton_code_3d(
+                            positions[idx + 0], positions[idx + 1], positions[idx + 2],
+                            min_coord, max_coord);
                     }
 
-                    // Create index array
-                    std::vector<size_t> indices(n_particles);
-                    std::iota(indices.begin(), indices.end(), 0);
-
-                    // Sort indices by Morton codes
-                    std::sort(indices.begin(), indices.end(),
-                        [&morton_codes](size_t i1, size_t i2) {
-                            return morton_codes[i1] < morton_codes[i2];
+                    // Sort the iteration order by the Morton code of the referenced particle
+                    std::sort(ids.begin(), ids.end(),
+                        [&morton_codes](size_t a, size_t b) {
+                            return morton_codes[a] < morton_codes[b];
                         });
-
-                    // Reorder particle IDs according to sorted indices
-                    std::vector<size_t> sorted_ids(n_particles);
-                    for (size_t i = 0; i < n_particles; ++i) {
-                        sorted_ids[i] = ids[indices[i]];
-                    }
-                    ids = std::move(sorted_ids);
                 }
             }
 

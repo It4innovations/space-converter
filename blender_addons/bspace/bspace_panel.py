@@ -22,7 +22,9 @@ from . import bspace_remote
 
 import numpy as np
 import bpy
+import os
 import pathlib
+import tempfile
 from ctypes import *
 import struct
 import mathutils
@@ -84,6 +86,7 @@ file_type_items = [
     ("2", "NANOVDB", ""),
     ("3", "PATH", ""),
     ("4", "RAW_PART", ""),
+    ("5", "CUB", ""),
 ]
 
 slice_axis_items = [
@@ -104,15 +107,17 @@ class BSPACE_PG_SETTINGS(bpy.types.PropertyGroup):
     #     )  # type: ignore
     
     grid_dim: bpy.props.IntProperty(
-        name="Grid Dim", 
-        default=100
-        ) # type: ignore 
+        name="Grid Dim",
+        default=100,
+        min=1
+        ) # type: ignore
 
     bbox_size: bpy.props.FloatProperty(
-        name="BBOX Size", 
+        name="BBOX Size",
         default=1000,
+        min=0.001,
         update=update_bbox_size  # Set the update callback
-        )# type: ignore 
+        )# type: ignore
 
     # value_convert : bpy.props.EnumProperty(
     #     items=value_convert_items, 
@@ -153,19 +158,22 @@ class BSPACE_PG_SETTINGS(bpy.types.PropertyGroup):
         default=0.0
         )# type: ignore
 
+    # Defaults match the C++ side (+-FLT_MAX); values beyond float32 range
+    # would silently become +-inf when packed as a C float.
     filter_min: bpy.props.FloatProperty(
-        name="Min", 
-        default=-1e+39
+        name="Min",
+        default=-3.4e38
         )# type: ignore
-    
+
     filter_max: bpy.props.FloatProperty(
-        name="Max", 
-        default=1e+39
+        name="Max",
+        default=3.4e38
         )# type: ignore
-    
+
     density: bpy.props.FloatProperty(
         name="Density",
-        default=1.0
+        default=1.0,
+        min=0.0
         )# type: ignore
 
     shader_from_min: bpy.props.FloatProperty(
@@ -1218,7 +1226,11 @@ class BSPACE:
         self.tcp_send(context, bmessage_type)
 
         # recv
-        context.scene.view_pg_bspace.anim_type = str(self.bytes_to_int(self.tcp_recv(context, 4)))
+        anim_type_value = str(self.bytes_to_int(self.tcp_recv(context, 4)))
+        if anim_type_value not in [item[0] for item in anim_items]:
+            print("BSPACE: unknown anim_type '%s' received from server, falling back to '0'" % anim_type_value)
+            anim_type_value = '0'
+        context.scene.view_pg_bspace.anim_type = anim_type_value
         context.scene.view_pg_bspace.anim_start = self.bytes_to_int(self.tcp_recv(context, 4))
         context.scene.view_pg_bspace.anim_end = self.bytes_to_int(self.tcp_recv(context, 4))
         
@@ -1360,8 +1372,8 @@ class BSPACE:
         #     snapshot_size = float(self.bytes_to_double(self.tcp_recv(context, 8))) # TODO
         #     #context.scene.view_pg_bspace.snapshot_size
 
-        if context.scene.bspace_list_types_index < 0 or context.scene.bspace_list_types_index > len(context.scene.bspace_list_types):
-            raise Exception("context.scene.bspace_list_types_index < 0 or context.scene.bspace_list_types_index > len(context.scene.bspace_list_types)")
+        if context.scene.bspace_list_types_index < 0 or context.scene.bspace_list_types_index >= len(context.scene.bspace_list_types):
+            raise Exception("BSPACE: no particle data type selected; connect to the server and select an item in the Extract list")
 
         # bbox_location = self.get_bbox_location(context)
         # bbox_dims = self.get_bbox_dim(context)
@@ -1751,8 +1763,8 @@ class BSPACE:
             return rawParticles.extract_GN(context)
 
     def extract_data(self, context):
-        if context.scene.bspace_list_types_index < 0 or context.scene.bspace_list_types_index > len(context.scene.bspace_list_types):
-            raise Exception("context.scene.bspace_list_types_index < 0 or context.scene.bspace_list_types_index > len(context.scene.bspace_list_types)")
+        if context.scene.bspace_list_types_index < 0 or context.scene.bspace_list_types_index >= len(context.scene.bspace_list_types):
+            raise Exception("BSPACE: no particle data type selected; connect to the server and select an item in the Extract list")
 
         # if context.scene.view_pg_bspace.use_view_bbox == True:
         #     #    self.find_bbox(context)
@@ -1782,6 +1794,25 @@ class BSPACE:
 
         context.scene.view_pg_bspace.anim_task_counter = context.scene.view_pg_bspace.anim_task_counter + 1
         #################send
+        # Wire order of the extraction request (message_type == 2), with struct formats:
+        #   bbox_min                   3f
+        #   bbox_max                   3f
+        #   bbox_dim (grid_dim)        i
+        #   grid_transform             f
+        #   particle_type              i
+        #   block_name_id              i
+        #   extracted_type             i
+        #   dense_type                 i
+        #   dense_norm                 i
+        #   object_size                f
+        #   particle_radius_multiplier f
+        #   filter_min                 f
+        #   filter_max                 f
+        #   frame                      i
+        #   anim_type                  i
+        #   anim_task_counter          i
+        # The C++ counterpart is `recv_requested_data` in src/data_communication.cpp;
+        # both sides must stay in sync.
         #tcp::recv_data((char*)&bbox_min[0], sizeof(float) * 3);
         bbbox_min = self.float3_to_bytes(bbox_min)
         self.tcp_send(context, bbbox_min)        
@@ -1852,6 +1883,8 @@ class BSPACE:
         file_type_id = self.bytes_to_int(self.tcp_recv(context, 4))
         #print("file_type_id:", file_type_id)
         
+        if file_type_id < 0 or file_type_id >= len(file_type_items):
+            raise Exception("BSPACE: received unknown file_type id %d from server" % file_type_id)
         file_type = file_type_items[file_type_id][1]
         #tcp::send_data((char*)&size, sizeof(size));
         file_size = self.bytes_to_int64(self.tcp_recv(context, 8))
@@ -1893,16 +1926,16 @@ class BSPACE:
         pref = bspace_pref.preferences()
 
         if not file_data is None:
-            filename = pref.local_temp_dir_path + "/" + fvdb + ".vdb"
+            filename = os.path.join(self.get_temp_dir(), fvdb + ".vdb")
             if file_type == "OPENVDB":
                 with open(filename, 'wb') as f:
                     f.write(file_data)
 
             elif file_type == "NANOVDB":
-                filename_nvdb = pref.local_temp_dir_path + "/" + fvdb + ".nvdb"
+                filename_nvdb = os.path.join(self.get_temp_dir(), fvdb + ".nvdb")
                 with open(filename_nvdb, 'wb') as f:
                     f.write(file_data)
-                
+
                 if len(pref.nvdb_converter_path) > 0:
                     cmd = [
                         pref.nvdb_converter_path,
@@ -1918,9 +1951,21 @@ class BSPACE:
                         if stdout:
                             print(str(stdout.decode()))
                         if stderr:
-                            print(str(stderr.decode()))        
+                            print(str(stderr.decode()))
 
                         raise Exception("nanovdb command failed: %s" % cmd)
+                else:
+                    raise Exception(
+                        "BSPACE: NanoVDB data received but no converter is configured; "
+                        "set the 'NVDB Converter' path in the add-on preferences "
+                        "(received data saved to '%s')" % filename_nvdb)
+            elif file_type == "CUB":
+                filename_cub = os.path.join(self.get_temp_dir(), fvdb + ".cub")
+                with open(filename_cub, 'wb') as f:
+                    f.write(file_data)
+                raise Exception(
+                    "BSPACE: received CUB data and saved it to '%s'; "
+                    "importing CUB volumes is not supported yet" % filename_cub)
             elif file_type == "PATH":
                 filename = file_data.decode()
                 if context.scene.view_pg_bspace.replace_path_enabled:
@@ -2070,7 +2115,8 @@ class BSPACE:
             obj_vdb_new.data.render.clipping = 0
             obj_vdb_new.data.render.precision = 'FULL'
 
-            if frames > 1 and context.scene.view_pg_bspace.anim_type == '1': # ALL:
+            # The server sends frames = world_size for anim types 1 (AllPath) and 3 (FrameExtract)
+            if frames > 1 and context.scene.view_pg_bspace.anim_type in ('1', '3'):
                 obj_vdb_new.data.is_sequence = True
                 obj_vdb_new.data.frame_duration = frames
                 obj_vdb_new.data.frame_start = 1
@@ -2350,25 +2396,34 @@ class BSPACE:
 
         pass
 
+    def get_temp_dir(self):
+        """Return the directory for temporary files: the add-on preference if set,
+        otherwise the system temp directory."""
+        pref = bspace_pref.preferences()
+        if len(pref.local_temp_dir_path) > 0:
+            return pref.local_temp_dir_path
+        return tempfile.gettempdir()
+
     def recvall(self, channel, expected_length):
         data = bytearray()
         while len(data) < expected_length:
             chunk = channel.recv(expected_length - len(data))
             if not chunk:
-                break  # Connection closed
+                raise ConnectionError(
+                    "connection closed while reading %d bytes, got %d" % (expected_length, len(data)))
             data.extend(chunk)
-        return data               
+        return data
 
     def tcp_send(self, context, data):
         if self.connection_channel is None:
-            return
-                
+            raise ConnectionError("not connected to the BSpace server")
+
         self.connection_channel.sendall(data)
 
     def tcp_recv(self, context, size):
         if self.connection_channel is None:
-            return None
-                
+            raise ConnectionError("not connected to the BSpace server")
+
         return self.recvall(self.connection_channel, size)
 
     def connect(self, context):
@@ -2634,8 +2689,18 @@ class BSPACE_PT_data(BSpacePanel, bpy.types.Panel):
         col.prop(scene.view_pg_bspace, "slice_nr", text="Slice Number")
         col.operator("bspace.vdb2png")
 
-#####################################################################################################################    
+#####################################################################################################################
 addon_keymaps = []
+
+@bpy.app.handlers.persistent
+def bspace_load_post(filepath):
+    """Re-register the frame_change_post export handler after loading a .blend file
+    where 'Register Export' was saved enabled, so the checkbox state matches reality."""
+    for scene in bpy.data.scenes:
+        if scene.view_pg_bspace.register_export:
+            if bpy.app.handlers.frame_change_post.count(BSPACE_PG_SETTINGS.frame_change_callback) == 0:
+                bpy.app.handlers.frame_change_post.append(BSPACE_PG_SETTINGS.frame_change_callback)
+            break
 
 # Registering
 classes = [
@@ -2704,9 +2769,35 @@ def register():
     if kc:
         km = wm.keyconfigs.addon.keymaps.new(name='3D View', space_type='VIEW_3D')
         kmi = km.keymap_items.new("bspace.zoom", type='W', value='PRESS', ctrl=True)
-        addon_keymaps.append((km, kmi))    
+        addon_keymaps.append((km, kmi))
+
+    if bspace_load_post not in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(bspace_load_post)
 
 def unregister():
+    if bspace_load_post in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(bspace_load_post)
+
+    if BSPACE_PG_SETTINGS.frame_change_callback in bpy.app.handlers.frame_change_post:
+        bpy.app.handlers.frame_change_post.remove(BSPACE_PG_SETTINGS.frame_change_callback)
+
+    # Close the shared socket and remove the draw handler if still installed
+    bspace = getattr(bpy.types.Scene, "bspace", None)
+    if isinstance(bspace, BSPACE):
+        if bspace.connection_channel is not None:
+            try:
+                bspace.connection_channel.close()
+            except Exception:
+                pass
+            bspace.connection_channel = None
+
+        if bspace.draw_handler is not None:
+            try:
+                bpy.types.SpaceView3D.draw_handler_remove(bspace.draw_handler, 'WINDOW')
+            except Exception:
+                pass
+            bspace.draw_handler = None
+
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
 

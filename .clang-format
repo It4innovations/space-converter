@@ -1,0 +1,13 @@
+# Matches the existing space-converter style. A whole-tree reformat has NOT
+# been applied (it would swamp review diffs); use this for new/edited code:
+#   clang-format -i <file>
+BasedOnStyle: LLVM
+UseTab: ForIndentation
+TabWidth: 4
+IndentWidth: 4
+ColumnLimit: 0
+BreakBeforeBraces: Attach
+PointerAlignment: Left
+AccessModifierOffset: -4
+NamespaceIndentation: All
+SortIncludes: false

@@ -82,13 +82,26 @@ namespace space_converter {
 
 #if defined(__CUDACC__) || defined(__HIPCC__)
 				__host__ __device__
-#endif			
+#endif
+					inline int clampCoord(int v)
+				{
+					// Representable range of the 21-bit biased packing below. Coordinates
+					// outside it (possible with very deep zooms: voxel index grows as
+					// bbox_dim / scale_space_diagonal) are clamped instead of silently
+					// aliasing to unrelated voxels via the bit mask.
+					const int lo = -COORD_BIAS;
+					const int hi = COORD_BIAS - 1;
+					return v < lo ? lo : (v > hi ? hi : v);
+				}
+
+#if defined(__CUDACC__) || defined(__HIPCC__)
+				__host__ __device__
+#endif
 					inline uint64_t packCoord3(int x, int y, int z)
 				{
-					// Note: for production, you may want to clamp or assert in debug.
-					uint64_t ux = (uint64_t)(x + COORD_BIAS) & COORD_MASK;
-					uint64_t uy = (uint64_t)(y + COORD_BIAS) & COORD_MASK;
-					uint64_t uz = (uint64_t)(z + COORD_BIAS) & COORD_MASK;
+					uint64_t ux = (uint64_t)(clampCoord(x) + COORD_BIAS) & COORD_MASK;
+					uint64_t uy = (uint64_t)(clampCoord(y) + COORD_BIAS) & COORD_MASK;
+					uint64_t uz = (uint64_t)(clampCoord(z) + COORD_BIAS) & COORD_MASK;
 
 					return (ux) | (uy << COORD_BITS) | (uz << (2 * COORD_BITS));
 				}
@@ -122,6 +135,7 @@ namespace space_converter {
 					VoxelHashEntry* hash_table;
 					unsigned int table_size;
 					int insert_count;
+					size_t dropped_count = 0;  ///< Voxels lost because the hash table was full (reported, not silent)
 
 					// Hash function for 3D coordinates (CPU version)
 					inline unsigned int hash3D_cpu(int i, int j, int k) const;

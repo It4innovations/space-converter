@@ -239,6 +239,14 @@ namespace space_converter {
 			MessageType message_type = MessageType::eEmpty;  // Type of message for inter-process communication
 			int particle_type = 0;        // Particle type identifier
 			int block_name_id = 0;        // Data block identifier
+			// Component of a multi-element block to export, -1 = the block's own
+			// scalar reduction (the value itself, or the magnitude of a vector)
+			int block_component = -1;
+			// The block stores log10 of the quantity; undo that before depositing
+			bool block_exp10 = false;
+			// Constant factor applied to the block value before depositing, for
+			// blocks whose natural units land outside what a float grid holds
+			double block_scale = 1.0;
 
 			// ========== Grid Configuration ==========
 			float grid_transform = 1.0f;  // Grid transformation scale
@@ -313,6 +321,11 @@ namespace space_converter {
 			bool use_simple_density = false;        // Use simplified density calculation
 			bool use_norm_value = true;		// Use normalized values
 			float offset_position[3] = { 0.0f,0.0f,0.0f };  // Position offset
+			// Fixed data-space bbox (--bbox-orig) instead of the one found from the
+			// particles of the exported type, so every export shares one mapping
+			bool use_bbox_orig = false;
+			float bbox_orig_fixed_min[3] = { 0.0f,0.0f,0.0f };
+			float bbox_orig_fixed_max[3] = { 0.0f,0.0f,0.0f };
 
 			/**
 			 * @brief Print all current SpaceData configuration values.
@@ -329,6 +342,9 @@ namespace space_converter {
 				std::cout << "message_type: " << static_cast<int>(message_type) << std::endl;
 				std::cout << "particle_type: " << particle_type << std::endl;
 				std::cout << "block_name_id: " << block_name_id << std::endl;
+				std::cout << "block_component: " << block_component << std::endl;
+				std::cout << "block_exp10: " << block_exp10 << std::endl;
+				std::cout << "block_scale: " << block_scale << std::endl;
 
 				// Grid Configuration
 				std::cout << "grid_transform: " << grid_transform << std::endl;
@@ -399,6 +415,9 @@ namespace space_converter {
 				std::cout << "use_simple_density: " << (use_simple_density ? "true" : "false") << std::endl;
 				std::cout << "use_norm_value: " << (use_norm_value ? "true" : "false") << std::endl;
 				std::cout << "offset_position: [" << offset_position[0] << ", " << offset_position[1] << ", " << offset_position[2] << "]" << std::endl;
+				std::cout << "use_bbox_orig: " << (use_bbox_orig ? "true" : "false") << std::endl;
+				std::cout << "bbox_orig_fixed_min: [" << bbox_orig_fixed_min[0] << ", " << bbox_orig_fixed_min[1] << ", " << bbox_orig_fixed_min[2] << "]" << std::endl;
+				std::cout << "bbox_orig_fixed_max: [" << bbox_orig_fixed_max[0] << ", " << bbox_orig_fixed_max[1] << ", " << bbox_orig_fixed_max[2] << "]" << std::endl;
 
 				std::cout << "================================\n" << std::endl;
 			}

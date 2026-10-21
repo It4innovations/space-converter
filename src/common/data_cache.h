@@ -36,6 +36,25 @@ namespace space_converter {
     namespace common {
         namespace cache {
             // CacheManager is responsible for managing cached data, including GPU caches and other temporary storage.
+            //
+            // ── Particle id conventions ────────────────────────────────────────────
+            // Two distinct id spaces exist and must never be mixed:
+            //
+            //  * GLOBAL reader id: the index the reader's accessors take
+            //    (get_particle_position/type/mass/rho/hsml/norm_value). Grouped by
+            //    particle type in every reader, but not required to be.
+            //
+            //  * COMPACT per-type index: 0..N_t-1, indexing the per-type arrays below
+            //    (pos_particles_per_ptype[t], radius_particles_per_ptype[t], ...,
+            //    values_particles). This is what the conversion kernels use.
+            //
+            //  particles_reader_id_per_ptype[t][k] maps compact slot k -> global id.
+            //  particles_id_ordered_per_ptype[t]   is a PERMUTATION of the compact
+            //  indices (iteration order; reordered by the sort_* methods) — it indexes
+            //  the compact arrays and must never be passed to a reader accessor.
+            //  particles_ptype_offset[t] is the number of cached particles of types
+            //  < t (used by ConvertVDBBase::get_particle_rho to rebase global -> compact
+            //  for readers that group particles by type).
             class CacheManager {
             public:
                 // Constructor and destructor
@@ -50,8 +69,9 @@ namespace space_converter {
 
             public:
                 // CPU data
-                std::vector< std::vector<float> > pos_particles_per_ptype;     ///< Particle positions per type
-                std::vector< std::vector<size_t> > particles_id_ordered_per_ptype;     ///< Particle positions ordered by radius
+                std::vector< std::vector<float> > pos_particles_per_ptype;     ///< Particle positions per type (compact order)
+                std::vector< std::vector<size_t> > particles_id_ordered_per_ptype;     ///< Iteration order: permuted COMPACT indices (see id conventions above)
+                std::vector< std::vector<size_t> > particles_reader_id_per_ptype;      ///< Compact slot -> GLOBAL reader id (for reader accessor calls)
 
                 std::vector< std::vector<float> > radius_particles_per_ptype;  ///< Particle radii per type
                 std::vector<size_t> particles_ptype_offset;                    ///< Particle count offsets per type

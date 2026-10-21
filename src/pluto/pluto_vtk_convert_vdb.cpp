@@ -92,7 +92,11 @@ namespace plutovtk {
 
 		// Anim
 		if (use_anim) {
-			vtk_file = format_filename(vtk_file, anim_start + anim_step * world_rank);
+			// Clamp to anim_end so trailing ranks do not address frames past the animation range
+			int anim_frame = anim_start + anim_step * world_rank;
+			if (anim_frame > anim_end)
+				anim_frame = anim_end;
+			vtk_file = format_filename(vtk_file, anim_frame);
 			std::cout << "Reading timestep file: " << vtk_file << std::endl;
 		}
 

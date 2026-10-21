@@ -52,6 +52,11 @@ namespace space_converter {
 	namespace common {
 		namespace vdb {
 
+			/// Normalize accumulated dense-grid values in place (voxel-volume or
+			/// per-voxel weight normalization; shared by the dense -> NanoVDB /
+			/// OpenVDB / CUB converters). Implemented in convert_vdb.cpp.
+			void normalize_dense_values(VoxelDenseManager* dense_manager, double transform_scale, common::SpaceData::DenseNorm dense_norm);
+
 			/**
 			 * @brief Base class for converting particle data to VDB grids
 			 *
@@ -70,45 +75,35 @@ namespace space_converter {
 				 * @brief Convert particle data from I/O library format to VDB grid
 				 *
 				 * Main conversion function that reads particles and rasterizes them into the
-				 * specified grid type. Handles filtering, normalization, and spatial indexing.
+				 * specified grid type (dense / sparse / raw, decided by grid.type). Handles
+				 * filtering and spatial indexing; dispatches to the CPU or GPU kernels.
 				 *
 				 * @param particle_type Type of particles to convert
-				 * @param particle_radius_multiplier Fixed particle size multiplier
-				 * @param grid_name Name for the output grid
-				 * @param grid_transform Grid transformation scale
-				 * @param bbox_min Bounding box minimum coordinates
-				 * @param bbox_max Bounding box maximum coordinates
+				 * @param particle_radius_multiplier Particle radius multiplier (0 = off)
+				 * @param bbox_min/bbox_max Requested zoom box in object space [0, object_size]
 				 * @param bbox_dim Grid dimension (resolution)
-				 * @param dense_type Type of density calculation
+				 * @param bbox_min_orig/bbox_size_orig Cube-symmetrized dataset bbox (world space)
 				 * @param grid Output VDB grid container
 				 */
 				void convert_iolib_to_grid(
 					int particle_type,
 					float particle_radius_multiplier,
-					std::string grid_name,
-					float grid_transform,
 					float* bbox_min,
 					float* bbox_max,
 					int bbox_dim,
 					int* bbox_min_orig,
 					double bbox_size_orig,
-					common::SpaceData::ExtractedType extracted_type,
-					common::SpaceData::ExtractedParticleType extracted_particle_type,
 					common::SpaceData::DenseType dense_type,
 					common::SpaceData::DenseNorm dense_norm,
 					int block_name_id,
 					float object_size,
 					float& min_value,
 					float& max_value,
-					float min_value_global,
-					float max_value_global,
 					size_t& particles_count,
 					VDBParticles& grid,
 					double& transform_scale,
 					float filter_min,
 					float filter_max,
-					float min_rho,
-					float max_rho,
 					common::SpaceData::AnimType anim_type,
 					int frame_req,
 					int frame,
@@ -246,27 +241,6 @@ namespace space_converter {
 #endif
 
 				/**
-				 * @brief Get effective radius for a particle
-				 * @param pid Particle ID
-				 * @param bbox_dim Bounding box dimension
-				 * @param bbox_min_orig Original bounding box minimum
-				 * @param bbox_size_orig Original bounding box size
-				 * @param scale_space_diagonal Diagonal scaling factor
-				 * @param particle_radius_multiplier Fixed size multiplier
-				 * @param particle_type Type of particle
-				 * @return Particle radius in grid coordinates
-				 */
-				virtual double get_particle_radius(
-					uint64_t pid,
-					int bbox_dim,
-					int* bbox_min_orig,
-					double bbox_size_orig,
-					double scale_space_diagonal,
-					float particle_radius_multiplier,
-					int particle_type
-				);
-
-				/**
 				 * @brief Find bounding box for particles of given type
 				 * @param particle_type Type of particles to consider
 				 * @param bbox_min Output minimum coordinates
@@ -317,6 +291,40 @@ namespace space_converter {
 				virtual float get_particle_norm_value(int blocknr, uint64_t id);
 
 				/**
+				 * @brief Export one component of a multi-element block instead of
+				 *        the block's scalar reduction.
+				 *
+				 * Blocks that carry several numbers per particle - a vector, or a
+				 * binned spectrum - otherwise reach the grid only as a magnitude.
+				 * Selecting a component lets each of them be exported as its own
+				 * grid, so a quantity built out of several of them can be assembled
+				 * downstream (in a shader, say) instead of inside a reader.
+				 *
+				 * @param component Component index, or -1 for the scalar reduction
+				 */
+				void set_block_component(int component) { block_component = component; }
+
+				/**
+				 * @brief Treat the block as storing log10 of the quantity.
+				 *
+				 * A deposit is a sum, so a block kept in log units has to be decoded
+				 * before it is splatted - summing logarithms gives a geometric mean
+				 * instead. It also maps the log10(0) = -inf that some codes write for
+				 * "nothing here" onto a clean zero.
+				 */
+				void set_block_exp10(bool on) { block_exp10 = on; }
+
+				/**
+				 * @brief Constant factor applied to the block value before depositing.
+				 *
+				 * Some blocks are stored in units that put the grid outside what a
+				 * float holds - a spectral normalisation around 1e-30 is dropped
+				 * entirely - and rescaling on the way in is the cheapest fix. It is a
+				 * plain unit change: every voxel is multiplied by the same number.
+				 */
+				void set_block_scale(double scale) { block_scale = scale; }
+
+				/**
 				 * @brief Get value for particle in data block
 				 * @param blocknr Data block number
 				 * @param id Particle ID
@@ -348,6 +356,23 @@ namespace space_converter {
 				// ============================================================
 
 				/** @brief Print CPU processing steps for debugging */
+				/// Largest number of components a block may carry for
+				/// set_block_component() to reach into it; the per-particle buffer
+				/// is a stack array of this size, so it is a cap, not an allocation.
+				static const int kMaxBlockComponents = 64;
+
+				/// Component selected by set_block_component(), -1 = none
+				int block_component = -1;
+
+				/// Whether the block stores log10 of the quantity
+				bool block_exp10 = false;
+
+				/// Constant factor applied by decode_block_value()
+				double block_scale = 1.0;
+
+				/// Apply the block's storage encoding (see set_block_exp10)
+				float decode_block_value(float v) const;
+
 				virtual void print_CPU_steps() = 0;
 
 				/** @brief Get normalized particle value (internal implementation) */

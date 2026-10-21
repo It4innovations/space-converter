@@ -53,23 +53,17 @@ extern "C"
 
 #include <string.h>
 
-#define RETURN_NORM_EMPTY return 0; //return std::numeric_limits<float>::quiet_NaN();//0;
-#define RETURN_NORM_VALUE(v) return (float)(v);
-#define RETURN_NORM_VECTOR3(v) return (float)space_converter::common::calculate_dmagnitude3(v[0], v[1], v[2]);
-#define RETURN_NORM_DVECTORN(v,n) return (float)space_converter::common::calculate_dmagnituden(v,n);
-#define RETURN_NORM_FVECTORN(v,n) return (float)space_converter::common::calculate_fmagnituden(v,n);
+#include "reader_return_macros.h"
 
-#define RETURN_COMP_EMPTY return 0;
-#define RETURN_COMP_VALUE(v) return 1;
-#define RETURN_COMP_VECTOR3(v) return 3;
-#define RETURN_COMP_DVECTORN(v,n) return n;
-#define RETURN_COMP_FVECTORN(v,n) return n;
-
-#define RETURN_ORIG_EMPTY RETURN_COMP_EMPTY
-#define RETURN_ORIG_VALUE(v) out_value[0] = (float)v; RETURN_COMP_VALUE(v)
-#define RETURN_ORIG_VECTOR3(v) out_value[0] = (float)v[0]; out_value[1] = (float)v[1]; out_value[2] = (float)v[2]; RETURN_COMP_VECTOR3(v)
-#define RETURN_ORIG_DVECTORN(v,n) for(int iv=0;iv<n;iv++) out_value[iv] = (float)v[iv]; RETURN_COMP_DVECTORN(v,n)
-#define RETURN_ORIG_FVECTORN(v,n) for(int iv=0;iv<n;iv++) out_value[iv] = (float)v[iv]; RETURN_COMP_FVECTORN(v,n)
+// Reader data contract (see docs/SpaceConverter_Code_Analysis_2026-08.md §7):
+//   get_particle_mass(id) -> P[id].Mass for ALL types (filled by the CodeBase reader
+//                            from the MASS block or the header mass table; 1e10 Msun/h)
+//   get_particle_rho(id)  -> SphP[id].Density for gas ids (GADGET code units);
+//                            0 for non-gas ids
+//   get_particle_hsml(id) -> SPH smoothing length P[id].Hsml for gas ids; 0 for non-gas
+//                            (no smoothing information for the other types)
+//   particle id space     -> rank-local index into the CodeBase P[] array (gas first,
+//                            then the other types as loaded by read_ic)
 
 //using namespace nanovdb;
 
@@ -232,6 +226,14 @@ namespace gadget {
 
 			int type = P[id].Type;
 			//enum iofields blocknr
+
+			// Gas-only blocks (RHO, U, NE, ...) dereference SphP[id], which is only
+			// valid for gas ids. For a type the block does not cover, return an empty
+			// value instead of reading SphP out of bounds. all_particles_blocks holds
+			// the per-type availability filled by read_ic (via get_particles_in_block).
+			if (type != 0 && all_particles_blocks[6 * blocknr + type] == 0) {
+				RETURN_NORM_EMPTY;
+			}
 
 			switch (blocknr)
 			{
@@ -806,6 +808,12 @@ namespace gadget {
 			int type = P[id].Type;
 			//enum iofields blocknr
 
+			// Guard against SphP[id] access for ids of types the block does not cover
+			// (see get_particle_norm_value)
+			if (type != 0 && all_particles_blocks[6 * blocknr + type] == 0) {
+				RETURN_ORIG_EMPTY;
+			}
+
 			switch (blocknr)
 			{
 			case IO_POS:		/* positions */
@@ -1378,6 +1386,12 @@ namespace gadget {
 
 			int type = P[id].Type;
 			//enum iofields blocknr
+
+			// Guard against SphP[id] access for ids of types the block does not cover
+			// (see get_particle_norm_value)
+			if (type != 0 && all_particles_blocks[6 * blocknr + type] == 0) {
+				RETURN_COMP_EMPTY;
+			}
 
 			switch (blocknr)
 			{
@@ -1955,6 +1969,8 @@ namespace gadget {
 		//}
 
 		double get_particle_hsml(uint64_t id) {
+			// Only gas carries SPH smoothing information; for all other types there is
+			// no smoothing length to report, so 0 is returned on purpose.
 			int type = P[id].Type;
 			if (type != 0) {
 				return 0;
@@ -1995,12 +2011,11 @@ namespace gadget {
 		}
 
 		double get_particle_mass(uint64_t id) {
-			int type = P[id].Type;
-			if (type != 0) {
-				return 0;
-			}			
-
-			return get_particle_norm_value(IO_MASS, id);
+			// P[id].Mass is valid for ALL types: the CodeBase reader fills it either
+			// from the MASS block or from the header mass table. Do not route through
+			// get_particle_norm_value(IO_MASS, ...), which only covers the types the
+			// MASS block itself stores.
+			return P[id].Mass;
 		}
 
 		int get_particle_rho_blocknr() {

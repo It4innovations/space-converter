@@ -39,23 +39,17 @@
 #include "convert_common.h"
 #include "GenericIO.h"
 
-#define RETURN_NORM_EMPTY return 0; //return std::numeric_limits<float>::quiet_NaN();//0;
-#define RETURN_NORM_VALUE(v) return (float)(v);
-#define RETURN_NORM_VECTOR3(v) return (float)space_converter::common::calculate_dmagnitude3(v[0], v[1], v[2]);
-#define RETURN_NORM_DVECTORN(v,n) return (float)space_converter::common::calculate_dmagnituden(v,n);
-#define RETURN_NORM_FVECTORN(v,n) return (float)space_converter::common::calculate_fmagnituden(v,n);
+#include "reader_return_macros.h"
 
-#define RETURN_COMP_EMPTY return 0;
-#define RETURN_COMP_VALUE(v) return 1;
-#define RETURN_COMP_VECTOR3(v) return 3;
-#define RETURN_COMP_DVECTORN(v,n) return n;
-#define RETURN_COMP_FVECTORN(v,n) return n;
-
-#define RETURN_ORIG_EMPTY RETURN_COMP_EMPTY
-#define RETURN_ORIG_VALUE(v) out_value[0] = (float)v; RETURN_COMP_VALUE(v)
-#define RETURN_ORIG_VECTOR3(v) out_value[0] = (float)v[0]; out_value[1] = (float)v[1]; out_value[2] = (float)v[2]; RETURN_COMP_VECTOR3(v)
-#define RETURN_ORIG_DVECTORN(v,n) for(int iv=0;iv<n;iv++) out_value[iv] = (float)v[iv]; RETURN_COMP_DVECTORN(v,n)
-#define RETURN_ORIG_FVECTORN(v,n) for(int iv=0;iv<n;iv++) out_value[iv] = (float)v[iv]; RETURN_COMP_FVECTORN(v,n)
+// Reader data contract (see docs/SpaceConverter_Code_Analysis_2026-08.md §7):
+//   get_particle_mass(id) -> value of the GenericIO variable configured as the mass name
+//                            (HACC code units); 0 when no mass variable was configured
+//   get_particle_rho(id)  -> value of the GenericIO variable configured as the rho name;
+//                            0 when no rho variable was configured
+//   get_particle_hsml(id) -> value of the GenericIO variable configured as the hsml name;
+//                            0 when no hsml variable was configured
+//   particle id space     -> rank-local, single type (HACC): ids index this rank's slice
+//                            of the GenericIO file(s)
 
 namespace genericio {
 	namespace io {
@@ -423,32 +417,37 @@ namespace genericio {
 				GIOData* P = addGIOData(variable_info[v], gio_data, max_count);
 				if (!P) continue;
 
+				// Store the index of P within the compacted gio_datas vector: addGIOData
+				// returns null for unsupported variables, so the loop index v would point
+				// past the skipped entries.
+				int64_t compact_idx = (int64_t)gio_datas_temp.size();
+
 				if (P->get_name() == pos_names_vec[0]) {
-					gio_pos_idx[0] = v;
+					gio_pos_idx[0] = compact_idx;
 				}
 				else if (P->get_name() == pos_names_vec[1]) {
-					gio_pos_idx[1] = v;
+					gio_pos_idx[1] = compact_idx;
 				}
 				else if (P->get_name() == pos_names_vec[2]) {
-					gio_pos_idx[2] = v;
+					gio_pos_idx[2] = compact_idx;
 				}
 				else if (P->get_name() == vel_names_vec[0]) {
-					gio_vel_idx[0] = v;
+					gio_vel_idx[0] = compact_idx;
 				}
 				else if (P->get_name() == vel_names_vec[1]) {
-					gio_vel_idx[1] = v;
+					gio_vel_idx[1] = compact_idx;
 				}
 				else if (P->get_name() == vel_names_vec[2]) {
-					gio_vel_idx[2] = v;
+					gio_vel_idx[2] = compact_idx;
 				}
 				else if (P->get_name() == vel_name_mass) {
-					gio_mass_idx = v;
+					gio_mass_idx = compact_idx;
 				}
 				else if (P->get_name() == vel_name_rho) {
-					gio_rho_idx = v;
+					gio_rho_idx = compact_idx;
 				}
 				else if (P->get_name() == vel_name_hsml) {
-					gio_hsml_idx = v;
+					gio_hsml_idx = compact_idx;
 				}
 
 				gio_datas_temp.push_back(P);
@@ -523,10 +522,24 @@ namespace genericio {
 			//int start_ranks = world_rank * ranks_per_process;
 			//int num_ranks = (world_rank == world_size - 1) ? NR - start_ranks : ranks_per_process;
 
-			// More ranks than files: split each file among  world_size / NR ranks
-			int ranks_per_file = world_size / NR;
-			int gio_data_rank_id = world_rank / ranks_per_file;
-			int local_rank = world_rank % ranks_per_file;
+			// More ranks than files: split each file among a group of ranks.
+			// Fair partition (like partition_range in the iPIC3D reader): the first
+			// world_size % NR files get one extra rank, so no rank is mapped past
+			// the last file when world_size is not a multiple of NR.
+			int base_ranks_per_file = world_size / NR;
+			int extra_ranks = world_size % NR;
+			int ranks_per_file, gio_data_rank_id, local_rank;
+			if (world_rank < (base_ranks_per_file + 1) * extra_ranks) {
+				ranks_per_file = base_ranks_per_file + 1;
+				gio_data_rank_id = world_rank / ranks_per_file;
+				local_rank = world_rank % ranks_per_file;
+			}
+			else {
+				int rest_rank = world_rank - (base_ranks_per_file + 1) * extra_ranks;
+				ranks_per_file = base_ranks_per_file;
+				gio_data_rank_id = extra_ranks + rest_rank / ranks_per_file;
+				local_rank = rest_rank % ranks_per_file;
+			}
 
 			////size_t max_nelem = gio_data.readNumElems(-1);
 			size_t max_count = 0;
@@ -552,32 +565,37 @@ namespace genericio {
 				GIOData* P = addGIOData(variable_info[v], gio_data, max_count);
 				if (!P) continue;
 
+				// Store the index of P within the compacted gio_datas vector: addGIOData
+				// returns null for unsupported variables, so the loop index v would point
+				// past the skipped entries.
+				int64_t compact_idx = (int64_t)gio_datas_temp.size();
+
 				if (P->get_name() == pos_names_vec[0]) {
-					gio_pos_idx[0] = v;
+					gio_pos_idx[0] = compact_idx;
 				}
 				else if (P->get_name() == pos_names_vec[1]) {
-					gio_pos_idx[1] = v;
+					gio_pos_idx[1] = compact_idx;
 				}
 				else if (P->get_name() == pos_names_vec[2]) {
-					gio_pos_idx[2] = v;
+					gio_pos_idx[2] = compact_idx;
 				}
 				else if (P->get_name() == vel_names_vec[0]) {
-					gio_vel_idx[0] = v;
+					gio_vel_idx[0] = compact_idx;
 				}
 				else if (P->get_name() == vel_names_vec[1]) {
-					gio_vel_idx[1] = v;
+					gio_vel_idx[1] = compact_idx;
 				}
 				else if (P->get_name() == vel_names_vec[2]) {
-					gio_vel_idx[2] = v;
+					gio_vel_idx[2] = compact_idx;
 				}
 				else if (P->get_name() == vel_name_mass) {
-					gio_mass_idx = v;
+					gio_mass_idx = compact_idx;
 				}
 				else if (P->get_name() == vel_name_rho) {
-					gio_rho_idx = v;
+					gio_rho_idx = compact_idx;
 				}
 				else if (P->get_name() == vel_name_hsml) {
-					gio_hsml_idx = v;
+					gio_hsml_idx = compact_idx;
 				}				
 
 				gio_datas_temp.push_back(P);
@@ -1299,6 +1317,12 @@ namespace genericio {
 		}
 
 		int get_particle_rho_blocknr() {
+			// -1 when no rho variable was configured: real blocknrs are >= 0, so the
+			// base class comparison against this value then never matches. Returning
+			// BTMax + (-1) here would collide with the Vel block.
+			if (gio_rho_idx == -1)
+				return -1;
+
 			return GenericIOBlockType::BTMax + gio_rho_idx;
 		}
 

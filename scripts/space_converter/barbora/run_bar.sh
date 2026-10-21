@@ -50,12 +50,13 @@ snapdir=0
 snap=0
 
 snapdir_format=`printf "%03d" $snapdir`
+# dataset is relative; it is prefixed with ${data} where an absolute path is needed
 dataset=snapdir_${snapdir_format}/snap_${snapdir_format}.${snap}
 
 out_d=${out_t}/${dataset}
 mkdir -p ${out_d}
 
-srun -n 1 ${install}/bin/space_converter --data-type GADGET --gadget-file ${dataset} --max-mem-size 50000 --buffer-size 150.0 --part-alloc-factor 1.2 --grid-dim 1000 --output-path ${out_d} --export-data 1 1 ${out_d} >> ${out_d}/log.log 2> ${out_d}/log.err
+srun -n 1 ${install}/bin/space_converter --data-type GADGET --gadget-file ${data}/${dataset} --max-mem-size 50000 --buffer-size 150.0 --part-alloc-factor 1.2 --grid-dim 1000 --output-path ${out_d} --export-data 1 1 >> ${out_d}/log.log 2> ${out_d}/log.err
 
 # End the timer
 end_time=$(date +%s)

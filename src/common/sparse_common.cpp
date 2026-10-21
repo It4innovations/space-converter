@@ -18,8 +18,10 @@
 
 #include "sparse_common.h"
 #include <cstdint>
+#include <cstdio>
 #include <unordered_map>
 #include "convert_vdb.h"
+#include "utility/logging.h"
 
 #ifdef WITH_OPENMP
 #include <omp.h>
@@ -31,9 +33,8 @@
 #	include <openvdb/io/Stream.h>
 #endif
 
- // Constants
-#define EMPTY_KEY -999999
-#define HASH_TABLE_LOAD_FACTOR 0.5f
+// EMPTY_KEY and HASH_TABLE_LOAD_FACTOR come from sparse_common.h (they used to
+// be redefined here as well)
 
 namespace space_converter {
 	namespace common {
@@ -102,6 +103,12 @@ namespace space_converter {
 							return;
 						}
 
+					}
+
+					// Hash table full: the voxel is lost. Report it instead of dropping
+					// silently (data loss would otherwise be invisible in the output).
+					if (dropped_count++ == 0) {
+						fprintf(stderr, "VoxelOpenMPManager: hash table full (%u slots), dropping voxels!\n", table_size);
 					}
 				}
 
@@ -176,56 +183,16 @@ namespace space_converter {
 					auto hash_insert_duration = (end_hash_insert - start_hash_insert) * 1000.0;
 					auto total_duration = (end_total - start_total) * 1000.0;
 
-					printf("[insertOrUpdate] Pre-agg: %.3f ms, Merge: %.3f ms, Hash insert: %.3f ms, Total: %.3f ms\n",
-						preagg_duration, merge_duration,
-						hash_insert_duration, total_duration);
+					// Per-call timing is diagnostic spam on large runs; opt in via
+					// SPACE_CONVERTER_VERBOSE
+					if (space_converter::LOG_Verbose()) {
+						printf("[insertOrUpdate] Pre-agg: %.3f ms, Merge: %.3f ms, Hash insert: %.3f ms, Total: %.3f ms\n",
+							preagg_duration, merge_duration,
+							hash_insert_duration, total_duration);
+					}
 #endif
 				}
 
-				// Extract all voxels from hash table using OpenMP
-	//			int VoxelOpenMPManager::extractAll(Voxel** h_output_voxels) {
-	//				auto start_total = omp_get_wtime();
-	//
-	//				// Thread-local storage for voxel collection
-	//				std::vector<std::vector<Voxel>> thread_voxels(omp_get_max_threads());
-	//
-	//				// Parallel extraction - each thread collects its voxels
-	//#pragma omp parallel
-	//				{
-	//					int thread_id = omp_get_thread_num();
-	//
-	//#pragma omp for schedule(static)
-	//					for (unsigned int idx = 0; idx < table_size; idx++) {
-	//						if (hash_table[idx].occupied == 1) {
-	//							thread_voxels[thread_id].push_back(Voxel(
-	//								hash_table[idx].i,
-	//								hash_table[idx].j,
-	//								hash_table[idx].k,
-	//								hash_table[idx].value
-	//							));
-	//						}
-	//					}
-	//				}
-	//
-	//				// Combine thread-local results
-	//				int total_count = 0;
-	//				for (const auto& vec : thread_voxels) {
-	//					total_count += vec.size();
-	//				}
-	//
-	//				*h_output_voxels = new Voxel[total_count];
-	//				int offset = 0;
-	//				for (const auto& vec : thread_voxels) {
-	//					std::copy(vec.begin(), vec.end(), *h_output_voxels + offset);
-	//					offset += vec.size();
-	//				}
-	//
-	//				auto end_total = omp_get_wtime();
-	//				auto total_duration = (end_total - start_total) * 1000.0;
-	//				printf("[extractAll] Total: %.3f ms\n", total_duration);
-	//
-	//				return total_count;
-	//			}
 
 				// Clear hash table
 				void VoxelOpenMPManager::clear() {
@@ -518,18 +485,21 @@ namespace space_converter {
 				void VoxelNanoVDBManager<T>::merge(std::vector<uint8_t>& bin_data) {
 					using BuildType = GridBuildType_t<T>;
 					auto acc_dst = nano_grid->getAccessor();
-					auto* grid_src_float = (nanovdb::NanoGrid<float>*)bin_data.data();
+					// The serialized grid has the SAME value type as this manager
+					// (float or Vec3f). A previous version always cast to
+					// NanoGrid<float>, which read garbage for Vec3f grids and collapsed
+					// vectors into replicated scalars during MPI reduction.
+					auto* grid_src = (nanovdb::NanoGrid<BuildType>*)bin_data.data();
 
 					// loop over child nodes of the root node
-					for (auto it2 = grid_src_float->tree().root().cbeginChild(); it2; ++it2) {
+					for (auto it2 = grid_src->tree().root().cbeginChild(); it2; ++it2) {
 						// loop over child nodes of the upper internal node
 						for (auto it1 = it2->cbeginChild(); it1; ++it1) {
 							// loop over child nodes of the lower internal node
 							for (auto it0 = it1->cbeginChild(); it0; ++it0) {
 								// loop over values
 								for (auto it = it0->cbeginValueOn(); it; ++it) {
-									float f = *it;
-									BuildType v = floatToValue<BuildType>(f);
+									BuildType v = *it;
 
 									nanovdb::Coord xyz = it.getCoord();
 
@@ -557,53 +527,22 @@ namespace space_converter {
 						return;
 					}
 
-					//// Get accessor for destination grid
-					//auto acc_dst = nano_grid->getAccessor();
-
-					//// Iterate directly over active voxels in source grid using tree structure
-					//// This avoids the overhead of extractAll() and intermediate allocations
-					//auto bbox = other->nano_grid->getBBox();
-					//if (bbox.empty()) {
-					//	return;
-					//}
-
-					//auto acc_src = other->nano_grid->getAccessor();
-					//int merged_count = 0;
-
-					//// Iterate through bounding box and merge non-zero values
-					//for (auto iter = bbox.begin(); iter; ++iter) {
-					//	nanovdb::Coord xyz = *iter;
-					//	float v = acc_src.getValue(xyz);
-
-					//	if (v != 0.0f) {
-					//		// Accumulate: add source value to destination value
-					//		float current_value = acc_dst.getValue(xyz);
-					//		acc_dst.setValue(xyz, current_value + v);
-					//		merged_count++;
-					//	}
-					//}
-
-					//insert_count += merged_count;
-
-					auto acc_dst = nano_grid->getAccessor();
-					nanovdb::GridHandle<nanovdb::HostBuffer> other_grid_handle = nanovdb::tools::createNanoGrid(*other->nano_grid);
-					auto* grid_src_float = (nanovdb::NanoGrid<float>*)other_grid_handle.data();
-					//merge((uint8_t*)grid_src_float);
-
 					using BuildType = GridBuildType_t<T>;
-					//auto acc_dst = nano_grid->getAccessor();
-					//auto* grid_src_float = (nanovdb::NanoGrid<float>*)grid_src_float;
+					auto acc_dst = nano_grid->getAccessor();
+					// Finalize the other builder grid and traverse it with the correct
+					// value type (see the note in merge(bin_data) above)
+					nanovdb::GridHandle<nanovdb::HostBuffer> other_grid_handle = nanovdb::tools::createNanoGrid(*other->nano_grid);
+					auto* grid_src = (nanovdb::NanoGrid<BuildType>*)other_grid_handle.data();
 
 					// loop over child nodes of the root node
-					for (auto it2 = grid_src_float->tree().root().cbeginChild(); it2; ++it2) {
+					for (auto it2 = grid_src->tree().root().cbeginChild(); it2; ++it2) {
 						// loop over child nodes of the upper internal node
 						for (auto it1 = it2->cbeginChild(); it1; ++it1) {
 							// loop over child nodes of the lower internal node
 							for (auto it0 = it1->cbeginChild(); it0; ++it0) {
 								// loop over values
 								for (auto it = it0->cbeginValueOn(); it; ++it) {
-									float f = *it;
-									BuildType v = floatToValue<BuildType>(f);
+									BuildType v = *it;
 
 									nanovdb::Coord xyz = it.getCoord();
 
@@ -820,17 +759,6 @@ namespace space_converter {
 					//file.write(grids);
 					//file.close();
 
-					//// Read back the file content
-					//std::ifstream ifs(temp_filename, std::ios::binary);
-					//ifs.seekg(0, std::ios::end);
-					//size_t size = ifs.tellg();
-					//ifs.seekg(0, std::ios::beg);
-					//
-					//// Write size first
-					//memcpy(bin_data, &size, sizeof(size_t));
-					//// Then write data
-					//ifs.read(reinterpret_cast<char*>(bin_data + sizeof(size_t)), size);
-					//ifs.close();
 
 					//// Clean up temp file
 					//std::remove(temp_filename.c_str());
@@ -863,16 +791,6 @@ namespace space_converter {
 
 				template<typename T>
 				void VoxelOpenVDBManager<T>::merge(std::vector<uint8_t>& bin_data) {
-					//// Read serialized grid and merge it
-					//size_t size;
-					//memcpy(&size, bin_data, sizeof(size_t));
-					//
-					//std::string str(reinterpret_cast<const char*>(bin_data + sizeof(size_t)), size);
-					//std::istringstream istr(str, std::ios_base::binary);
-					//
-					//openvdb::io::Stream stream(istr);
-					//openvdb::GridPtrVecPtr grids_src = stream.getGrids();
-					//
 
 
 					// Convert byte vector back to string stream

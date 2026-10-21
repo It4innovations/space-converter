@@ -34,6 +34,10 @@ option(WITH_HDF5  "Enable HDF5" OFF)
 option(WITH_HACC  "Enable HACC" OFF)
 option(WITH_IPIC3D  "Enable IPIC3D" OFF)
 option(WITH_PLUTO  "Enable PLUTO" OFF)
+option(WITH_RAMSES "Enable RAMSES" OFF)
+option(WITH_BHAC "Enable BHAC" OFF)
+option(WITH_FIL "Enable FIL (Carpet HDF5)" OFF)
+option(WITH_FIL_GRACE "Enable FIL_GRACE (GRACE HDF5 volume output)" OFF)
 option(WITH_VTK   "Enable VTK" OFF)
 
 # option(GADGET_MAX_HSML  "Enable loading of limited values from gadget files" OFF)
@@ -94,14 +98,21 @@ else()
 endif()
 
 if(WITH_VTK)
-    # If you know exactly which modules you need, list them here (recommended).
-    find_package(VTK REQUIRED COMPONENTS
-        CommonCore
-        CommonDataModel
-        IOLegacy
-        IOXML
-        IOParallelXML
-    )
+    # A manual VTK can be supplied with -DVTK_INCLUDE_DIRS=... -DVTK_LIBRARIES=...
+    # (e.g. the VTK bundled inside a ParaView installation, which ships the
+    # libraries and headers but no standalone vtk-config.cmake).
+    if(NOT VTK_LIBRARIES)
+        # If you know exactly which modules you need, list them here (recommended).
+        find_package(VTK REQUIRED COMPONENTS
+            CommonCore
+            CommonDataModel
+            IOLegacy
+            IOXML
+            IOParallelXML
+        )
+    else()
+        message(STATUS "Using manually specified VTK: ${VTK_LIBRARIES}")
+    endif()
 endif()
 
 if(WITH_MPI)
@@ -184,6 +195,16 @@ if(WITH_IPIC3D)
     set(WITH_HDF5 ON)
 endif()
 
+if(WITH_FIL)
+    # FIL (Carpet HDF5) requires HDF5
+    set(WITH_HDF5 ON)
+endif()
+
+if(WITH_FIL_GRACE)
+    # FIL_GRACE (GRACE HDF5 volume output) requires HDF5
+    set(WITH_HDF5 ON)
+endif()
+
 if(WITH_PLUTO)
     # PLUTO requires VTK
     set(WITH_VTK ON)
@@ -199,6 +220,20 @@ endif()
 
 ########################################################
 add_subdirectory(src)
+########################################################
+
+# Smoke tests (registered with CTest, never run at build time). The test
+# driver launches MPI jobs itself, so run ctest FROM A COMPUTE NODE, e.g.:
+#   srun --jobid=<JOBID> --overlap -N1 -n1 -c16 ctest --test-dir build/... -V
+option(SPACE_CONVERTER_TESTS "Register the smoke tests with CTest" ON)
+if(SPACE_CONVERTER_TESTS)
+    enable_testing()
+    add_test(NAME smoke_tests
+             COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_smoke_tests.sh)
+    set_tests_properties(smoke_tests PROPERTIES
+        ENVIRONMENT "SC_BIN=$<TARGET_FILE:space_converter>"
+        TIMEOUT 900)
+endif()
 ########################################################
 
 # ==================================================================

@@ -45,4 +45,4 @@ out_t=${out}/remote
 mkdir -p ${out_t}
 
 export MPICH_GPU_SUPPORT_ENABLED=1
-mpirun --np 128 -env OMP_NUM_THREADS=2 --line-buffer gpu_bind_kar2.sh ${install}/bin/space_converter --pos-names x y z --vel-names vx vy vz --mass-name mass --rho-name rho --hsml-name hh --data-type GENERICIO --genericio-file HACCdata/m000p.full.mpicosmo.624 --output-path ${out_t} --port 5000 #--calc-radius-neigh 10 #--info
+mpirun --np 128 -env OMP_NUM_THREADS=2 --line-buffer $(dirname "$0")/gpu_bind_polaris.sh ${install}/bin/space_converter --pos-names x y z --vel-names vx vy vz --mass-name mass --rho-name rho --hsml-name hh --data-type HACC_GENERICIO --genericio-file HACCdata/m000p.full.mpicosmo.624 --output-path ${out_t} --port 5000 #--calc-radius-neigh 10 #--info

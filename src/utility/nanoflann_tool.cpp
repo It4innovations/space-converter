@@ -20,6 +20,7 @@
 
 #include <mpi.h>
 #include <nanoflann.hpp>
+#include <algorithm>
 #include <iostream>
 #include "dense_utility.h"
 
@@ -301,15 +302,14 @@ namespace utility {
 							&query_pt[0], k, indices.data(), distances.data() 
 						);
 
-						// Store results with global indices adjusted for current round
+						// Store results with global indices adjusted for current round.
+						// No synchronization needed: all_candidates[q] is only ever
+						// touched by the thread that owns iteration q (a previous
+						// version wrapped this in an omp critical, serializing the
+						// whole query loop).
 						for (size_t i = 0; i < num_results; i++) {
 							size_t global_idx = indices[i] + round * maxNumPointsAnybodyHas;
-#ifdef WITH_OPENMP
-#pragma omp critical
-#endif
-							{
-								all_candidates[q].emplace_back(global_idx, distances[i]);
-							}
+							all_candidates[q].emplace_back(global_idx, distances[i]);
 						}
 					}
 				}
@@ -325,8 +325,10 @@ namespace utility {
 			// Extract final results - get k closest from all rounds with OpenMP
 			radius_particles.resize(numPointsThatIHave);
 			rho_particles.resize(numPointsThatIHave);
-
-			//utility::dense::sph_kernel::WendlandC6 kernel_wendland;
+			// The caller passes the cache's rho vector, pre-filled with the reader's
+			// own densities — zero it, otherwise the SPH estimate below ACCUMULATES
+			// on top of those stale values (+= in the loop).
+			std::fill(rho_particles.begin(), rho_particles.end(), 0.0f);
 
 // TODO uncomment
 #ifdef WITH_OPENMP
@@ -345,7 +347,12 @@ namespace utility {
 
 					double h_inv = 1.0 / radius_particles[q];
 					for (size_t i = 0; i < k; i++) {
-						// SPH density estimate by SPHtoGrid						
+						// SPH density estimate by SPHtoGrid.
+						// NOTE: the QUERY particle's mass is used for every neighbor
+						// (rho_i = m_i * sum_j W) instead of the neighbor's mass
+						// (sum_j m_j W). Exact only for equal-mass particles; kept
+						// because neighbor masses from remote ranks are not available
+						// during tree cycling.
 						rho_particles[q] += mass_particles[q] * utility::dense::sph_kernel::W(rho_kernel, std::sqrt(all_candidates[q][i].second) * h_inv, h_inv);
 					}
 

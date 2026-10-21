@@ -17,150 +17,382 @@
  */
 
 #include "args_processing.h"
+
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <iostream>
+#include <stdexcept>
+#include <string>
 
 namespace space_converter {
 
 	/**
-	 * @brief Display usage information and command-line options for the space_converter tool.
-	 * 
-	 * This function prints all available command-line arguments, their required parameters,
-	 * and format-specific options. It exits the program after displaying the information.
+	 * @brief Display usage information and command-line options, then exit.
+	 *
+	 * @param exit_code  Process exit code (0 for -h/--help, 1 for argument errors).
+	 * @param print      When false the text is suppressed (used so that only MPI
+	 *                   rank 0 prints while all ranks still exit consistently).
 	 */
-	void usage()
+	static void usage(int exit_code = 0, bool print = true)
 	{
-		std::cout << "./space_converter --data-type [GADGET, GADGET_SIMPLE, CHANGA_TIPSY, CHANGA_NCHILADA, HACC_GENERICIO, HACC_BIN, IPIC3D_HDF5, PLUTO_VTK] <options> <args>" << std::endl;
+		if (print) {
+		std::cout << "./space_converter --data-type [GADGET, GADGET_SIMPLE, CHANGA_TIPSY, CHANGA_NCHILADA, HACC_GENERICIO, HACC_BIN, IPIC3D_HDF5, PLUTO_VTK, RAMSES, BHAC, FIL, FIL_GRACE] <options> <args>" << std::endl;
 
 		// === General Options ===
-		std::cout << "options:" << std::endl;
-		std::cout << "\t--grid-dim X" << std::endl;
-		std::cout << "\t-o, --output-path X" << std::endl;
-		std::cout << "\t--server X" << std::endl;
-		std::cout << "\t--port X" << std::endl;
-		std::cout << "\t--info" << std::endl;
-		std::cout << "\t--nanovdb" << std::endl;
-		//std::cout << "\t--dense" << std::endl;
-		std::cout << "\t--dense-file X" << std::endl;
-		std::cout << "\t--anim START END STEP" << std::endl;
-		std::cout << "\t--anim-merge" << std::endl;		
-		std::cout << "\t--raw-particles X" << std::endl;
-		// std::cout << "\t--rawpart2vdb" << std::endl;
-		std::cout << "\t--export, --export-data TYPE DATASET" << std::endl;
-		std::cout << "\t--dense-type X" << std::endl;
-		std::cout << "\t--dense-norm X" << std::endl;
-		std::cout << "\t--bbox-sphere x y z r" << std::endl;
-		std::cout << "\t--simple-density" << std::endl;
-		std::cout << "\t--offset-position X Y Z" << std::endl;
+		std::cout << "\noptions (defaults in brackets):" << std::endl;
+		std::cout << "\t--grid-dim N                       : Grid resolution per axis [100]" << std::endl;
+		std::cout << "\t-o, --output-path DIR              : Output directory for generated files" << std::endl;
+		std::cout << "\t-f, --output-file FILE             : Output file path (base name without extension; overrides the automatic <type>_<dataset> naming, frame/rank suffixes and the format extension are still appended; a relative FILE is placed inside --output-path)" << std::endl;
+		std::cout << "\t--port N                           : TCP port the server listens on [5000]" << std::endl;
+		std::cout << "\t--info                             : Print dataset info and exit" << std::endl;
+		std::cout << "\t--nanovdb                          : Output NanoVDB instead of OpenVDB" << std::endl;
+		std::cout << "\t--cub                              : Output CUB format (GPU builds)" << std::endl;
+		std::cout << "\t--dense-file N                     : Also dump the dense grid: 0=off, 1=RAW, 2=VTI [0]" << std::endl;
+		std::cout << "\t--anim START END STEP              : Process an animation range of snapshots" << std::endl;
+		std::cout << "\t--anim-merge                       : Merge all animation frames into one output" << std::endl;
+		std::cout << "\t--raw-particles N                  : Export raw particles: 0=none, 1=RAW, 2=VDB points, 3=VTP [0]" << std::endl;
+		std::cout << "\t--export, --export-data TYPE BLOCK : Batch mode: extract particle TYPE / data BLOCK and exit" << std::endl;
+		std::cout << "\t--block-comp N             : Export component N of a multi-element block (a vector" << std::endl;
+		std::cout << "\t                             component, or one bin of a spectrum) instead of its" << std::endl;
+		std::cout << "\t                             magnitude" << std::endl;
+		std::cout << "\t--block-exp10              : The block stores log10 of the quantity; decode it before" << std::endl;
+		std::cout << "\t                             depositing (also maps log10(0) = -inf onto zero)" << std::endl;
+		std::cout << "\t--block-scale K            : Multiply the block value by K before depositing, for blocks" << std::endl;
+		std::cout << "\t                             whose units fall outside what a float grid holds" << std::endl;
+		std::cout << "\t--dense-type N                     : SPH splat kernel: 0=off(sparse), 1=Cubic, 2=Quintic, 3..6=WendlandC2..C8 [0]" << std::endl;
+		std::cout << "\t--dense-norm N                     : Density normalization: 0=none, 1=count, 2=SPH, 3=voxel volume [0]" << std::endl;
+		std::cout << "\t--simple-density                   : Deposit weight 1 per particle (implies dense mode)" << std::endl;
+		std::cout << "\t--bbox x1 y1 z1 x2 y2 z2           : Axis-aligned zoom box in object space [full box]" << std::endl;
+		std::cout << "\t--bbox-sphere x y z r              : Keep only particles inside this sphere (world space)" << std::endl;
+		std::cout << "\t--offset-position X Y Z            : Subtract this offset from all particle positions" << std::endl;
+		std::cout << "\t--bbox-orig x1 y1 z1 x2 y2 z2      : Fixed dataset bbox (data space) mapped onto the object space, instead of" << std::endl;
+		std::cout << "\t                                     the padded bbox of the exported particles; keeps the mapping identical" << std::endl;
+		std::cout << "\t                                     across types, filters and animation frames" << std::endl;
+		std::cout << "\t--radius-const R                   : Fixed particle radius in voxel units (0 = use per-particle radius) [0]" << std::endl;
+		std::cout << "\t--radius-mult M                    : Scale the per-particle radius (0 = leave it alone) [0]" << std::endl;
+		std::cout << "\t--filter-min V                     : Skip particles whose exported block value is < V" << std::endl;
+		std::cout << "\t--filter-max V                     : Skip particles whose exported block value is > V" << std::endl;
+		std::cout << "\t--no-norm-value                    : Store vector blocks as 3-component grids instead of magnitudes" << std::endl;
 
 		// === Neighbor Search Options ===
-#if defined(WITH_CUDAKDTREE) || defined(WITH_NANOFLANN)		
-		std::cout << "\t--calc-radius-neigh N              : Calculate radius for N nearest neighbors" << std::endl;
-		std::cout << "\t--calc-radius-neigh-rho-kernel X   : Specify density kernel type for neighbor search" << std::endl;
+#if defined(WITH_CUDAKDTREE) || defined(WITH_NANOFLANN)
+		std::cout << "\t--calc-radius-neigh N              : Compute per-particle radius from N nearest neighbors" << std::endl;
+		std::cout << "\t--calc-radius-neigh-rho-kernel N   : SPH kernel for the k-NN density estimate [6=WendlandC6]" << std::endl;
 #endif
-		std::cout << "\t--calc-radius-neigh-file X         : Load neighbor radii from file" << std::endl;
+		std::cout << "\t--calc-radius-neigh-file FILE      : Read/write precomputed radii (per-type .N.bin files)" << std::endl;
 
 #ifdef WITH_CUDAKDTREE
-		std::cout << "\t--cudakdtree                       : Use CUDA-accelerated KDTree for neighbor search" << std::endl;
-		std::cout << "\t--cudakdtree-cpu                   : Use CPU-based CUDA KDTree implementation" << std::endl;
-		std::cout << "\t--dense-loop-over-voxels           : Dense grid: loop over voxels and query nearest particles via KD-tree (requires --calc-radius-neigh)" << std::endl;
+		std::cout << "\t--cudakdtree                       : Use cudaKDTree (GPU) for the k-NN search" << std::endl;
+		std::cout << "\t--cudakdtree-cpu                   : Use cudaKDTree host build for the k-NN search" << std::endl;
+		std::cout << "\t--dense-loop-over-voxels           : Dense grid: loop over voxels, query particles via KD-tree (needs --calc-radius-neigh)" << std::endl;
+#endif
+#ifdef WITH_NANOFLANN
+		std::cout << "\t--nanoflann                        : Use nanoflann (CPU) for the k-NN search" << std::endl;
 #endif
 
-#ifdef WITH_NANOFLANN
-		std::cout << "\t--nanoflann                        : Use nanoflann library for neighbor search" << std::endl;
-#endif
-	
 		// === Advanced Options ===
 		std::cout << "\t--skip-cache-manager               : Stream particles from the reader instead of caching them (CPU only, lower memory)" << std::endl;
-		std::cout << "\t--sort-by-radius                   : Sort particles by radius" << std::endl;
-		std::cout << "\t--sort-by-non-overlap              : Sort particles spatially to avoid atomic operations" << std::endl;
-		std::cout << "\t--bbox x1 y1 z1 x2 y2 z2           : Define axis-aligned bounding box" << std::endl;
-		std::cout << "\t--save-mpi-rank                    : Save MPI rank information" << std::endl;
+		std::cout << "\t--sort-by-radius                   : Sort particles by radius before splatting" << std::endl;
+		std::cout << "\t--sort-by-non-overlap              : Sort particles spatially (Morton) to reduce atomic contention" << std::endl;
+		std::cout << "\t--save-mpi-rank                    : Additionally save each rank's partial grid" << std::endl;
 #ifdef WITH_GPU_CUDA
-		std::cout << "\t--gpu                         : Enable GPU acceleration (CUDA or HIP, depending on the build)" << std::endl;
+		std::cout << "\t--gpu                              : Enable GPU acceleration (CUDA or HIP, depending on the build)" << std::endl;
 #endif
-		std::cout << "\t-h, --help                         : Display usage information" << std::endl;
+		std::cout << "\t-h, --help                         : Display this usage information" << std::endl;
+
+		std::cout << "\nNote: without --export/--info the converter starts as a TCP server for the bspace" << std::endl;
+		std::cout << "Blender addon. Some parameters exist only in that protocol and cannot be set here:" << std::endl;
+		std::cout << "particle radius multiplier, value filters, object size (fixed 1000 in batch mode)." << std::endl;
 
 		// === Format-Specific Arguments ===
 		std::cout << "\nGADGET args:" << std::endl;
-		std::cout << "\t--param-file X              : GADGET parameter file" << std::endl;
-		std::cout << "\t--gadget-file X             : GADGET snapshot file path" << std::endl;
-		std::cout << "\t--max-mem-size X            : Maximum memory size (MB)" << std::endl;
-		std::cout << "\t--buffer-size X             : Buffer size for particle loading" << std::endl;
-		std::cout << "\t--part-alloc-factor X       : Particle allocation factor" << std::endl;
-		std::cout << "\t--bh-count X                : Number of black holes in simulation" << std::endl;
+		std::cout << "\t--param-file FILE           : GADGET parameter file" << std::endl;
+		std::cout << "\t--gadget-file FILE          : GADGET snapshot file path" << std::endl;
+		std::cout << "\t--max-mem-size N            : Maximum memory size (MB)" << std::endl;
+		std::cout << "\t--buffer-size N             : Buffer size for particle loading" << std::endl;
+		std::cout << "\t--part-alloc-factor N       : Particle allocation factor" << std::endl;
+		std::cout << "\t--bh-count N                : Number of black holes in simulation" << std::endl;
 
 		std::cout << "\nGADGET_SIMPLE args:" << std::endl;
-		std::cout << "\t--gadget-file X             : GADGET snapshot file path (simplified format)" << std::endl;		
-		
+		std::cout << "\t--gadget-file FILE          : GADGET snapshot file path (simplified reader)" << std::endl;
+
 		std::cout << "\nCHANGA_TIPSY args:" << std::endl;
-		std::cout << "\t--tipsy-file X              : TIPSY format file path" << std::endl;
+		std::cout << "\t--tipsy-file FILE           : TIPSY format file path" << std::endl;
+		std::cout << "\t--filter-in FILE            : Aux-file prefix for additional per-particle fields" << std::endl;
 
 		std::cout << "\nCHANGA_NCHILADA args:" << std::endl;
-		std::cout << "\t--nc-dir X                  : NChilada data directory" << std::endl;
+		std::cout << "\t--nc-dir DIR                : NChilada data directory" << std::endl;
 
 		std::cout << "\nHACC_GENERICIO args:" << std::endl;
-		std::cout << "\t--genericio-file X          : GenericIO format file path" << std::endl;
-		std::cout << "\t--pos-names x y z           : Position field names in GenericIO file" << std::endl;
-		std::cout << "\t--vel-names vx vy vz        : Velocity field names in GenericIO file" << std::endl;
+		std::cout << "\t--genericio-file FILE       : GenericIO format file path" << std::endl;
+		std::cout << "\t--pos-names x y z           : Position field names in the GenericIO file" << std::endl;
+		std::cout << "\t--vel-names vx vy vz        : Velocity field names in the GenericIO file" << std::endl;
+		std::cout << "\t--mass-name NAME            : Mass field name (otherwise mass = 0)" << std::endl;
+		std::cout << "\t--rho-name NAME             : Density field name (otherwise rho = 0)" << std::endl;
+		std::cout << "\t--hsml-name NAME            : Smoothing-length field name (otherwise hsml = 0)" << std::endl;
 
 		std::cout << "\nHACC_BIN args:" << std::endl;
-		std::cout << "\t--haccbin-file X            : HACC binary format file path" << std::endl;
+		std::cout << "\t--haccbin-file FILE         : HACC binary format file path" << std::endl;
 
 		std::cout << "\nIPIC3D_HDF5 args:" << std::endl;
-		std::cout << "\t--hdf5-file X               : iPIC3D HDF5 format file path (all species, fields and moments at the latest cycle are loaded automatically)" << std::endl;
-		std::cout << "\t--num-files X               : Number of files to load" << std::endl;
-		std::cout << "\t--settings-file X           : Path to companion settings.hdf (grid geometry); defaults to settings.hdf next to --hdf5-file" << std::endl;
+		std::cout << "\t--hdf5-file FILE            : iPIC3D HDF5 file path (all species, fields and moments are loaded automatically)" << std::endl;
+		std::cout << "\t--num-files N               : Number of files to load" << std::endl;
+		std::cout << "\t--settings-file FILE        : Companion settings.hdf (grid geometry); defaults to settings.hdf next to --hdf5-file" << std::endl;
+		std::cout << "\t--cycle N                   : Cycle to load (the N of the cycle_N datasets) [latest]" << std::endl;
+		std::cout << "\t--periodic-pad N            : Add periodic images of the grid points and particles within N cells of a periodic face, so a" << std::endl;
+		std::cout << "\t                              kernel up to N cells wide deposits periodic-correct values at the domain faces [0]" << std::endl;
+		std::cout << "\t--particles-group NAME      : HDF5 group of the particle species, e.g. particles_DS for the downsampled output [particles]" << std::endl;
+		std::cout << "\t--no-grid                   : Read only the particles, not the /fields and /moments grid points" << std::endl;
 
 		std::cout << "\nPLUTO_VTK args:" << std::endl;
-		std::cout << "\t--vtk-file X                : PLUTO VTK rectilinear grid file path" << std::endl;
-		std::cout << "\t--scalar-names [names...]   : Scalar field names to load (optional)" << std::endl;
+		std::cout << "\t--vtk-file FILE             : PLUTO VTK rectilinear grid file path" << std::endl;
+		std::cout << "\t--scalar-names NAME...      : Cell arrays to load (default: all)" << std::endl;
 
-		exit(0);
-	}
+		std::cout << "\nRAMSES args:" << std::endl;
+		std::cout << "\t--ramses-output DIR         : RAMSES output_NNNNN directory (with --anim: a printf pattern of the output number)" << std::endl;
+		std::cout << "\t                              type 0 = AMR leaf cells, 1..5 = particle families DM, Star, Cloud, Debris, Other," << std::endl;
+		std::cout << "\t                              6 = sinks (sink_NNNNN.csv; extra blocks birth_time, accretion_rate);" << std::endl;
+		std::cout << "\t                              blocks: Pos, Mass, Rho, Vel, Level, then the hydro variables and particle fields" << std::endl;
+		std::cout << "\t                              of the output's *_file_descriptor.txt (use --info to list them)" << std::endl;
+		std::cout << "\t--ramses-levelmax N         : Keep cells up to AMR level N as leaves (0 = all levels) [0]" << std::endl;
+		std::cout << "\t--ramses-filter F MIN MAX   : Keep only cells/particles whose hydro variable or particle field F lies in" << std::endl;
+		std::cout << "\t                              [MIN, MAX] (code units, applied while reading; repeatable), e.g." << std::endl;
+		std::cout << "\t                              --ramses-filter density 1e-6 1e30, --ramses-filter birth_time 50 1e30" << std::endl;
+		std::cout << "\t--no-gas                    : Do not read the AMR grid (amr/hydro files)" << std::endl;
+		std::cout << "\t--no-particles              : Do not read the particle files" << std::endl;
 
-	/**
-	 * @brief Parse command-line arguments and populate configuration structures.
-	 * 
-	 * This function processes all command-line arguments provided to the application
-	 * and fills the FromCL and SpaceData structures with the parsed values. It handles
-	 * various data formats, visualization options, and computation parameters.
-	 * 
-	 * @param from_cl Reference to FromCL structure for command-line configuration
-	 * @param space_data Reference to SpaceData structure for spatial/simulation data
-	 * @param argc Number of command-line arguments
-	 * @param argv Array of command-line argument strings
-	 */
-	void parse_args(FromCL& from_cl, common::SpaceData &space_data, int argc, char** argv)
-	{
-		// Require at least 3 arguments (program name + --data-type + format)
-		if (argc < 3) {
-			usage();
+		std::cout << "\nBHAC args:" << std::endl;
+		std::cout << "\t--bhac-file FILE            : BHAC dataNNNN.dat snapshot (with --anim: a printf pattern of the snapshot number)" << std::endl;
+		std::cout << "\t                              type 0 = leaf cells; blocks: Pos, Mass, Rho (d/lfac), B (b1 b2 b3 as a Cartesian" << std::endl;
+		std::cout << "\t                              vector), Level, then the stored variables (wnames, use --info to list them)" << std::endl;
+		std::cout << "\t--bhac-par FILE             : The run's .par file: base grid, domain, typeaxial and wnames (required)" << std::endl;
+		std::cout << "\t--bhac-coord C              : Code coordinates of a spherical grid: mks, sph (= ks, bl) or cart [mks]" << std::endl;
+		std::cout << "\t--bhac-mks H R0             : MKS parameters coordpar(h_), coordpar(R0_) of the run [0 0]" << std::endl;
+		std::cout << "\t--bhac-rrange RMIN RMAX     : Keep only cells with RMIN <= r <= RMAX (code units, RMAX 0 = no limit) [0 0]" << std::endl;
+
+		std::cout << "\nFIL args (FIL / Einstein Toolkit Carpet HDF5 3D output):" << std::endl;
+		std::cout << "\t--fil-file FILE             : Carpet HDF5 file (repeatable; one per variable, group or process, *.file_N.h5)" << std::endl;
+		std::cout << "\t                              type 0 = grid points (finest refinement level wins); blocks: Pos, Mass, Rho," << std::endl;
+		std::cout << "\t                              Level, then one block per variable and per vector group (x/y/z or [0..2]," << std::endl;
+		std::cout << "\t                              use --info to list them)" << std::endl;
+		std::cout << "\t--fil-dir DIR               : Read every 3D output file *.h5 of DIR (repeatable; 1D/2D output and" << std::endl;
+		std::cout << "\t                              checkpoints are skipped)" << std::endl;
+		std::cout << "\t--fil-vars V1,V2,...        : Variables to read, with or without the thorn prefix, e.g. rho,eps,alp,vel [all]" << std::endl;
+		std::cout << "\t--fil-iteration N           : Cactus iteration to read [the latest]; with --anim the frame number is the" << std::endl;
+		std::cout << "\t                              iteration (and replaces {} in --fil-file / --fil-dir)" << std::endl;
+		std::cout << "\t--fil-levels MIN MAX        : Read only the refinement levels MIN..MAX (finer levels are dropped and the" << std::endl;
+		std::cout << "\t                              coarser points kept in their place) [all]" << std::endl;
+		std::cout << "\t--fil-ghosts                : Keep the inter-process ghost zones (default: dropped)" << std::endl;
+
+		std::cout << "\nFIL_GRACE args (FIL_GRACE / GRACE HDF5 volume output):" << std::endl;
+		std::cout << "\t--fil-grace-file FILE       : Volume output volume_out_NNNNNN.h5 (with --anim: {} is replaced by the" << std::endl;
+		std::cout << "\t                              iteration, zero-padded to 6 digits)" << std::endl;
+		std::cout << "\t                              type 0 = cells of the AMR blocks; blocks: Pos, Mass, Rho, Level, then one" << std::endl;
+		std::cout << "\t                              block per scalar and per vector dataset (use --info to list them)" << std::endl;
+		std::cout << "\t--fil-grace-vars V1,V2,...  : Datasets to read, in this order, e.g. rho,press,alp,Bvec [all]" << std::endl;
+		std::cout << "\t--fil-grace-levels MIN MAX  : Read only the blocks of the refinement levels MIN..MAX (MAX -1 = finest) [all]" << std::endl;
+		std::cout << "\t--fil-grace-region X0 Y0 Z0 X1 Y1 Z1 : Read only the blocks that intersect this box (code units) [all]" << std::endl;
+		std::cout << "\t--fil-grace-mirror AXES     : Add the mirror images about the planes x, y, z = 0 (e.g. z for a run with" << std::endl;
+		std::cout << "\t                              reflection symmetry in z; the mirrored vector component changes sign)" << std::endl;
+		std::cout << "\t--fil-grace-block-size N    : Cells per block edge [derived from the file]" << std::endl;
+
+		// === Examples ===
+		std::cout << "\nexamples:" << std::endl;
+		std::cout << "  # Batch extraction of block 1 for particle type 0 into OpenVDB:" << std::endl;
+		std::cout << "  space_converter --data-type CHANGA_TIPSY --tipsy-file snap.00995 \\" << std::endl;
+		std::cout << "      --output-path /tmp/out --grid-dim 500 --export-data 0 1" << std::endl;
+		std::cout << "  # Dense SPH grid (WendlandC6) of a zoom region:" << std::endl;
+		std::cout << "  space_converter --data-type GADGET_SIMPLE --gadget-file snap_091 --output-path /tmp/out \\" << std::endl;
+		std::cout << "      --grid-dim 500 --export-data 0 1 --dense-type 6 --bbox 450 500 470 510 560 530" << std::endl;
+		std::cout << "  # Remote server for the bspace Blender addon:" << std::endl;
+		std::cout << "  space_converter --data-type GADGET_SIMPLE --gadget-file snap_091 --output-path /tmp/out --port 5000" << std::endl;
 		}
 
-		// Parse each command-line argument
+		exit(exit_code);
+	}
+
+	namespace {
+
+		/// Reader-specific flags. They are parsed a second time inside each reader's
+		/// init_lib(); parse_args only needs to know them (and their arity) so that
+		/// unknown arguments can be rejected. value_count == -1 means "consume values
+		/// until the next token starting with '-'" (e.g. --scalar-names).
+		struct ReaderFlag {
+			const char* name;
+			int value_count;
+		};
+
+		const ReaderFlag kReaderFlags[] = {
+			// GADGET / GADGET_SIMPLE
+			{ "--param-file", 1 },
+			{ "--gadget-file", 1 },
+			{ "--max-mem-size", 1 },
+			{ "--buffer-size", 1 },
+			{ "--part-alloc-factor", 1 },
+			{ "--bh-count", 1 },
+			// CHANGA
+			{ "--tipsy-file", 1 },
+			{ "--filter-in", 1 },
+			{ "--nc-dir", 1 },
+			// HACC
+			{ "--genericio-file", 1 },
+			{ "--pos-names", 3 },
+			{ "--vel-names", 3 },
+			{ "--mass-name", 1 },
+			{ "--rho-name", 1 },
+			{ "--hsml-name", 1 },
+			{ "--haccbin-file", 1 },
+			// iPIC3D
+			{ "--hdf5-file", 1 },
+			{ "--num-files", 1 },
+			{ "--settings-file", 1 },
+			{ "--cycle", 1 },
+			{ "--periodic-pad", 1 },
+			{ "--particles-group", 1 },
+			{ "--no-grid", 0 },
+			// PLUTO
+			{ "--vtk-file", 1 },
+			{ "--scalar-names", -1 },
+			// RAMSES
+			{ "--ramses-output", 1 },
+			{ "--ramses-levelmax", 1 },
+			{ "--ramses-filter", 3 },
+			{ "--no-gas", 0 },
+			{ "--no-particles", 0 },
+			// BHAC
+			{ "--bhac-file", 1 },
+			{ "--bhac-par", 1 },
+			{ "--bhac-coord", 1 },
+			{ "--bhac-mks", 2 },
+			{ "--bhac-rrange", 2 },
+			// FIL
+			{ "--fil-file", 1 },
+			{ "--fil-dir", 1 },
+			{ "--fil-vars", 1 },
+			{ "--fil-iteration", 1 },
+			{ "--fil-levels", 2 },
+			{ "--fil-ghosts", 0 },
+			// FIL_GRACE
+			{ "--fil-grace-file", 1 },
+			{ "--fil-grace-vars", 1 },
+			{ "--fil-grace-levels", 2 },
+			{ "--fil-grace-region", 6 },
+			{ "--fil-grace-mirror", 1 },
+			{ "--fil-grace-block-size", 1 },
+		};
+
+		int g_parse_rank = 0;  ///< MPI rank, so parse errors are printed once
+
+		/// Print an argument error (rank 0 only) and exit on all ranks.
+		[[noreturn]] void arg_error(const std::string& message)
+		{
+			if (g_parse_rank == 0) {
+				fprintf(stderr, "space_converter: %s\n", message.c_str());
+				fprintf(stderr, "space_converter: use -h for usage\n");
+			}
+			exit(1);
+		}
+
+		/// Fetch the next value for `flag`, erroring out if the command line ends.
+		const char* next_arg(int& i, int argc, char** argv, const char* flag)
+		{
+			if (i + 1 >= argc) {
+				arg_error(std::string("missing value for ") + flag);
+			}
+			return argv[++i];
+		}
+
+		int parse_int(int& i, int argc, char** argv, const char* flag)
+		{
+			const char* v = next_arg(i, argc, argv, flag);
+			try {
+				return std::stoi(v);
+			}
+			catch (const std::exception&) {
+				arg_error(std::string("invalid integer '") + v + "' for " + flag);
+			}
+		}
+
+		float parse_float(int& i, int argc, char** argv, const char* flag)
+		{
+			const char* v = next_arg(i, argc, argv, flag);
+			try {
+				return std::stof(v);
+			}
+			catch (const std::exception&) {
+				arg_error(std::string("invalid number '") + v + "' for " + flag);
+			}
+		}
+
+		double parse_double(int& i, int argc, char** argv, const char* flag)
+		{
+			const char* v = next_arg(i, argc, argv, flag);
+			try {
+				return std::stod(v);
+			}
+			catch (const std::exception&) {
+				arg_error(std::string("invalid number '") + v + "' for " + flag);
+			}
+		}
+
+		int parse_int_range(int& i, int argc, char** argv, const char* flag, int lo, int hi)
+		{
+			int v = parse_int(i, argc, argv, flag);
+			if (v < lo || v > hi) {
+				arg_error(std::string(flag) + " must be in [" + std::to_string(lo) + ", " + std::to_string(hi) + "], got " + std::to_string(v));
+			}
+			return v;
+		}
+
+		/// Warn (rank 0 only) about a flag that is accepted but has no effect in this build.
+		void warn_unsupported(const char* flag, const char* reason)
+		{
+			if (g_parse_rank == 0) {
+				fprintf(stderr, "space_converter: warning: %s ignored (%s)\n", flag, reason);
+			}
+		}
+
+	} // namespace
+
+	void parse_args(FromCL& from_cl, common::SpaceData &space_data, int argc, char** argv)
+	{
+		g_parse_rank = from_cl.world_rank;
+
+		// Require at least the program name + --data-type + its value
+		if (argc < 3) {
+			usage(1, from_cl.world_rank == 0);
+		}
+
+		// Flags that decide the extraction mode; the mode itself is derived once at
+		// the end so that the result does not depend on the flag order.
+		bool flag_raw_particles = false;
+		bool flag_simple_density = false;
+
 		for (int i = 1; i < argc; i++) {
 			const std::string arg = argv[i];
-			
+
 			// === Core Configuration ===
 			if (arg == "--data-type") {
-				// Specify input data format (GADGET, HACC, etc.)
-				from_cl.data_type = argv[++i];
+				from_cl.data_type = next_arg(i, argc, argv, "--data-type");
 			}
 			else if (arg == "--grid-dim") {
-				// Set the grid resolution/dimension for voxelization
-				space_data.bbox_dim = std::stoi(argv[++i]);
+				space_data.bbox_dim = parse_int(i, argc, argv, "--grid-dim");
+				if (space_data.bbox_dim < 1) {
+					arg_error("--grid-dim must be >= 1");
+				}
+				if (space_data.bbox_dim > 4096 && from_cl.world_rank == 0) {
+					fprintf(stderr, "space_converter: warning: --grid-dim %d is very large (dense grids need dim^3 floats)\n", space_data.bbox_dim);
+				}
 			}
 			else if (arg == "-o" || arg == "--output-path") {
-				// Output directory for generated files
-				from_cl.output_path = argv[++i];
+				from_cl.output_path = next_arg(i, argc, argv, "--output-path");
 			}
-			else if (arg == "--server") {
-				// Server address for remote communication
-				from_cl.server = argv[++i];
+			else if (arg == "-f" || arg == "--output-file") {
+				from_cl.output_file = next_arg(i, argc, argv, "--output-file");
 			}
 			else if (arg == "--port") {
-				// Server port for remote communication
-				from_cl.port = std::stoi(argv[++i]);
+				from_cl.port = parse_int_range(i, argc, argv, "--port", 1, 65535);
 			}
 			else if (arg == "--info") {
 				// Display dataset information only (no conversion)
@@ -168,154 +400,219 @@ namespace space_converter {
 				from_cl.remote = false;
 			}
 			// === Output Format Options ===
-#ifdef WITH_OPENVDB
 			else if (arg == "--nanovdb") {
-				// Use NanoVDB format (GPU-friendly VDB variant)
 				from_cl.use_nanovdb = true;
 			}
-#endif
 			else if (arg == "--cub") {
-				// Use CUB format (GPU-friendly VDB variant)
 				from_cl.use_cub = true;
 			}
 			else if (arg == "--dense-file") {
-				// Export dense matrix representation to file
-				//from_cl.use_dense2file = true;
-				space_data.extracted_dense_type = (common::SpaceData::ExtractedDenseType)std::stoi(argv[++i]);
+				space_data.extracted_dense_type = (common::SpaceData::ExtractedDenseType)parse_int_range(i, argc, argv, "--dense-file", 0, 2);
 			}
-			
+
 			// === Animation Processing ===
 			else if (arg == "--anim") {
-				// Process animation sequence (start and end frame numbers)
-				if(space_data.anim_type == common::SpaceData::AnimType::eNone)
+				if (space_data.anim_type == common::SpaceData::AnimType::eNone)
 					space_data.anim_type = common::SpaceData::AnimType::eAllPath;
 
-				space_data.anim_start = std::stoi(argv[++i]);
-				space_data.anim_end = std::stoi(argv[++i]);
-				space_data.anim_step = std::stoi(argv[++i]);
+				space_data.anim_start = parse_int(i, argc, argv, "--anim");
+				space_data.anim_end = parse_int(i, argc, argv, "--anim");
+				space_data.anim_step = parse_int(i, argc, argv, "--anim");
+				if (space_data.anim_step < 1) {
+					arg_error("--anim STEP must be >= 1");
+				}
+				if (space_data.anim_start > space_data.anim_end) {
+					arg_error("--anim START must be <= END");
+				}
 			}
 			else if (arg == "--anim-merge") {
-				// Merge all animation frames into a single output
 				space_data.anim_type = common::SpaceData::AnimType::eAllMerge;
 			}
-			
+
 			// === Particle Export Options ===
 			else if (arg == "--raw-particles") {
-				// Export raw particle data without VDB conversion
-				space_data.extracted_type = common::SpaceData::ExtractedType::eParticle; // eRawParticles
-				space_data.extracted_particle_type = (common::SpaceData::ExtractedParticleType)std::stoi(argv[++i]);
+				flag_raw_particles = true;
+				space_data.extracted_particle_type = (common::SpaceData::ExtractedParticleType)parse_int_range(i, argc, argv, "--raw-particles", 0, 3);
 			}
 			else if (arg == "--save-mpi-rank") {
 				from_cl.use_save_mpirank = true;
-			}			
-			// else if (arg == "--rawpart2vdb") {
-			// 	from_cl.use_rawpart2vdb = true;
-			// }			
+			}
 			else if (arg == "--export-data" || arg == "--export") {
-				space_data.particle_type = std::stoi(argv[++i]);
-				space_data.block_name_id = std::stoi(argv[++i]);
-				//from_cl.export_dense_type = std::stoi(argv[++i]);				
+				space_data.particle_type = parse_int(i, argc, argv, "--export-data");
+				space_data.block_name_id = parse_int(i, argc, argv, "--export-data");
+				if (space_data.particle_type < 0 || space_data.block_name_id < 0) {
+					arg_error("--export-data TYPE and BLOCK must be >= 0");
+				}
 				from_cl.remote = false;
+			}
+			else if (arg == "--block-comp") {
+				// Which component of a multi-element block to export. Blocks that
+				// carry a vector or a binned spectrum otherwise reach the grid only
+				// as a magnitude; one grid per component lets a quantity built out
+				// of several of them be assembled in a shader instead of in a reader.
+				space_data.block_component = parse_int(i, argc, argv, "--block-comp");
+				if (space_data.block_component < 0) {
+					arg_error("--block-comp N must be >= 0");
+				}
+			}
+			else if (arg == "--block-exp10") {
+				// The block holds log10 of the quantity (spectral normalisations are
+				// often stored that way to keep them in range). Decoding before the
+				// deposit is what makes the grid a sum rather than a geometric mean.
+				space_data.block_exp10 = true;
+			}
+			else if (arg == "--block-scale") {
+				space_data.block_scale = parse_double(i, argc, argv, "--block-scale");
+				if (!(space_data.block_scale > 0.0)) {
+					arg_error("--block-scale K must be > 0");
+				}
 			}
 			// === Density Computation Options ===
 			else if (arg == "--dense-type") {
-				// Set density computation type (kernel function)
-				space_data.dense_type = (common::SpaceData::DenseType)std::stoi(argv[++i]);
-				if (space_data.dense_type == common::SpaceData::DenseType::eNone)
-					space_data.extracted_type = common::SpaceData::ExtractedType::eSparse;
-				else
-					space_data.extracted_type = common::SpaceData::ExtractedType::eDense;
+				space_data.dense_type = (common::SpaceData::DenseType)parse_int_range(i, argc, argv, "--dense-type", 0, 6);
 			}
 			else if (arg == "--dense-norm") {
-				// Set density normalization method
-				space_data.dense_norm = (common::SpaceData::DenseNorm)std::stoi(argv[++i]);
+				space_data.dense_norm = (common::SpaceData::DenseNorm)parse_int_range(i, argc, argv, "--dense-norm", 0, 3);
 			}
 			else if (arg == "--simple-density") {
-				// Use simplified density calculation method
+				flag_simple_density = true;
 				space_data.use_simple_density = true;
-				if (space_data.dense_type == common::SpaceData::DenseType::eNone)
-					space_data.dense_type = common::SpaceData::DenseType::eCubic;
-
-				space_data.extracted_type = common::SpaceData::ExtractedType::eDense;
 			}
-			
+
 			// === Spatial Filtering Options ===
 			else if (arg == "--bbox-sphere") {
-				// Define spherical bounding region (center xyz + radius)
 				space_data.use_bbox_sphere = true;
-				space_data.bbox_sphere_pos[0] = std::stof(argv[++i]);
-				space_data.bbox_sphere_pos[1] = std::stof(argv[++i]);
-				space_data.bbox_sphere_pos[2] = std::stof(argv[++i]);
-				space_data.bbox_sphere_r = std::stof(argv[++i]);
+				space_data.bbox_sphere_pos[0] = parse_float(i, argc, argv, "--bbox-sphere");
+				space_data.bbox_sphere_pos[1] = parse_float(i, argc, argv, "--bbox-sphere");
+				space_data.bbox_sphere_pos[2] = parse_float(i, argc, argv, "--bbox-sphere");
+				space_data.bbox_sphere_r = parse_float(i, argc, argv, "--bbox-sphere");
+				if (space_data.bbox_sphere_r <= 0.0f) {
+					arg_error("--bbox-sphere radius must be > 0");
+				}
 			}
 			else if (arg == "--bbox") {
-				// Define axis-aligned bounding box (min xyz, max xyz)
-				space_data.bbox_min[0] = std::stof(argv[++i]);
-				space_data.bbox_min[1] = std::stof(argv[++i]);
-				space_data.bbox_min[2] = std::stof(argv[++i]);
+				space_data.bbox_min[0] = parse_float(i, argc, argv, "--bbox");
+				space_data.bbox_min[1] = parse_float(i, argc, argv, "--bbox");
+				space_data.bbox_min[2] = parse_float(i, argc, argv, "--bbox");
 
-				space_data.bbox_max[0] = std::stof(argv[++i]);
-				space_data.bbox_max[1] = std::stof(argv[++i]);
-				space_data.bbox_max[2] = std::stof(argv[++i]);
-			}		
+				space_data.bbox_max[0] = parse_float(i, argc, argv, "--bbox");
+				space_data.bbox_max[1] = parse_float(i, argc, argv, "--bbox");
+				space_data.bbox_max[2] = parse_float(i, argc, argv, "--bbox");
+
+				for (int a = 0; a < 3; a++) {
+					if (space_data.bbox_min[a] >= space_data.bbox_max[a]) {
+						arg_error("--bbox: min must be < max on every axis");
+					}
+				}
+			}
 			else if (arg == "--no-norm-value") {
 				space_data.use_norm_value = false;
-			}		
+			}
+			else if (arg == "--bbox-orig") {
+				space_data.use_bbox_orig = true;
+				for (int a = 0; a < 3; a++)
+					space_data.bbox_orig_fixed_min[a] = parse_float(i, argc, argv, "--bbox-orig");
+				for (int a = 0; a < 3; a++)
+					space_data.bbox_orig_fixed_max[a] = parse_float(i, argc, argv, "--bbox-orig");
+
+				for (int a = 0; a < 3; a++) {
+					if (space_data.bbox_orig_fixed_min[a] >= space_data.bbox_orig_fixed_max[a]) {
+						arg_error("--bbox-orig: min must be < max on every axis");
+					}
+				}
+			}
 			else if (arg == "--offset-position") {
-				// Apply position offset to all particles (translation)
-				space_data.offset_position[0] = std::stof(argv[++i]);
-				space_data.offset_position[1] = std::stof(argv[++i]);
-				space_data.offset_position[2] = std::stof(argv[++i]);
+				space_data.offset_position[0] = parse_float(i, argc, argv, "--offset-position");
+				space_data.offset_position[1] = parse_float(i, argc, argv, "--offset-position");
+				space_data.offset_position[2] = parse_float(i, argc, argv, "--offset-position");
+			}
+			else if (arg == "--radius-mult") {
+				// Deep zooms resolve individual particles: the grid gets finer than the
+				// interparticle spacing, so each SPH kernel draws as its own blob.
+				// Inflating the radii past the simulation's own smoothing is what makes
+				// the structure read as continuous again.
+				space_data.particle_radius_multiplier = (float)parse_double(i, argc, argv, "--radius-mult");
+				if (space_data.particle_radius_multiplier < 0.0f) {
+					arg_error("--radius-mult must be >= 0");
+				}
 			}
 			else if (arg == "--radius-const") {
-				// Set constant particle radius
-				space_data.particle_radius_const = std::stod(argv[++i]);
+				space_data.particle_radius_const = parse_double(i, argc, argv, "--radius-const");
+				if (space_data.particle_radius_const < 0.0) {
+					arg_error("--radius-const must be >= 0");
+				}
+			}
+			// Value-range filter: particles whose exported block value falls
+			// outside [filter_min, filter_max] are skipped. The fields already
+			// existed for the TCP client; these expose them on the command line
+			// (e.g. select recently formed stars by their TForm value).
+			else if (arg == "--filter-min") {
+				space_data.filter_min = parse_float(i, argc, argv, "--filter-min");
+			}
+			else if (arg == "--filter-max") {
+				space_data.filter_max = parse_float(i, argc, argv, "--filter-max");
 			}
 			// === Neighbor Search Configuration ===
-#if defined(WITH_CUDAKDTREE) || defined(WITH_NANOFLANN)
 			else if (arg == "--calc-radius-neigh") {
-				// Calculate smoothing radius based on N nearest neighbors
-				space_data.calc_radius_neigh = std::stoi(argv[++i]);
+#if defined(WITH_CUDAKDTREE) || defined(WITH_NANOFLANN)
+				space_data.calc_radius_neigh = parse_int(i, argc, argv, "--calc-radius-neigh");
+				if (space_data.calc_radius_neigh < 1) {
+					arg_error("--calc-radius-neigh must be >= 1");
+				}
+#else
+				(void)parse_int(i, argc, argv, "--calc-radius-neigh");
+				warn_unsupported("--calc-radius-neigh", "built without cudaKDTree/nanoflann");
+#endif
 			}
 			else if (arg == "--calc-radius-neigh-rho-kernel") {
-				// Specify kernel for density calculation with neighbor search
-				space_data.calc_radius_neigh_rho_kernel = (common::SpaceData::DenseType)std::stoi(argv[++i]);
-			}			
-#endif			
-			else if (arg == "--calc-radius-neigh-file") {
-				// Load pre-computed neighbor radii from file
-				space_data.calc_radius_neigh_file = argv[++i];
+#if defined(WITH_CUDAKDTREE) || defined(WITH_NANOFLANN)
+				space_data.calc_radius_neigh_rho_kernel = (common::SpaceData::DenseType)parse_int_range(i, argc, argv, "--calc-radius-neigh-rho-kernel", 1, 6);
+#else
+				(void)parse_int(i, argc, argv, "--calc-radius-neigh-rho-kernel");
+				warn_unsupported("--calc-radius-neigh-rho-kernel", "built without cudaKDTree/nanoflann");
+#endif
 			}
-			
+			else if (arg == "--calc-radius-neigh-file") {
+				space_data.calc_radius_neigh_file = next_arg(i, argc, argv, "--calc-radius-neigh-file");
+			}
+
 			// === Neighbor Search Implementation ===
-#ifdef WITH_CUDAKDTREE
 			else if (arg == "--cudakdtree") {
-				// Use CUDA-accelerated KDTree for neighbor search
+#ifdef WITH_CUDAKDTREE
 				from_cl.use_cudakdtree = true;
+#else
+				warn_unsupported("--cudakdtree", "built without cudaKDTree");
+#endif
 			}
 			else if (arg == "--cudakdtree-cpu") {
-				// Use CPU implementation of CUDA KDTree
+#ifdef WITH_CUDAKDTREE
 				from_cl.use_cudakdtree_cpu = true;
+#else
+				warn_unsupported("--cudakdtree-cpu", "built without cudaKDTree");
+#endif
 			}
 			else if (arg == "--dense-loop-over-voxels") {
-				// Voxel-centric dense grid: iterate voxels, query nearest particles via KD-tree
+#ifdef WITH_CUDAKDTREE
 				from_cl.use_dense_loop_over_voxels = true;
-			}
+#else
+				warn_unsupported("--dense-loop-over-voxels", "built without cudaKDTree");
 #endif
-#ifdef WITH_NANOFLANN
+			}
 			else if (arg == "--nanoflann") {
-				// Use nanoflann library for neighbor search
+#ifdef WITH_NANOFLANN
 				from_cl.use_nanoflann = true;
-			}
-#endif		
-#ifdef WITH_GPU_CUDA
-			else if (arg == "--gpu") {
-				// Enable GPU acceleration for CUDA-based computations
-				from_cl.use_gpu = true;
-			}
+#else
+				warn_unsupported("--nanoflann", "built without nanoflann");
 #endif
+			}
+			else if (arg == "--gpu") {
+#ifdef WITH_GPU_CUDA
+				from_cl.use_gpu = true;
+#else
+				warn_unsupported("--gpu", "built without GPU support");
+#endif
+			}
 			else if (arg == "--skip-cache-manager") {
-				// Stream particles from the reader instead of caching them (CPU only)
 				from_cl.skip_cache_manager = true;
 			}
 			else if (arg == "--sort-by-radius") {
@@ -323,11 +620,55 @@ namespace space_converter {
 			}
 			else if (arg == "--sort-by-non-overlap") {
 				from_cl.use_sort_by_non_overlap = true;
-				}
-			else if (arg == "-h" || arg == "--help") {
-				// Display usage information
-				usage();
 			}
+			else if (arg == "-h" || arg == "--help") {
+				usage(0, from_cl.world_rank == 0);
+			}
+			else {
+				// Reader-specific flags: recognized here (with their arity) so that the
+				// unknown-argument check below stays valid; parsed again in the reader.
+				bool is_reader_flag = false;
+				for (const ReaderFlag& rf : kReaderFlags) {
+					if (arg == rf.name) {
+						is_reader_flag = true;
+						if (rf.value_count >= 0) {
+							for (int v = 0; v < rf.value_count; v++) {
+								next_arg(i, argc, argv, rf.name);
+							}
+						}
+						else {
+							// Variable arity: consume values until the next flag
+							while (i + 1 < argc && argv[i + 1][0] != '-') {
+								++i;
+							}
+						}
+						break;
+					}
+				}
+
+				if (!is_reader_flag) {
+					arg_error(std::string("unknown argument '") + arg + "'");
+				}
+			}
+		}
+
+		// === Derive the extraction mode (independent of flag order) ===
+		bool wants_dense = flag_simple_density || space_data.dense_type != common::SpaceData::DenseType::eNone;
+		if (flag_raw_particles && wants_dense) {
+			arg_error("--raw-particles cannot be combined with --dense-type/--simple-density");
+		}
+		if (flag_raw_particles) {
+			space_data.extracted_type = common::SpaceData::ExtractedType::eParticle;
+		}
+		else if (wants_dense) {
+			space_data.extracted_type = common::SpaceData::ExtractedType::eDense;
+			// --simple-density alone still needs a splat kernel
+			if (space_data.dense_type == common::SpaceData::DenseType::eNone) {
+				space_data.dense_type = common::SpaceData::DenseType::eCubic;
+			}
+		}
+		else {
+			space_data.extracted_type = common::SpaceData::ExtractedType::eSparse;
 		}
 	}
 
@@ -336,7 +677,7 @@ namespace space_converter {
 		std::cout << "\n=== FromCL Configuration ==="<< std::endl;
 		std::cout << "data_type: " << data_type << std::endl;
 		std::cout << "output_path: " << output_path << std::endl;
-		std::cout << "server: " << server << std::endl;
+		std::cout << "output_file: " << (output_file.empty() ? "(auto)" : output_file) << std::endl;
 		std::cout << "port: " << port << std::endl;
 		std::cout << "info: " << (info ? "true" : "false") << std::endl;
 		std::cout << "remote: " << (remote ? "true" : "false") << std::endl;
@@ -363,138 +704,3 @@ namespace space_converter {
 	}
 
 } // namespace space_converter
-
-/*
- * ============================================================================
- * EXAMPLE USAGE COMMANDS
- * ============================================================================
- * 
- * Below are example command-line invocations demonstrating various use cases
- * and workflow patterns. These examples are organized by data format and
- * feature type for easy reference.
- * ============================================================================
- */
-
-// === CHANGA Format Examples ===
-
-// Basic TIPSY file processing with data export
-//--data-type CHANGA_TIPSY --grid-dim 1000 --output-path e:\temp\changa\tmp\ --tipsy-file e:\temp\changa\galaxy_merger.dat --export-data 0 1 0 --output-path f:\temp\
-
-// NCHILADA format processing
-//--data-type CHANGA_NCHILADA --grid-dim 1000 --output-path e:\temp\changa\tmp\ --nc-dir e:\temp\changa\galaxy_merger.dat.data
-
-// TIPSY with info display only
-//--data-type CHANGA_TIPSY --grid-dim 1000 --output-path e:\temp\changa\tmp\ --tipsy-file e:\temp\changa\tipsy\LOW_512XLARGEMHDVERTDENSWend64FBSB64AB05.03280 --export-data 0 1 0 --output-path f:\temp\ --info
-
-// TIPSY with remote server communication
-//--data-type CHANGA_TIPSY --grid-dim 1000 --output-path e:\temp\changa\tmp\ --tipsy-file e:\temp\changa\tipsy\LOW_512XLARGEMHDVERTDENSWend64FBSB64AB05.03280 --output-path f:\temp\ --port 5000
-
-// TIPSY with multi-resolution processing
-//--data-type CHANGA_TIPSY --grid-dim 1000 --output-path e:\temp\changa\tmp\ --tipsy-file e:\temp\changa\tipsy\LOW_512XLARGEMHDVERTDENSWend64FBSB64AB05.03280 --output-path f:\temp\ --port 5000 --multires
-
-// Accretion disk simulation
-//--data-type CHANGA_TIPSY --grid-dim 1000 --output-path e:\temp\changa\tmp\ --tipsy-file e:\temp\changa\tipsy\accretiondisklowresstd --output-path f:\temp\ --port 5000
-
-//--data-type CHANGA_TIPSY --tipsy-file e:\temp\21\LOW_512XLARGEMHDVERTDENSWend64FBSB64AB05.00995 --output-path e:\temp\21\ --grid-dim 100 --export-data 0 1 --bbox 452.542480 506.425049 478.175903 510.356018 564.238525 535.989380 --gpu --dense-type 6 # --cudakdtree --calc-radius-neigh 10 
-
-// === GADGET Format Examples ===
-
-// Basic GADGET processing (small dataset)
-//--data-type GADGET --gadget-file f:\temp\very_small_example\snap_081 --max-mem-size 6000 --buffer-size 150.0 --part-alloc-factor 2.5 --grid-dim 1000 --output-path f:\temp\
-
-// GADGET with remote server (larger dataset)
-//--data-type GADGET --gadget-file f:\temp\notsosmall_example\snap_091 --max-mem-size 100000 --buffer-size 150.0 --part-alloc-factor 2.5 --grid-dim 1000 --output-path f:\temp\ --port 5000
-
-// GADGET with data export
-//--data-type GADGET --gadget-file e:\temp\gadget\very_small_example\snap_081 --max-mem-size 6000 --buffer-size 150.0 --part-alloc-factor 2.5 --grid-dim 1000 --output-path f:\temp\ --export-data 0 1 0
-
-// GADGET with black hole tracking
-//--data-type GADGET --gadget-file e:\temp\gadget\notsosmall_example\snap_091 --max-mem-size 100000 --buffer-size 150.0 --part-alloc-factor 1.2 --grid-dim 500 --output-path f:\temp\ --port 5000 --bh-count 110
-
-// GADGET with info display
-//--data-type GADGET --gadget-file e:\temp\gadget\notsosmall_example\snap_091 --max-mem-size 100000 --buffer-size 150.0 --part-alloc-factor 1.2 --grid-dim 500 --output-path f:\temp\ --info
-
-// GADGET galaxy simulation
-//--data-type GADGET --gadget-file e:\temp\galaxy\snap_SQ_mitCGM_mbar5e5 --max-mem-size 10000 --buffer-size 150.0 --part-alloc-factor 1.2 --grid-dim 100 --output-path f:\temp\ --export-data 0 1 0 --bh-count 4 --info
-
-// GADGET with NanoVDB output
-//--data-type GADGET --gadget-file F:\work\blender\SPHtoGrid.jl\snap_sedov --max-mem-size 6000 --buffer-size 150.0 --part-alloc-factor 2.5 --grid-dim 1000 --output-path f:\temp\ --port 5005 --bh-count 1 --nanovdb
-
-// GADGET with multi-resolution
-//--data-type GADGET --gadget-file e:\temp\gadget\very_small_example\snap_081 --max-mem-size 6000 --buffer-size 150.0 --part-alloc-factor 2.5 --grid-dim 1000 --output-path f:\temp\ --port 5005 --bh-count 1 --multires
-
-
-// === GADGET Animation Examples ===
-
-// Black hole simulation animation (frames 0-1)
-//--data-type GADGET --gadget-file e:\temp\black_hole\13_1e4_B1e9_z19\snapdir_{}\snap_{} --max-mem-size 6000 --buffer-size 150.0 --part-alloc-factor 1.5 --grid-dim 500 --output-path e:\temp\ --port 5000 --anim 0 1 --bh-count 1
-
-// Black hole simulation animation (frames 1000-1001)
-//--data-type GADGET --gadget-file e:\temp\black_hole\13_1e4_B1e9_z19\snapdir_{}\snap_{} --max-mem-size 6000 --buffer-size 150.0 --part-alloc-factor 1.5 --grid-dim 500 --output-path e:\temp\ --port 5000 --anim 1000 1001 --bh-count 1
-
-// Animation with merged frames and raw particles
-//--data-type GADGET --gadget-file e:\temp\black_hole\13_1e4_B1e9_z19\snapdir_{}\snap_{} --max-mem-size 6000 --buffer-size 150.0 --part-alloc-factor 1.5 --grid-dim 500 --output-path e:\temp\ --port 5000 --anim 1000 1001 --bh-count 1 --anim-merge --raw-particles
-
-
-// === GADGET with Neighbor Search ===
-
-// Neighbor radius calculation with KDTree
-//--data-type GADGET --gadget-file e:\temp\gadget\notsosmall_example\snap_091 --max-mem-size 100000 --buffer-size 150.0 --part-alloc-factor 1.2 --grid-dim 500 --output-path f:\temp\ --port 5000 --bh-count 110 --calc-radius-neigh 2 --bbox 386.881104 590.247009 613.632996 393.591431 596.957336 620.343323 --export-data 0 1 1
-
-// Using pre-computed neighbor radii from file
-//--data-type GADGET --gadget-file e:\temp\gadget\notsosmall_example\snap_091 --max-mem-size 100000 --buffer-size 150.0 --part-alloc-factor 1.2 --grid-dim 500 --output-path f:\temp\ --port 5000 --bh-count 110 --calc-radius-neigh-file e:\temp\gadget_rad10.bin
-
-// Advanced neighbor search with bounding box
-//--data-type GADGET --gadget-file e:\temp\gadget\notsosmall_example\snap_091 --max-mem-size 100000 --buffer-size 150.0 --part-alloc-factor 1.2 --grid-dim 500 --output-path f:\temp\ --port 5000 --bh-count 110 --calc-radius-neigh 10 --bbox 386.881104 590.247009 613.632996 393.591431 596.957336 620.343323 --export-data 0 1 1
-
-// Multi-resolution with neighbor calculation
-//--data-type GADGET --gadget-file e:\temp\gadget\very_small_example\snap_081 --max-mem-size 6000 --buffer-size 150.0 --part-alloc-factor 2.5 --grid-dim 1000 --output-path f:\temp\ --export-data 0 1 1 --bh-count 1 --calc-radius-neigh 10 --multires
-
-// Large-scale neighbor search
-//--data-type GADGET --gadget-file e:/temp/galaxy/snap_SQ_mitCGM_mbar5e4 --max-mem-size 100000 --buffer-size 500.0 --part-alloc-factor 1.2 --grid-dim 1000 --output-path f:\temp\ --port 5000 --bh-count 4 --calc-radius-neigh 50
-
-
-// === GADGET_SIMPLE Format Examples ===
-
-// Basic GADGET_SIMPLE processing
-//--data-type GADGET_SIMPLE --gadget-file e:\temp\alice\data\snapdir_1000\snap_1000 --output-path e:\temp\ --port 5000
-
-// GADGET_SIMPLE with neighbor search
-//--data-type GADGET_SIMPLE --gadget-file e:\temp\alice\data\snapdir_1000\snap_1000 --output-path e:\temp\ --port 5000 --calc-radius-neigh 32
-
-// GADGET_SIMPLE animation sequence
-//--data-type GADGET_SIMPLE --gadget-file e:\temp\alice\data\H1e5_DF_p03\snapdir_{}\snap_{} --output-path e:\temp\ --port 5000 --anim 0 3
-
-// GADGET_SIMPLE with CUDA KDTree
-//--data-type GADGET_SIMPLE --gadget-file e:\temp\gadget\very_small_example\snap_081 --output-path e:\temp\ --port 5000 --calc-radius-neigh 32 --cudakdtree
-
-//--data-type GADGET_SIMPLE --gadget-file e:\temp\gadget\very_small_example\snap_081 --output-path e:\temp\20_new\ --export-data 0 1 --dense-type 6 --gpu  --sort-by-radius --nanovdb
-
-// === HACC_GenericIO Format Examples ===
-
-// GenericIO with info display
-//--data-type HACC_GENERICIO --genericio-file e:\data\jar091\down\m000.mpicosmo.499 --grid-dim 1000 --output-path f:\temp\ --info
-
-// GenericIO with remote server
-//--data-type HACC_GENERICIO --genericio-file e:\temp\hacc\farpoint\m000p-499.select.mpicosmo --grid-dim 1000 --output-path f:\temp\ --port 5000
-
-
-// === HACCBIN Format Examples ===
-
-// HACC binary format with info
-//--data-type HACC_BIN --haccbin-file e:\temp\hacc\Full.cosmo.0 --grid-dim 1000 --output-path f:\temp\ --info
-
-
-// === IPIC3D_HDF5 Format Examples ===
-
-// iPIC3D HDF5 format: loads all species, fields and moments at the latest cycle automatically
-//--data-type IPIC3D_HDF5 --hdf5-file /path/to/restart0.hdf --grid-dim 1000 --output-path /temp/ --info
-
-//--data-type IPIC3D_HDF5 --hdf5-file /path/to/restart0.hdf --grid-dim 1000 --output-path /temp/ --port 5000
-
-
-// === PLUTO_VTK Format Examples ===
-//--data-type PLUTO_VTK --vtk-file e:\temp\20_new\pluto\data.0000.vtk --output-path e:\temp\20_new\ --export-data 0 1
-
-// == IPIC3D_HDF5 Format Examples ==
-//--data-type IPIC3D_HDF5 --hdf5-file e:\temp\20_new\ipic\restart0.hdf --output-path e:\temp\20_new\ --export-data 0 1

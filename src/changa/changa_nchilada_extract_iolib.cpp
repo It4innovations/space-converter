@@ -35,23 +35,17 @@
 #endif
 #include "convert_common.h"
 
-#define RETURN_NORM_EMPTY return 0; //return std::numeric_limits<float>::quiet_NaN();//0;
-#define RETURN_NORM_VALUE(v) return (float)(v);
-#define RETURN_NORM_VECTOR3(v) return (float)space_converter::common::calculate_dmagnitude3(v[0], v[1], v[2]);
-#define RETURN_NORM_DVECTORN(v,n) return (float)space_converter::common::calculate_dmagnituden(v,n);
-#define RETURN_NORM_FVECTORN(v,n) return (float)space_converter::common::calculate_fmagnituden(v,n);
+#include "reader_return_macros.h"
 
-#define RETURN_COMP_EMPTY return 0;
-#define RETURN_COMP_VALUE(v) return 1;
-#define RETURN_COMP_VECTOR3(v) return 3;
-#define RETURN_COMP_DVECTORN(v,n) return n;
-#define RETURN_COMP_FVECTORN(v,n) return n;
-
-#define RETURN_ORIG_EMPTY RETURN_COMP_EMPTY
-#define RETURN_ORIG_VALUE(v) out_value[0] = (float)v; RETURN_COMP_VALUE(v)
-#define RETURN_ORIG_VECTOR3(v) out_value[0] = (float)v[0]; out_value[1] = (float)v[1]; out_value[2] = (float)v[2]; RETURN_COMP_VECTOR3(v)
-#define RETURN_ORIG_DVECTORN(v,n) for(int iv=0;iv<n;iv++) out_value[iv] = (float)v[iv]; RETURN_COMP_DVECTORN(v,n)
-#define RETURN_ORIG_FVECTORN(v,n) for(int iv=0;iv<n;iv++) out_value[iv] = (float)v[iv]; RETURN_COMP_FVECTORN(v,n)
+// Reader data contract (see docs/SpaceConverter_Code_Analysis_2026-08.md §7):
+//   get_particle_mass(id) -> particle mass from the per-type "mass" field, simulation
+//                            code units, all types (Gas, Dark, Stars)
+//   get_particle_rho(id)  -> gas density from "GasDensity" (code units); 0 for non-gas types
+//   get_particle_hsml(id) -> "smoothlength" for gas and, when the run computed
+//                            densities, for dark matter too; "soft" otherwise;
+//                            gravitational softening ("soft") for Dark and Stars
+//   particle id space     -> rank-local, grouped by type: [Gas..., Dark..., Stars...]
+//                            (each type contributes this rank's slice of that type)
 
 namespace changa {
 	namespace nchilada {
@@ -244,7 +238,15 @@ namespace changa {
 				//getSoft(bdata_dark, filename, world_rank, world_size);
 				getData(nch_data->data_map[ParticleType::Dark][BlockType::Soft], basedir, "/dark", "/soft", world_rank, world_size);
 				//getPhi(bdata_dark, filename, world_rank, world_size);
-				getData(nch_data->data_map[ParticleType::Dark][BlockType::Phi], basedir, "/dark", "/phi", world_rank, world_size);
+				// ChaNGa writes the potential as "pot"; "phi" is the tipsy spelling.
+				getData(nch_data->data_map[ParticleType::Dark][BlockType::Phi], basedir, "/dark", "/phi", world_rank, world_size, true);
+				if (nch_data->data_map[ParticleType::Dark][BlockType::Phi].data == nullptr)
+					getData(nch_data->data_map[ParticleType::Dark][BlockType::Phi], basedir, "/dark", "/pot", world_rank, world_size, true);
+				// Dark matter carries an SPH-style smoothing length and density when the
+				// run was made with bDoDensity; they are what gives a splat its adaptive
+				// radius, so dense regions stay sharp while voids are smoothed.
+				getData(nch_data->data_map[ParticleType::Dark][BlockType::HSmooth], basedir, "/dark", "/smoothlength", world_rank, world_size, true);
+				getData(nch_data->data_map[ParticleType::Dark][BlockType::Rho], basedir, "/dark", "/den", world_rank, world_size, true);
 
 
 				//if (nSph > 0) {
@@ -295,6 +297,30 @@ namespace changa {
 				getData(nch_data->data_map[ParticleType::Stars][BlockType::TForm], basedir, "/star", "/timeform", world_rank, world_size);
 
 				//}
+
+				// A block whose particle count differs from the type's Pos block would silently
+				// misalign particle ids - report it and drop the block instead.
+				for (int ipt = 0; ipt < ParticleType::PTMax; ipt++) {
+					uint64_t ref_count = nch_data->data_map[ipt][BlockType::Pos].fh.numParticles;
+					for (int ibt = 0; ibt < BlockType::BTMax; ibt++) {
+						if (ibt == BlockType::Pos)
+							continue;
+
+						NChiladaBlockData& bdata = nch_data->data_map[ipt][ibt];
+						if (bdata.data == nullptr)
+							continue;
+
+						if (bdata.fh.numParticles != ref_count) {
+							printf("Error: NChilada block (type %d, block %d) holds %llu particles but the Pos block holds %llu - skipping this block\n",
+								ipt, ibt,
+								(unsigned long long)bdata.fh.numParticles,
+								(unsigned long long)ref_count);
+							deleteField(bdata.fh, bdata.data);
+							bdata.data = nullptr;
+							bdata.num_particles_per_rank = 0;
+						}
+					}
+				}
 
 #ifdef WITH_OPENMP
 				steps_time[1] = omp_get_wtime();
@@ -361,8 +387,11 @@ namespace changa {
 					case BlockType::Vel:
 						nch_data->get_vector3(pt, bt, id - offset, vector3);
 						RETURN_NORM_VECTOR3(vector3);
+					case BlockType::Mass:
 					case BlockType::Soft:
 					case BlockType::Phi:
+					case BlockType::HSmooth:
+					case BlockType::Rho:
 						nch_data->get_value(pt, bt, id - offset, value);
 						RETURN_NORM_VALUE(value);
 					}
@@ -427,8 +456,11 @@ namespace changa {
 					case BlockType::Vel:
 						nch_data->get_vector3(pt, bt, id - offset, vector3);
 						RETURN_ORIG_VECTOR3(vector3);
+					case BlockType::Mass:
 					case BlockType::Soft:
 					case BlockType::Phi:
+					case BlockType::HSmooth:
+					case BlockType::Rho:
 						nch_data->get_value(pt, bt, id - offset, value);
 						RETURN_ORIG_VALUE(value);
 					}
@@ -488,8 +520,11 @@ namespace changa {
 					case BlockType::Pos:
 					case BlockType::Vel:
 						RETURN_COMP_VECTOR3(vector3);
+					case BlockType::Mass:
 					case BlockType::Soft:
 					case BlockType::Phi:
+					case BlockType::HSmooth:
+					case BlockType::Rho:
 						RETURN_COMP_VALUE(value);
 					}
 					break;
@@ -626,7 +661,12 @@ namespace changa {
 				// voxel, because fill_voxels() truncates the radius to whole voxels.
 				ParticleType pt = (ParticleType)get_particle_type(id);
 
-				if (pt == ParticleType::Gas)
+				// Gas always has one; dark matter has one too when the run computed
+				// densities ("smoothlength"), and it is a far better splat radius than
+				// the gravitational softening - it adapts to the local sampling, which
+				// is exactly what keeps a deep zoom sharp without shot noise.
+				if (pt == ParticleType::Gas ||
+					nch_data->data_map[pt][BlockType::HSmooth].data != nullptr)
 					return get_particle_norm_value(BlockType::HSmooth, id);
 
 				return get_particle_norm_value(BlockType::Soft, id);

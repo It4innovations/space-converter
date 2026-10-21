@@ -69,9 +69,34 @@ namespace space_converter {
 					return (static_cast<double>(i) < v) ? i + 1 : i;
 				}
 
+				/*
+				 * ── Coordinate spaces used by the conversion kernels ─────────────────────
+				 *
+				 *  world space         raw particle positions (reader units, offset_position
+				 *                      already subtracted where applicable)
+				 *  normalized space    p_norm = (pos - bbox_min_orig) / bbox_size_orig,
+				 *                      in [0,1] over the cube-symmetrized dataset bbox
+				 *  object space        p_norm * object_size (the bspace client works here;
+				 *                      bbox_min/bbox_max zoom boxes are in this space)
+				 *  voxel space         p_vox = p_norm * bbox_dim / scale_space_diagonal
+				 *
+				 *  scale_space_diagonal = |bbox_max - bbox_min| / (object_size * sqrt(3))
+				 *                       = zoom factor (1 for the full box, < 1 zoomed in)
+				 *  len2pix              = bbox_dim / (scale_space_diagonal * bbox_size_orig)
+				 *                       = world -> voxel conversion factor
+				 *  transform_scale      = scale_space_diagonal * object_size / bbox_dim
+				 *                       = voxel edge length in object-space units
+				 *
+				 *  Dense grids are a bbox_dim^3 window at offset[] = bbox_min_norm *
+				 *  bbox_dim / scale_space_diagonal inside the full voxel space. Sparse
+				 *  grids store absolute voxel-space coordinates. SPH kernel weights W are
+				 *  normalized in VOXEL units (h passed as voxels), so the sum of W over
+				 *  voxels approximates 1 per particle.
+				 */
+
 #if defined(__CUDACC__) || defined(__HIPCC__)
 				__host__ __device__
-#endif            
+#endif
 					inline double get_particle_radius(
 						uint64_t pid,
 						int bbox_dim,
@@ -79,10 +104,10 @@ namespace space_converter {
 						double bbox_size_orig,
 						double scale_space_diagonal,
 						float particle_radius_multiplier,
-						//int particle_type,
 						const float* radius_particles,
 						double particle_radius_const
 					) {
+					// Fixed radius is specified directly in voxel units
 					if (particle_radius_const > 0.0) {
 						return particle_radius_const;
 					}
@@ -90,16 +115,18 @@ namespace space_converter {
 					// Conversion factor from world space to voxel space
 					double norm_fac = (double)bbox_dim / scale_space_diagonal;
 
-					// Get SPH properties for this particle
-					//double hsml = get_particle_hsml(pid);  // Smoothing length
-					//double mass = get_particle_mass(pid);
-					//double rho = get_particle_rho(pid);    // Density
-
 					double radius = 0.0;
 
-					// Use precomputed radius from k-NN search if available (overrides hsml)
+					// Per-particle radius (hsml from the reader, or the k-NN estimate)
 					if (radius_particles != nullptr) {
 						radius = radius_particles[pid];
+					}
+
+					// Guard against non-finite radii (the k-NN search stores infinity for
+					// particles with fewer than k neighbors); an infinite radius would make
+					// fill_voxels walk the whole grid
+					if (!(radius >= 0.0) || radius > 1e30) {
+						radius = 0.0;
 					}
 
 					if (particle_radius_multiplier != 0.0f) {
@@ -163,9 +190,9 @@ namespace space_converter {
 					double dpy = ((double)pos[1] - (double)bbox_min_orig[1]) * len2pix;
 					double dpz = ((double)pos[2] - (double)bbox_min_orig[2]) * len2pix;
 
-					int px = static_cast<int>(dpx);
-					int py = static_cast<int>(dpy);
-					int pz = static_cast<int>(dpz);
+					int px = ifloor(dpx);
+					int py = ifloor(dpy);
+					int pz = ifloor(dpz);
 
 					///////////////////////////////////////////////////////////////////////////////
 
@@ -369,8 +396,11 @@ namespace space_converter {
 					// Check if particle is within bounding box
 					// Dense grids need extended bounds (particle radius) for proper splatting
 					if (is_dense_grid) {
-						// Get particle radius for boundary check with tolerance
-						double radiusxyz_max = get_particle_radius(
+						// Radius in voxel units, converted to NORMALIZED units for this test
+						// (a previous version compared the voxel-unit radius against the
+						// normalized coordinates directly, inflating the tolerance by a
+						// factor of bbox_dim / scale_space_diagonal)
+						double radius_voxels = get_particle_radius(
 							cached_idx,
 							bbox_dim,
 							bbox_min_orig,
@@ -380,14 +410,15 @@ namespace space_converter {
 							radius_particles,
 							particle_radius_const
 						);
+						double radius_norm = radius_voxels * scale_space_diagonal / (double)bbox_dim;
 
-						if (out_px_norm + radiusxyz_max < bbox_x_min_norm || out_px_norm - radiusxyz_max > bbox_x_max_norm)
+						if (out_px_norm + radius_norm < bbox_x_min_norm || out_px_norm - radius_norm > bbox_x_max_norm)
 							return false;
 
-						if (out_py_norm + radiusxyz_max < bbox_y_min_norm || out_py_norm - radiusxyz_max > bbox_y_max_norm)
+						if (out_py_norm + radius_norm < bbox_y_min_norm || out_py_norm - radius_norm > bbox_y_max_norm)
 							return false;
 
-						if (out_pz_norm + radiusxyz_max < bbox_z_min_norm || out_pz_norm - radiusxyz_max > bbox_z_max_norm)
+						if (out_pz_norm + radius_norm < bbox_z_min_norm || out_pz_norm - radius_norm > bbox_z_max_norm)
 							return false;
 					}
 					else {
@@ -402,24 +433,28 @@ namespace space_converter {
 							return false;
 					}
 
-					// Convert normalized position to voxel coordinates
-					out_px = static_cast<int>((double)out_px_norm * (double)bbox_dim / scale_space_diagonal);
-					out_py = static_cast<int>((double)out_py_norm * (double)bbox_dim / scale_space_diagonal);
-					out_pz = static_cast<int>((double)out_pz_norm * (double)bbox_dim / scale_space_diagonal);
+					// Convert normalized position to voxel coordinates (floor, not
+					// truncation: truncation would fold the two voxels around zero into
+					// voxel 0 when the zoom box crosses the origin)
+					out_px = ifloor((double)out_px_norm * (double)bbox_dim / scale_space_diagonal);
+					out_py = ifloor((double)out_py_norm * (double)bbox_dim / scale_space_diagonal);
+					out_pz = ifloor((double)out_pz_norm * (double)bbox_dim / scale_space_diagonal);
 
 					// Get particle value (density, temperature, etc.)
-					// Note: This will need to be provided by the caller since it requires data access
 					out_v_orig = value_particles[cached_idx];
 
 					if (use_simple_density) {
-						// Simple density mode: treat all particles with uniform weight
+						// Simple density mode: uniform weight per particle. The value
+						// filter is skipped (values are not deposited), but the SPATIAL
+						// sphere filter below still applies — a previous version returned
+						// here and silently disabled --bbox-sphere in this mode.
 						out_v_orig = 1.0f;
-						return true;  // Skip remaining checks if using simple density
 					}
-
-					// Apply value range filter (caller must set out_v_orig first)
-					if (out_v_orig < filter_min || out_v_orig > filter_max)
-						return false;
+					else {
+						// Apply value range filter
+						if (out_v_orig < filter_min || out_v_orig > filter_max)
+							return false;
+					}
 
 					// Apply spherical bounding filter if specified (radius > 0)
 					if (bbox_sphere_r > 0.0f)
@@ -458,68 +493,6 @@ namespace space_converter {
 					float* bbox_max
 				);
 
-				///**
-				// * @brief GPU implementation of sparse grid conversion
-				// *
-				// * Converts particles to sparse grid on GPU using CUDA.
-				// * Implemented in convert_vdb_kernel.cu
-				// */
-				//void convert_to_sparse_grid_gpu(
-				//	const float* pos_particles,
-				//	const float* radius_particles,
-				//	size_t num_particles,
-				//	float particle_radius_multiplier,
-				//	int* bbox_min_orig,
-				//	double bbox_size_orig,
-				//	int bbox_dim,
-				//	float* offset_position,
-				//	float filter_min,
-				//	float filter_max,
-				//	float* bbox_sphere_pos,
-				//	float bbox_sphere_r,
-				//	common::SpaceData::AnimType anim_type,
-				//	int frame_req,
-				//	int frame,
-				//	bool use_simple_density,
-				//	VoxelSparseManager* voxel_manager,
-				//	float& min_value,
-				//	float& max_value,
-				//	size_t& particles_count
-				//);
-
-				///**
-				// * @brief GPU implementation of dense grid conversion
-				// *
-				// * Converts particles to dense grid on GPU using CUDA with SPH splatting.
-				// * Implemented in convert_vdb_kernel.cu
-				// */
-				//void convert_to_dense_grid_gpu(
-				//	const float* pos_particles,
-				//	const float* radius_particles,
-				//	size_t num_particles,
-				//	float particle_radius_multiplier,
-				//	int* bbox_min_orig,
-				//	double bbox_size_orig,
-				//	int bbox_dim,
-				//	double scale_space_diagonal,
-				//	common::SpaceData::DenseType dense_type,
-				//	common::SpaceData::DenseNorm dense_norm,
-				//	int block_name_id,
-				//	float* offset_position,
-				//	float filter_min,
-				//	float filter_max,
-				//	float* bbox_sphere_pos,
-				//	float bbox_sphere_r,
-				//	common::SpaceData::AnimType anim_type,
-				//	int frame_req,
-				//	int frame,
-				//	bool use_simple_density,
-				//	VoxelDenseManager& grid,
-				//	float& min_value,
-				//	float& max_value,
-				//	size_t& particles_count
-				//);
-
 				/**
 				 * @brief Main GPU dispatcher for converting I/O library data to grids
 				 *
@@ -533,30 +506,20 @@ namespace space_converter {
 					const float* value_particles,
 					size_t num_particles,
 					float particle_radius_multiplier,
-					std::string grid_name,
-					float grid_transform,
-					float* bbox_min,
-					float* bbox_max,
 					int bbox_dim,
 					int* bbox_min_orig,
 					double bbox_size_orig,
-					common::SpaceData::ExtractedType extracted_type,
-					common::SpaceData::ExtractedParticleType extracted_particle_type,
 					common::SpaceData::DenseType dense_type,
 					common::SpaceData::DenseNorm dense_norm,
 					int block_name_id,
 					float object_size,
 					float& min_value,
 					float& max_value,
-					float min_value_global,
-					float max_value_global,
 					size_t& particles_count,
 					VDBParticles& grid,
 					double& transform_scale,
 					float filter_min,
 					float filter_max,
-					float min_rho,
-					float max_rho,
 					common::SpaceData::AnimType anim_type,
 					int frame_req,
 					int frame,
@@ -606,30 +569,20 @@ namespace space_converter {
 					const float* value_particles,
 					size_t num_particles,
 					float particle_radius_multiplier,
-					std::string grid_name,
-					float grid_transform,
-					float* bbox_min,
-					float* bbox_max,
 					int bbox_dim,
 					int* bbox_min_orig,
 					double bbox_size_orig,
-					common::SpaceData::ExtractedType extracted_type,
-					common::SpaceData::ExtractedParticleType extracted_particle_type,
 					common::SpaceData::DenseType dense_type,
 					common::SpaceData::DenseNorm dense_norm,
 					int block_name_id,
 					float object_size,
 					float& min_value,
 					float& max_value,
-					float min_value_global,
-					float max_value_global,
 					size_t& particles_count,
 					VDBParticles& grid,
 					double& transform_scale,
 					float filter_min,
 					float filter_max,
-					float min_rho,
-					float max_rho,
 					common::SpaceData::AnimType anim_type,
 					int frame_req,
 					int frame,
