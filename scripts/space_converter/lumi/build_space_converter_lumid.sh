@@ -21,7 +21,7 @@
 # HIP (AMD MI250X, gfx90a) build of space_converter for LUMI-G.
 #
 
-cd /flash/project_465002608/jaromila/space
+cd ${SPACE_ROOT:-${PWD}}   # workspace root with src/, build/, install/ (default: current directory)
 
 ml purge
 

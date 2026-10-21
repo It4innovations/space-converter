@@ -16,6 +16,7 @@ regression tests for the bug fixes described there (§2, §7).
 | `gen_nchilada.py` | CHANGA_NCHILADA directory (XDR field files): 600 gas + 300 dark (+ empty star family), non-cubic box. |
 | `gen_ipic3d.c` | IPIC3D_HDF5 restart + settings files (C, compile with `h5cc` from the HDF5 module): 2 species (400 e⁻ + 200 ions, opposite charges), 8³ grid with ghost layer, non-cubic box. |
 | `gen_fil.c` | FIL / Einstein Toolkit Carpet HDF5 3D output (C, compile with `h5cc`): two refinement levels (level 0 split into two components with 2 inter-process ghost zones, level 1 a 9³ refined box), iterations 0 and 4, `HYDROBASE::rho` in per-process files (`*.file_N.h5`), `HYDROBASE::vel[0..2]` in a per-group file, `ADMBASE::alp`, plus a 2D slice file (`*.xy.h5`) with the same dataset names that must be ignored. Finest level wins: 702 + 729 = 1431 points. |
+| `gen_fil_grace.c` | FIL_GRACE / GRACE HDF5 volume output (C, compile with `h5cc`): 11 blocks of 4³ cells on two levels, z >= 0 only (reflection symmetry), `rho`, `alp` and the vector `Bvec` (\|Bvec\| = 0.5); `volume_out_000004.h5` with `/Level`, `volume_out_000008.h5` without it (levels derived from the cell sizes). |
 | `gen_genericio.cpp` | HACC_GENERICIO writer (C++, built by CMake as `gen_genericio` in WITH_HACC builds — the self-describing format is written via the bundled GenericIO library): 900 particles, x/y/z/vx/vy/vz/mass/rho/hh/id. |
 | `protocol_client.py` | Minimal TCP client speaking the bspace wire protocol (info request + one sparse extraction). |
 | `compare_raw.py` | Tolerant comparison of raw float32 volume dumps. |
@@ -33,22 +34,26 @@ regression tests for the bug fixes described there (§2, §7).
 - **T8** – TCP protocol round-trip with `protocol_client.py` (guards the wire format shared with the addon).
 - **T9** – the non-cubic dataset's bbox must be symmetrized to the longest axis (regression for the mixed min/max symmetrization bug).
 - **T11** – `--dense-norm 2` (sum(qW)/sum(W)) on 1 and 2 ranks must finish and agree within tolerance (regression for the weight-grid MPI reduction that only rank 0 entered → every multi-rank run with `--dense-norm 1/2` hung; each rank runs under `timeout 300`).
-- **T10** – per-reader extraction against the synthetic datasets above (TIPSY gas+dark, HACC_BIN, PLUTO_VTK, RAMSES (leaf cells, DM, `--ramses-filter`, sinks), NCHILADA gas+dark, IPIC3D both species — note iPIC3D counts include the reader's synthetic grid points without the tiles' ghost layer: 400+512 and 200+512 — FIL (Carpet HDF5: finest-level-wins point count 1431, `--fil-levels 0 0` → 729, `--fil-ghosts` → 1728, explicit `--fil-file` list including a 2D file, the vector group `vel` with magnitude 0.5, the default = latest iteration and `--fil-iteration 0`, and a 2-rank run with the same global count), HACC_GENERICIO via the `gen_genericio` tool, and GADGET/CodeBase, which reads the same format-2 snapshot as GADGET_SIMPLE with no parameter file needed; its dark-mass case additionally asserts min=max=2.5, a direct regression check for the "non-gas mass is 0" fix. Readers missing from the build are skipped with a hint. **Every reader is covered.**
+- **T10** – per-reader extraction against the synthetic datasets above (TIPSY gas+dark, HACC_BIN, PLUTO_VTK, RAMSES (leaf cells, DM, `--ramses-filter`, sinks), NCHILADA gas+dark, IPIC3D both species — note iPIC3D counts include the reader's synthetic grid points without the tiles' ghost layer: 400+512 and 200+512 — FIL (Carpet HDF5: finest-level-wins point count 1431, `--fil-levels 0 0` → 729, `--fil-ghosts` → 1728, explicit `--fil-file` list including a 2D file, the vector group `vel` with magnitude 0.5, the default = latest iteration and `--fil-iteration 0`, and a 2-rank run with the same global count), FIL_GRACE (704 cells, iteration/time from the file attributes, `--fil-grace-mirror z` → 1408, `--fil-grace-levels 0 0` → 192, `--fil-grace-region` → 64, \|Bvec\| = 0.5, levels from cell sizes when `/Level` is missing, and a 2-rank run), HACC_GENERICIO via the `gen_genericio` tool, and GADGET/CodeBase, which reads the same format-2 snapshot as GADGET_SIMPLE with no parameter file needed; its dark-mass case additionally asserts min=max=2.5, a direct regression check for the "non-gas mass is 0" fix. Readers missing from the build are skipped with a hint. Every reader except BHAC has a synthetic case (BHAC was validated against real snapshots only).
 
-To test ALL readers, build the "full" CPU variant first (adds HACC, PLUTO/VTK
-via the ParaView module, and nanoflann so T5 activates). On Karolina use
-`build_spaceconverter_bar2_cpu_full.sh` (own build/install dirs, also enables
-iPIC3D and RAMSES; all 27 tests pass, none skipped, 2026-09-25):
+To test all readers, build a "full" CPU variant first: enable `WITH_HACC`,
+`WITH_IPIC3D`, `WITH_PLUTO` (turns on `WITH_VTK`), `WITH_RAMSES`, `WITH_FIL`,
+`WITH_FIL_GRACE` (the HDF5 readers turn on `WITH_HDF5`) and `WITH_NANOFLANN` (so
+T5 activates). The `build_spaceconverter_*.sh` scripts named below are the
+developers' cluster scripts kept outside this repository (the per-cluster
+scripts in `scripts/space_converter/` are the public starting point); paths are
+examples. Barbora, `build_spaceconverter_barng_cpu_full.sh` (all 27 tests at
+that time pass, none skipped, 2026-09-25):
 
 ```bash
 srun --jobid=<JOBID> --overlap -N1 -n1 -c64 \
-    bash /mnt/proj1/open-36-34/milanjaros/projects/blender/scripts/build_spaceconverter_barng_cpu_full.sh
-SC_BIN=/mnt/proj1/open-36-34/milanjaros/projects/blender/install/space_converter_barng_cpu_full/bin/space_converter \
+    bash <workspace>/scripts/build_spaceconverter_barng_cpu_full.sh
+SC_BIN=<workspace>/install/space_converter_barng_cpu_full/bin/space_converter \
     srun --jobid=<JOBID> --overlap -N1 -n1 -c16 bash tests/run_smoke_tests.sh
 ```
 
-For the GPU-side test plan (to be executed on a GPU cluster), see
-`docs/GPU_Test_Plan.md`.
+The GPU paths (CUDA and HIP) are tested by `tests/run_gpu_tests.sh` (G1–G12, every
+GPU result compared against the same binary run on the CPU), on a GPU node.
 
 ## Running (cluster, never on a login node)
 
@@ -64,23 +69,24 @@ default `<repo>/temp/tests`), `SC_NP` (max ranks for T4, default 3), `SC_NODE`
 LUMI-C CPU builds; `cray-hdf5` is loaded for the `h5cc`-built generators).
 
 Barbora CPU nodes with the FIL and FIL_GRACE readers (build:
-`scripts/build_spaceconverter_bar_cpu_fil_grace.sh`; 44 pass, 0 fail, 2026-10-06):
+`build_spaceconverter_bar_cpu_fil_grace.sh`; 44 pass, 0 fail, 2026-10-06):
 
 ```bash
 ssh <node of the job> "cd <repo>; export SLURM_JOB_ID=<JOBID>; \
-    SC_BIN=/mnt/proj1/open-36-34/milanjaros/projects/blender/install/space_converter_bar_cpu_fil_grace/bin/space_converter \
+    SC_BIN=<workspace>/install/space_converter_bar_cpu_fil_grace/bin/space_converter \
     SC_NODE=<node> bash tests/run_smoke_tests.sh"
 ```
 
-LUMI-C with the FIL reader (build: `scripts/build_spaceconverter_lumic_fil.sh`;
+LUMI-C with the FIL reader (build: `build_spaceconverter_lumic_fil.sh`;
 32 pass, 0 fail, 2026-09-29):
 
 ```bash
-SC_BIN=/flash/project_465002608/jaromila/space/install/space_converter_lumic_fil/bin/space_converter \
+SC_BIN=<workspace>/install/space_converter_lumic_fil/bin/space_converter \
 SC_LUMI_PARTITION=C SC_NODE=<node> \
     srun --jobid=<JOBID> --overlap -w <node> -N1 -n1 -c16 bash tests/run_smoke_tests.sh
-``` MPI cases
-use `mpirun` when present in the environment, otherwise `srun --overlap` inside
+```
+
+MPI cases use `mpirun` when present in the environment, otherwise `srun --overlap` inside
 the surrounding job.
 
 Suggested order when tests fail after a change: T1/T2 first (they gate

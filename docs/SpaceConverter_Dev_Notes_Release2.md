@@ -5,13 +5,13 @@
 | Reference | Commit |
 |---|---|
 | Release1 baseline | `b19c7a7` (historical `main` reference) |
-| Development reference (Release2) | `dev2` at `8783323` |
+| Development reference (Release2) | `dev2` at `ad55dea` |
 
-Updated on October 1, 2026. This comparison covers 105 commits after the Release1 baseline, including 19 commits after the previous development reference, `1081ec2`. Branch tips may move; the commit IDs above define the scope of these notes.
+Updated on October 21, 2026. This comparison covers 107 commits after the Release1 baseline, including 21 commits after the previous development reference, `1081ec2`. Branch tips may move; the commit IDs above define the scope of these notes.
 
 ## Release2 Overview
 
-The development branch is a major architectural and performance update. Particle conversion has been reorganized around reusable dense and sparse voxel managers, a shared particle cache, and shared CPU/GPU conversion kernels. The release adds CUDA and AMD HIP/ROCm execution, a CUB/hipCUB-backed sparse representation, iPIC3D HDF5, PLUTO VTK, RAMSES, BHAC, and FIL/Carpet HDF5 readers, expanded particle and dense export controls, and a substantially updated BSpace add-on. Recent `dev2` work also corrects particle indexing, density normalization, MPI collectives, reader contracts, and argument validation, and adds CPU and GPU regression workflows.
+The development branch is a major architectural and performance update. Particle conversion has been reorganized around reusable dense and sparse voxel managers, a shared particle cache, and shared CPU/GPU conversion kernels. The release adds CUDA and AMD HIP/ROCm execution, a CUB/hipCUB-backed sparse representation, iPIC3D HDF5, PLUTO VTK, RAMSES, BHAC, FIL/Carpet HDF5, and FIL_GRACE readers, expanded particle and dense export controls, and a substantially updated BSpace add-on. Recent `dev2` work also corrects particle indexing, density normalization, MPI collectives, reader contracts, and argument validation, and adds CPU and GPU regression workflows.
 
 The build is also reorganized into an installable CMake package. HACC-related readers now live under a unified module, generic CSV and generic HDF5 readers have been removed, and the former multiresolution and conditional temporary-buffer options are no longer part of the active build configuration.
 
@@ -537,7 +537,7 @@ Type 0 contains grid points from the refinement hierarchy with finer levels taki
 
 Type 0 contains the cells of the blocks; the leaves do not overlap, so every cell is kept. Fixed blocks are `Pos`, `Mass`, `Rho`, and `Level`, followed by one block per scalar dataset and one per vector dataset (magnitude or components). Density uses `rho`, `dens`, or the first scalar; mass is density times coordinate cell volume; the smoothing length is the cell size of the block. Without `/Level` the levels are derived from the cell sizes, relative to the coarsest block.
 
-`--fil-grace-vars V1,V2,...` selects datasets (in that order), `--fil-grace-levels MIN MAX` and `--fil-grace-region X0 Y0 Z0 X1 Y1 Z1` restrict the blocks that are read, and `--fil-grace-mirror AXES` adds the mirror images about the planes x, y, z = 0 for runs with reflection symmetry (the mirrored vector component changes sign). MPI ranks read contiguous ranges of blocks. In animation mode the frame number is the iteration and replaces `{}` in the file path, zero-padded to six digits.
+`--fil-grace-vars V1,V2,...` selects datasets (in that order), `--fil-grace-levels MIN MAX` and `--fil-grace-region X0 Y0 Z0 X1 Y1 Z1` restrict the blocks that are read, and `--fil-grace-mirror AXES` adds the mirror images about the planes x, y, z = 0 for runs with reflection symmetry (the mirrored vector component changes sign). `--fil-grace-block-size N` overrides the number of cells per block edge, which is otherwise derived from the file. MPI ranks read contiguous ranges of blocks. In animation mode the frame number is the iteration and replaces `{}` in the file path, zero-padded to six digits.
 
 ## 7. Input Module Reorganization
 
@@ -622,7 +622,7 @@ Reader return helpers are consolidated in `src/common/reader_return_macros.h`. T
 --scalar-names [names...]
 ```
 
-Format-specific additions for iPIC3D, RAMSES, BHAC, and FIL are listed in Section 6.
+Format-specific additions for iPIC3D, RAMSES, BHAC, FIL, and FIL_GRACE are listed in Section 6.
 
 ### 8.2 Changed options
 
@@ -1070,7 +1070,7 @@ Before promoting the development branch:
 
 ### 18.1 Automated workflows and recorded results
 
-See [the smoke-test guide](../tests/README.md), [the GPU test plan and results](GPU_Test_Plan.md), and [the code-analysis implementation record](SpaceConverter_Code_Analysis_2026-08.md). The smoke driver provides deterministic reader fixtures, argument checks, MPI rank comparisons, cache/streaming comparisons, TCP checks, bbox checks, and normalization-deadlock coverage. The GPU driver covers CPU/GPU agreement, sorting, neighbor search where available, CUB, raw export fallback, and device-buffer communication.
+See [the smoke-test guide](../tests/README.md), the GPU test driver `tests/run_gpu_tests.sh`, and [the code-analysis implementation record](SpaceConverter_Code_Analysis_2026-08.md). The smoke driver provides deterministic reader fixtures, argument checks, MPI rank comparisons, cache/streaming comparisons, TCP checks, bbox checks, and normalization-deadlock coverage. The GPU driver covers CPU/GPU agreement, sorting, neighbor search where available, CUB, raw export fallback, and device-buffer communication.
 
 Run from a suitable compute-node allocation with the intended executable:
 

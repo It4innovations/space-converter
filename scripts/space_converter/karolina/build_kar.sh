@@ -19,7 +19,7 @@
 #####################################################################################################################
 
 
-cd ~/he_space
+cd ${SPACE_ROOT:-${PWD}}   # workspace root with src/, build/, install/ (default: current directory)
 
 ROOT_DIR=${PWD}
 

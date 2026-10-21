@@ -35,11 +35,11 @@ ml LUMI/25.09 partition/G
 ml PrgEnv-gnu
 ml rocm/6.4.4
 
-ROOT=/pfs/lustref1/flash/project_465002608/jaromila/space
-NC=/scratch/project_465002608/jaromila/space/data/cosmo25.2304g.nc
+ROOT=${SPACE_ROOT:-${PWD}}   # workspace root with src/, install/
+NC=${NC:-${ROOT}/data/cosmo25.2304g.nc}
 BIN=${ROOT}/install/space_converter_lumi_hip/bin/space_converter
 GPUSH=${ROOT}/src/space-converter/scripts/space_converter/lumi/gpu.sh
-OUT=/scratch/project_465002608/jaromila/space/nch_test
+OUT=${OUT:-${ROOT}/out/nch_test}
 
 export LD_LIBRARY_PATH=${ROOT}/install/lib-linux_x64/openvdb/lib:${ROOT}/install/lib-linux_x64/tbb/lib:${ROCM_PATH}/lib:${LD_LIBRARY_PATH}
 export MPICH_GPU_SUPPORT_ENABLED=1

@@ -21,7 +21,10 @@
 # Run space_converter (HIP build) on LUMI-G: multi GPU (8 GCDs/node), multi node, MPI.
 #
 
-cd /flash/project_465002608/jaromila/space
+cd ${SPACE_ROOT:-${PWD}}   # workspace root with src/, build/, install/ (default: current directory)
+
+# LUMI project to charge (sbatch/srun --account)
+ACCOUNT=${ACCOUNT:-project_XXXXXXXXX}
 
 ml purge
 
@@ -52,23 +55,22 @@ gpu_bind=${src}/space-converter/scripts/space_converter/lumi/gpu.sh
 # closest NUMA domain of each GCD (low-noise cores, core 0 of each L3 reserved)
 CPU_BIND="mask_cpu:0xfe000000000000,0xfe00000000000000,0xfe0000,0xfe000000,0xfe,0xfe00,0xfe00000000,0xfe0000000000"
 
-# Small OpenGadget test dataset (already staged on LUMI /scratch).
-# Original location on Karolina: /mnt/proj3/open-30-28/OpenGadget/data/verysmall_data/very_small_example
-data=/scratch/project_465002608/jaromila/space/data/verysmall_data/very_small_example
+# Small OpenGadget test dataset, staged under ${data}.
+data=${data}/verysmall_data/very_small_example
 
 # --gpu selects the GPU pipeline at runtime (AMD GPUs in the HIP build).
 # Add --cub to write the sort/reduce sparse format (.cub) instead of .vdb.
 export example_snap="--data-type GADGET_SIMPLE --gadget-file ${data}/snap_081 --grid-dim 100 --output-path ${out} --gpu --export-data 0 1"
 
 # 2 nodes x 8 ranks = 16 GCDs (1 MPI rank per GCD)
-srun --overlap --account=project_465002608 --partition=dev-g --time=00:30:00 \
+srun --overlap --account=${ACCOUNT} --partition=dev-g --time=00:30:00 \
      --nodes=2 --ntasks-per-node=8 --gpus-per-node=8 \
      --cpu-bind=${CPU_BIND} \
      --export=ALL -u \
      ${gpu_bind} ${install}/bin/space_converter ${example_snap}
 
 # single node, 8 GCDs:
-#srun --overlap --account=project_465002608 --partition=dev-g --time=00:30:00 \
+#srun --overlap --account=${ACCOUNT} --partition=dev-g --time=00:30:00 \
 #     --nodes=1 --ntasks-per-node=8 --gpus-per-node=8 \
 #     --cpu-bind=${CPU_BIND} \
 #     --export=ALL -u \
