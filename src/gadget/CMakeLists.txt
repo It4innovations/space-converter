@@ -1,5 +1,5 @@
 #####################################################################################################################
-# Copyright(C) 2023-2025 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+# Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
 #
 # This program is free software : you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,7 +20,6 @@ set(INC
     .  
     ${OPENVDB_INCLUDE_DIRS}
     ${NANOVDB_INCLUDE_DIRS}
-    # ${BOOST_INCLUDE_DIRS}
     ${TBB_INCLUDE_DIRS}
     ${MPI_INCLUDE_DIRS}
     ${MPI_CXX_HEADER_DIR}    
@@ -60,26 +59,15 @@ if(WITH_NANOVDB)
 
     list(APPEND INC
         ${NANOVDB_INCLUDE_DIRS}
-    )
-    
-    add_definitions(-DOPENVDB_VERSION=${OPENVDB_VERSION})
+    )    
 endif()
 
 if(WITH_OPENVDB)
     add_definitions(-DWITH_OPENVDB)
-    add_definitions(-DOPENVDB_VERSION=${OPENVDB_VERSION})
 endif()
 
 if(WITH_MPI)
     add_definitions(-DWITH_MPI)
-endif()
-
-if(WITH_TBB)
-    add_definitions(-DWITH_TBB)
-endif()
-
-if(WITH_HDF5)
-    find_package(HDF5 REQUIRED)
 endif()
 
 if(GADGET_MAX_HSML)
@@ -110,28 +98,34 @@ add_subdirectory(utility)
 add_library(gadget_converter ${SRC})
 target_link_libraries(
    gadget_converter 
-   ${OPENVDB_LIBRARIES}
-   ${BOOST_LIBRARIES}
-   ${TBB_LIBRARIES}
+   $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>
    ${MPI_LIBRARIES}
    ${MPI_msmpi_LIBRARY}
 )
 
 target_link_libraries(gadget_converter space_common gadget3_io_lib_static)
     
-install (TARGETS gadget_converter DESTINATION lib)
+install (TARGETS gadget_converter 
+    EXPORT space_converter_targets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+)
 ########################################################
 add_library(gadget_simple_converter ${SRC_SIMPLE})
 target_link_libraries(
    gadget_simple_converter
-   ${OPENVDB_LIBRARIES}
-   ${BOOST_LIBRARIES}
-   ${TBB_LIBRARIES}
+   $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>
    ${MPI_LIBRARIES}
    ${MPI_msmpi_LIBRARY}
 )
 
 target_link_libraries(gadget_simple_converter space_common gadget3_io_lib_static)
 
-install (TARGETS gadget_simple_converter DESTINATION lib)
+install (TARGETS gadget_simple_converter 
+    EXPORT space_converter_targets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+)
 ########################################################

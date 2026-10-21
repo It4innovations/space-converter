@@ -1,5 +1,5 @@
 #####################################################################################################################
-# Copyright(C) 2023-2025 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+# Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
 #
 # This program is free software : you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -21,7 +21,6 @@ set(INC
     .  
     ${OPENVDB_INCLUDE_DIRS}
     ${NANOVDB_INCLUDE_DIRS}
-    # ${BOOST_INCLUDE_DIRS}
     ${TBB_INCLUDE_DIRS}
     ${MPI_INCLUDE_DIRS}
     ${MPI_CXX_HEADER_DIR}
@@ -78,12 +77,10 @@ if(WITH_NANOVDB)
         ${NANOVDB_INCLUDE_DIRS}
     )    
 
-    add_definitions(-DOPENVDB_VERSION=${OPENVDB_VERSION})
 endif()
 
 if(WITH_OPENVDB)
     add_definitions(-DWITH_OPENVDB)
-    add_definitions(-DOPENVDB_VERSION=${OPENVDB_VERSION})
 endif()
 
 if(WITH_MPI)
@@ -102,27 +99,35 @@ include_directories(${INC})
 add_library(changa_tipsy_converter ${SRC_TIPSY})
 target_link_libraries(
    changa_tipsy_converter 
-   ${OPENVDB_LIBRARIES}
-   ${BOOST_LIBRARIES}
-   ${TBB_LIBRARIES}
+   $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>
+   $<IF:$<CONFIG:Debug>,${TBB_LIBRARIES_DEBUG},${TBB_LIBRARIES}>
    ${MPI_LIBRARIES}
    ${MPI_msmpi_LIBRARY}
 )
 
 target_link_libraries(changa_tipsy_converter space_common)
 
-install (TARGETS changa_tipsy_converter DESTINATION lib)
+install (TARGETS changa_tipsy_converter 
+    EXPORT space_converter_targets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+)
 ###########################NCHILADA#############################
 add_library(changa_nchilada_converter ${SRC_NCHILADA})
 target_link_libraries(
    changa_nchilada_converter 
-   ${OPENVDB_LIBRARIES}
-   ${BOOST_LIBRARIES}
-   ${TBB_LIBRARIES}
+   $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>
+   $<IF:$<CONFIG:Debug>,${TBB_LIBRARIES_DEBUG},${TBB_LIBRARIES}>
    ${MPI_LIBRARIES}
    ${MPI_msmpi_LIBRARY}
 )
 
 target_link_libraries(changa_nchilada_converter space_common)
     
-install (TARGETS changa_nchilada_converter DESTINATION lib)
+install (TARGETS changa_nchilada_converter 
+    EXPORT space_converter_targets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+)

@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2023-2025 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+ * Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
  *
  * This program is free software : you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@ namespace changa {
 
     // ConvertVDBChangaTipsy is a derived class from common::vdb::ConvertVDBBase.
     // It provides specific implementations for working with Changa Tipsy particle data.
-    class ConvertVDBChangaTipsy : public common::vdb::ConvertVDBBase {
+    class ConvertVDBChangaTipsy : public space_converter::common::vdb::ConvertVDBBase {
     public:
         // Print the steps executed on the CPU during the conversion process.
         void print_CPU_steps() override;

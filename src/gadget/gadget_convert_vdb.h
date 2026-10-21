@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2023-2025 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+ * Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
  *
  * This program is free software : you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@ namespace gadget {
 
     // ConvertVDBGadget is a derived class from common::vdb::ConvertVDBBase.
     // This class implements methods for converting particle data from Gadget simulations into VDB format.
-    class ConvertVDBGadget : public common::vdb::ConvertVDBBase {
+    class ConvertVDBGadget : public space_converter::common::vdb::ConvertVDBBase {
     public:
         // Print the steps executed on the CPU during the conversion process.
         void print_CPU_steps() override;

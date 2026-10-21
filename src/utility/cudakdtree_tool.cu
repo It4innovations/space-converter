@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2023-2025 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+ * Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
  *
  * This program is free software : you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,10 +20,22 @@
 
 #include "cukd/cukd-math.h"
 #include "cukd/traverse-stack-free.h"
+#include "cukd/builder.h"
 #include "cukd/knn.h"
 #include <mpi.h>
 #include <stdexcept>
 #include <cuda_runtime.h>
+#include <vector>
+#include <limits>
+#include <cstring>
+#include <cmath>
+
+// For convert_to_dense_grid_loop_over_voxels_cpu
+#include "common/convert_vdb_kernel.h"
+
+#ifdef WITH_OPENMP
+#include <omp.h>
+#endif
 
 #define CUKD_MPI_CALL(fctCall)                                          \
   { int rc = MPI_##fctCall;                                             \
@@ -37,7 +49,25 @@ using cukd::divRoundUp;
 #define MAX_MPI_BYTES (INT_MAX - 1024)
 
 #include "utility/dense_utility.h"
+#include "utility/gpu_utility.h"
 
+// cukd float4 traits: (x,y,z)=voxel-unit position, w=bit-cast particle index.
+struct float4_voxel_traits {
+    using point_t = float3;
+    using data_t  = float4;
+    enum { has_explicit_dim = false };
+
+    static inline __both__ point_t get_point(const float4& n)
+    { return make_float3(n.x, n.y, n.z); }
+
+    static inline __both__ float get_coord(const float4& n, int d)
+    { return d == 0 ? n.x : (d == 1 ? n.y : n.z); }
+
+    static inline __both__ int  get_dim(const float4&) { return -1; }
+    static inline __both__ void set_dim(float4&, int) {}
+};
+
+namespace space_converter {
 namespace utility {
 	namespace cudakdtree {
 
@@ -163,9 +193,9 @@ namespace utility {
             float3* d_tree_recv = 0;
             //int N = myPoints.size();
             // alloc N+1 so we can store one more if anytoher rank gets oen more point
-            CUKD_CUDA_CALL(MallocManaged((void**)&d_tree, (maxNumPointsAnybodyHas + 1) * sizeof(float3)));
-            CUKD_CUDA_CALL(MallocManaged((void**)&d_tree_recv, (maxNumPointsAnybodyHas + 1) * sizeof(float3)));
-            CUKD_CUDA_CALL(Memcpy(d_tree, points, (size_t)N * sizeof(float3),
+            CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_tree, (maxNumPointsAnybodyHas + 1) * sizeof(float3)));
+            CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_tree_recv, (maxNumPointsAnybodyHas + 1) * sizeof(float3)));
+            CUDA_CHECK_ERROR(cudaMemcpy(d_tree, points, (size_t)N * sizeof(float3),
                 cudaMemcpyDefault));
 
 
@@ -190,14 +220,19 @@ namespace utility {
 #if 0 //nosplit
             float3* d_queries;            
             uint64_t* d_cand;
-            CUKD_CUDA_CALL(MallocManaged((void**)&d_queries, (size_t)N * sizeof(float3)));
-            CUKD_CUDA_CALL(Memcpy(d_queries, points, N * sizeof(float3), cudaMemcpyDefault));
-            CUKD_CUDA_CALL(MallocManaged((void**)&d_cand, (size_t)N * k * sizeof(uint64_t)));
+            CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_queries, (size_t)N * sizeof(float3)));
+            CUDA_CHECK_ERROR(cudaMemcpy(d_queries, points, N * sizeof(float3), cudaMemcpyDefault));
+            CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_cand, (size_t)N * k * sizeof(uint64_t)));
 
 #else
             //TODO!!!
             // Choose S (number of splits/batches)
             int S = 1;//k; // or make this a parameter
+
+            const char *env_splits = std::getenv("CUDAKDTREE_NUM_SPLITS");
+            if (env_splits) {
+                S = std::atoi(env_splits);
+            }
 
             if (S > N) {
                 S = 1;
@@ -212,10 +247,10 @@ namespace utility {
             //float* d_radius_particles = 0;
             //float* d_rho_particles = 0;
             //float* d_mass_particles = 0;
-            //CUKD_CUDA_CALL(MallocManaged((void**)&d_radius_particles, numPointsThatIHave * sizeof(float)));
-            //CUKD_CUDA_CALL(MallocManaged((void**)&d_rho_particles, numPointsThatIHave * sizeof(float)));
-            //CUKD_CUDA_CALL(MallocManaged((void**)&d_mass_particles, numPointsThatIHave * sizeof(float)));
-            //CUKD_CUDA_CALL(Memcpy(d_mass_particles, mass_particles.data(), numPointsThatIHave * sizeof(float), cudaMemcpyHostToDevice));
+            //CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_radius_particles, numPointsThatIHave * sizeof(float)));
+            //CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_rho_particles, numPointsThatIHave * sizeof(float)));
+            //CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_mass_particles, numPointsThatIHave * sizeof(float)));
+            //CUDA_CHECK_ERROR(cudaMemcpy(d_mass_particles, mass_particles.data(), numPointsThatIHave * sizeof(float), cudaMemcpyHostToDevice));
 #endif            
 
             // -----------------------------------------------------------------------------
@@ -282,7 +317,7 @@ namespace utility {
                         /* query params */d_cand, k, maxRadius,
                         /* query points */d_queries, numQueries,
                         round);
-                CUKD_CUDA_CALL(DeviceSynchronize());
+                CUDA_CHECK_ERROR(cudaDeviceSynchronize());
 #else
                 // Process queries in S batches
                 for (int s = 0; s < S; ++s) {
@@ -294,81 +329,81 @@ namespace utility {
                     if (d_cand_size < this_batch * (size_t)k * sizeof(uint64_t)) {
 
                         if (d_cand != nullptr) {
-							CUKD_CUDA_CALL(Free(d_cand));
+							CUDA_CHECK_ERROR(cudaFree(d_cand));
                         }
 
                         d_cand_size = this_batch * (size_t)k * sizeof(uint64_t);
-                        CUKD_CUDA_CALL(MallocManaged((void**)&d_cand, d_cand_size));
+                        CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_cand, d_cand_size));
                     }
-					CUKD_CUDA_CALL(Memset(d_cand, 0, d_cand_size));
+					CUDA_CHECK_ERROR(cudaMemset(d_cand, 0, d_cand_size));
 
                     // Prepare batch queries
 					if (d_batch_queries_size < this_batch * sizeof(float3)) {
 						if (d_batch_queries != nullptr) {
-							CUKD_CUDA_CALL(Free(d_batch_queries));
+							CUDA_CHECK_ERROR(cudaFree(d_batch_queries));
 						}
 						d_batch_queries_size = this_batch * sizeof(float3);
-                        CUKD_CUDA_CALL(MallocManaged((void**)&d_batch_queries, d_batch_queries_size));
+                        CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_batch_queries, d_batch_queries_size));
 					}
-                    CUKD_CUDA_CALL(Memcpy(d_batch_queries, ((float3*)points) + start, this_batch * sizeof(float3), cudaMemcpyDefault));
+                    CUDA_CHECK_ERROR(cudaMemcpy(d_batch_queries, ((float3*)points) + start, this_batch * sizeof(float3), cudaMemcpyDefault));
 
                     // Prepare batch mass
 					if (d_batch_mass_size < this_batch * sizeof(float)) {
 						if (d_batch_mass != nullptr) {
-							CUKD_CUDA_CALL(Free(d_batch_mass));
+							CUDA_CHECK_ERROR(cudaFree(d_batch_mass));
 						}
 						d_batch_mass_size = this_batch * sizeof(float);
-                        CUKD_CUDA_CALL(MallocManaged((void**)&d_batch_mass, d_batch_mass_size));
+                        CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_batch_mass, d_batch_mass_size));
 					}                   
-                    CUKD_CUDA_CALL(Memcpy(d_batch_mass, mass_particles.data() + start, this_batch * sizeof(float), cudaMemcpyHostToDevice));
+                    CUDA_CHECK_ERROR(cudaMemcpy(d_batch_mass, mass_particles.data() + start, this_batch * sizeof(float), cudaMemcpyHostToDevice));
 
                     // Output for this batch
 					if (d_batch_radius_size < this_batch * sizeof(float)) {
 						if (d_batch_radius != nullptr) {
-							CUKD_CUDA_CALL(Free(d_batch_radius));
+							CUDA_CHECK_ERROR(cudaFree(d_batch_radius));
 						}
 						d_batch_radius_size = this_batch * sizeof(float);
-                        CUKD_CUDA_CALL(MallocManaged((void**)&d_batch_radius, d_batch_radius_size));
+                        CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_batch_radius, d_batch_radius_size));
 					}
-					CUKD_CUDA_CALL(Memset(d_batch_radius, 0, d_batch_radius_size));
+					CUDA_CHECK_ERROR(cudaMemset(d_batch_radius, 0, d_batch_radius_size));
 
 					if (d_batch_rho_size < this_batch * sizeof(float)) {
 						if (d_batch_rho != nullptr) {
-							CUKD_CUDA_CALL(Free(d_batch_rho));
+							CUDA_CHECK_ERROR(cudaFree(d_batch_rho));
 						}
 						d_batch_rho_size = this_batch * sizeof(float);
-                        CUKD_CUDA_CALL(MallocManaged((void**)&d_batch_rho, d_batch_rho_size));
+                        CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_batch_rho, d_batch_rho_size));
 					}
-					CUKD_CUDA_CALL(Memset(d_batch_rho, 0, d_batch_rho_size));
+					CUDA_CHECK_ERROR(cudaMemset(d_batch_rho, 0, d_batch_rho_size));
 
                     // Run query for this batch
-                    runQuery << <divRoundUp(this_batch, 1024ULL), 1024ULL >> >(
+                    runQuery << <divRoundUp(this_batch, 256ULL), 256 >> >(
                         d_tree, N,
                         d_cand, k, maxRadius,
                         d_batch_queries, this_batch,
                         round
                     );
-                    CUKD_CUDA_CALL(DeviceSynchronize());
+                    CUDA_CHECK_ERROR(cudaDeviceSynchronize());
 
                     // Extract results for this batch
-                    extractFinalResult<<<divRoundUp(this_batch, 1024ULL), 1024ULL >>>(
+                    extractFinalResult<<<divRoundUp(this_batch, 256ULL), 256 >>>(
 						d_batch_radius, d_batch_rho, d_batch_mass, this_batch, k, d_cand, rho_kernel
                     );
-                    CUKD_CUDA_CALL(DeviceSynchronize());
+                    CUDA_CHECK_ERROR(cudaDeviceSynchronize());
 
                     // Copy results to the full output arrays
-                    CUKD_CUDA_CALL(Memcpy(radius_particles.data() + start, d_batch_radius, this_batch * sizeof(float), cudaMemcpyDeviceToHost));
-                    CUKD_CUDA_CALL(Memcpy(rho_particles.data() + start, d_batch_rho, this_batch * sizeof(float), cudaMemcpyDeviceToHost));
+                    CUDA_CHECK_ERROR(cudaMemcpy(radius_particles.data() + start, d_batch_radius, this_batch * sizeof(float), cudaMemcpyDeviceToHost));
+                    CUDA_CHECK_ERROR(cudaMemcpy(rho_particles.data() + start, d_batch_rho, this_batch * sizeof(float), cudaMemcpyDeviceToHost));
                 }
 #endif
             }
 
             // Free batch memory
-            CUKD_CUDA_CALL(Free(d_cand));
-            CUKD_CUDA_CALL(Free(d_batch_queries));
-            CUKD_CUDA_CALL(Free(d_batch_mass));
-            CUKD_CUDA_CALL(Free(d_batch_radius));
-            CUKD_CUDA_CALL(Free(d_batch_rho));
+            CUDA_CHECK_ERROR(cudaFree(d_cand));
+            CUDA_CHECK_ERROR(cudaFree(d_batch_queries));
+            CUDA_CHECK_ERROR(cudaFree(d_batch_mass));
+            CUDA_CHECK_ERROR(cudaFree(d_batch_radius));
+            CUDA_CHECK_ERROR(cudaFree(d_batch_rho));
 
             // End timing after computation
             MPI_Barrier(MPI_COMM_WORLD);
@@ -384,21 +419,21 @@ namespace utility {
             float* d_radius_particles = 0;
             float* d_rho_particles = 0;
             float* d_mass_particles = 0;
-            CUKD_CUDA_CALL(MallocManaged((void**)&d_radius_particles, numPointsThatIHave * sizeof(float)));
-            CUKD_CUDA_CALL(MallocManaged((void**)&d_rho_particles, numPointsThatIHave * sizeof(float)));
+            CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_radius_particles, numPointsThatIHave * sizeof(float)));
+            CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_rho_particles, numPointsThatIHave * sizeof(float)));
             
-            CUKD_CUDA_CALL(MallocManaged((void**)&d_mass_particles, numPointsThatIHave * sizeof(float)));
-            CUKD_CUDA_CALL(Memcpy(d_mass_particles, mass_particles.data(), numPointsThatIHave * sizeof(float), cudaMemcpyHostToDevice));
+            CUDA_CHECK_ERROR(CUDA_MALLOC((void**)&d_mass_particles, numPointsThatIHave * sizeof(float)));
+            CUDA_CHECK_ERROR(cudaMemcpy(d_mass_particles, mass_particles.data(), numPointsThatIHave * sizeof(float), cudaMemcpyHostToDevice));
 
             extractFinalResult << <divRoundUp(numQueries, 1024), 1024 >> >
                 (d_radius_particles, d_rho_particles, d_mass_particles, numQueries, k, d_cand);
 
-            CUKD_CUDA_CALL(DeviceSynchronize());
+            CUDA_CHECK_ERROR(cudaDeviceSynchronize());
 
             radius_particles.resize(numPointsThatIHave);
             rho_particles.resize(numPointsThatIHave);
-            CUKD_CUDA_CALL(Memcpy(radius_particles.data(), d_radius_particles, numPointsThatIHave * sizeof(float), cudaMemcpyDeviceToHost));
-            CUKD_CUDA_CALL(Memcpy(rho_particles.data(), d_rho_particles, numPointsThatIHave * sizeof(float), cudaMemcpyDeviceToHost));
+            CUDA_CHECK_ERROR(cudaMemcpy(radius_particles.data(), d_radius_particles, numPointsThatIHave * sizeof(float), cudaMemcpyDeviceToHost));
+            CUDA_CHECK_ERROR(cudaMemcpy(rho_particles.data(), d_rho_particles, numPointsThatIHave * sizeof(float), cudaMemcpyDeviceToHost));
 
             MPI_Barrier(MPI_COMM_WORLD);
 #endif            
@@ -516,6 +551,11 @@ namespace utility {
 #else
             //TODO!!!
             int S = 1;//k; // for example, or make it a parameter
+
+            const char *env_splits = std::getenv("CUDAKDTREE_NUM_SPLITS");
+            if (env_splits) {
+                S = std::atoi(env_splits);
+            }
 
             if (S > N) {
                 S = 1;
@@ -648,5 +688,285 @@ namespace utility {
                 run_knn_cpu(points, N, k, radius_particles, rho_particles, mass_particles, use_cycling, max_radius, rho_kernel);
         }
 
+        void build_float4_kdtree_gpu(
+            const float*  positions,
+            //const size_t* ids,
+            size_t        N,
+            const float*  offset,
+            float4**      d_out_tree
+        ) {
+            if (N == 0 || d_out_tree == nullptr) return;
+
+            // Clear any pending CUDA errors before starting
+            cudaError_t clear_err = cudaGetLastError();
+            if (clear_err != cudaSuccess) {
+                printf("[build_float4_kdtree_gpu] Warning: Clearing pending CUDA error: %s\n", 
+                       cudaGetErrorString(clear_err));
+            }
+
+            // Check available GPU memory
+            size_t free_mem, total_mem;
+            CUDA_CHECK_ERROR(cudaMemGetInfo(&free_mem, &total_mem));
+            size_t required_mem = N * sizeof(float4);
+            printf("[build_float4_kdtree_gpu] GPU memory - Free: %.2f GB, Total: %.2f GB, Required: %.2f MB\n",
+                   free_mem / (1024.0 * 1024.0 * 1024.0),
+                   total_mem / (1024.0 * 1024.0 * 1024.0),
+                   required_mem / (1024.0 * 1024.0));
+
+            if (free_mem < required_mem * 2) {  // Need some headroom for buildTree operations
+                printf("[build_float4_kdtree_gpu] Warning: Low GPU memory! Free: %.2f MB, Required: %.2f MB\n",
+                       free_mem / (1024.0 * 1024.0), required_mem / (1024.0 * 1024.0));
+            }
+
+            // Allocate GPU memory for the tree
+            CUDA_CHECK_ERROR(CUDA_MALLOC((void**)d_out_tree, N * sizeof(float4)));
+            
+            // Allocate temporary host memory to prepare nodes
+            std::vector<float4> h_tree(N);
+            for (size_t ic = 0; ic < N; ++ic) {
+                size_t pid = ic;// ids[ic];
+                float4 node;
+                // Store offset-adjusted world position; embed original index in w.
+                node.x = positions[pid * 3 + 0] - offset[0];
+                node.y = positions[pid * 3 + 1] - offset[1];
+                node.z = positions[pid * 3 + 2] - offset[2];
+                uint32_t idx32 = (uint32_t)(pid & 0xFFFFFFFFu);
+                memcpy(&node.w, &idx32, sizeof(float));
+                h_tree[ic] = node;
+            }
+            
+            // Copy prepared nodes to GPU
+            CUDA_CHECK_ERROR(cudaMemcpy(*d_out_tree, h_tree.data(), N * sizeof(float4), cudaMemcpyHostToDevice));
+            
+            // Build left-balanced KD-tree in-place on GPU
+            printf("[build_float4_kdtree_gpu] Starting buildTree with %zu nodes...\n", N);
+            cukd::buildTree<float4, float4_voxel_traits>(*d_out_tree, (int)N);
+            
+            // Check for errors from buildTree
+            cudaError_t build_err = cudaGetLastError();
+            if (build_err != cudaSuccess) {
+                printf("[build_float4_kdtree_gpu] ERROR in buildTree: %s\n", cudaGetErrorString(build_err));
+                CUDA_CHECK_ERROR(cudaFree(*d_out_tree));
+                *d_out_tree = nullptr;
+                throw std::runtime_error(std::string("buildTree failed: ") + cudaGetErrorString(build_err));
+            }
+            
+            CUDA_CHECK_ERROR(cudaDeviceSynchronize());
+            printf("[build_float4_kdtree_gpu] buildTree completed successfully\n");
+        }
+
+        void build_float4_kdtree_cpu(
+            const float*  positions,
+            //const size_t* ids,
+            size_t        N,
+            const float*  offset,
+            std::vector<float4>& out_tree
+        ) {
+            out_tree.resize(N);
+            for (size_t ic = 0; ic < N; ++ic) {
+                size_t pid = ic; // ids[ic];
+                float4 node;
+                // Store offset-adjusted world position; embed original index in w.
+                node.x = positions[pid * 3 + 0] - offset[0];
+                node.y = positions[pid * 3 + 1] - offset[1];
+                node.z = positions[pid * 3 + 2] - offset[2];
+                uint32_t idx32 = (uint32_t)(pid & 0xFFFFFFFFu);
+                memcpy(&node.w, &idx32, sizeof(float));
+                out_tree[ic] = node;
+            }
+            // Build left-balanced KD-tree in-place (host).
+            if (N > 0) {
+                cukd::buildTree_host<float4, float4_voxel_traits>(out_tree.data(), (int)N);
+            }
+        }
+
+        void build_float4_kdtree(
+            const float*  positions,
+            //const size_t* ids,
+            size_t        N,
+            const float*  offset,
+            bool          use_gpu,
+            std::vector<float4>& out_tree,
+            float4**      d_out_tree
+        ) {
+            if (use_gpu)
+                build_float4_kdtree_gpu(positions, N, offset, d_out_tree);
+            else
+                build_float4_kdtree_cpu(positions, N, offset, out_tree);
+        }
+
 	}// cudakdtree
 } //utility
+} // namespace space_converter
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Voxel-centric dense grid conversion – CPU implementation (host code only).
+// This lives in cudakdtree_tool.cu so it is compiled by nvcc whenever
+// WITH_CUDAKDTREE is ON, regardless of whether WITH_GPU_CUDA is also set.
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace space_converter {
+namespace common {
+namespace vdb {
+namespace kernel {
+
+/**
+ * @brief CPU voxel-centric dense grid conversion using cukd KD-tree.
+ *
+ * Algorithm:
+ *   1. Build a cukd k-d tree from particle positions in voxel-unit space.
+ *      Each float4 node carries the original particle index in its w component
+ *      (bit-cast) so the index survives the in-place tree reordering.
+ *   2. For every voxel of the dense grid (OMP-parallel), query the k nearest
+ *      particles and accumulate W(r/h)*value for particles within their
+ *      smoothing radius h.
+ */
+void convert_to_dense_grid_loop_over_voxels_cpu(
+    float4*       tree_nodes,             // pre-built KD-tree (offset-adjusted world coords)
+    int           tree_N,                 // number of tree nodes
+    const float*  radius_particles,       // per-particle smoothing radii (world units)
+    const float*  value_particles,        // per-particle values
+    float  particle_radius_multiplier,
+    int*   bbox_min_orig,
+    double bbox_size_orig,
+    int    bbox_dim,
+
+    common::SpaceData::DenseType dense_type,
+    common::SpaceData::DenseNorm dense_norm,
+    int    block_name_id,
+    float* /*offset_position*/,           // not used (tree already in offset-adjusted space)
+    bool   use_simple_density,
+    double particle_radius_const,
+    double scale_space_diagonal,
+
+    int calc_radius_neigh,
+
+    VoxelDenseManager* grid,
+    float& min_value,
+    float& max_value,
+    size_t& particles_count
+) {
+    if (tree_N <= 0 || tree_nodes == nullptr || !grid) {
+        min_value = max_value = 0.0f;
+        particles_count = 0;
+        return;
+    }
+
+    const double norm_fac = (double)bbox_dim / scale_space_diagonal;
+    const double len2pix  = norm_fac / bbox_size_orig;
+    // Tree is already built – no rebuild needed.
+
+    const size_t dim0 = grid->dims[0];
+    const size_t dim1 = grid->dims[1];
+    const size_t dim2 = grid->dims[2];
+    const size_t off0 = grid->offset[0];
+    const size_t off1 = grid->offset[1];
+    const size_t off2 = grid->offset[2];
+    const bool has_temp = !grid->data_temp.empty();
+
+    float* density = grid->data_density.data();
+    float* temp    = has_temp ? grid->data_temp.data() : nullptr;
+
+    float  g_min   = FLT_MAX, g_max = -FLT_MAX;
+    size_t g_count = 0;
+    const int k    = calc_radius_neigh;
+
+    // ── Iterate over voxels (OMP parallel) ───────────────────────────────────
+    // Query point: offset-adjusted world position of voxel centre.
+    // Tree nodes: same coordinate system (built by build_float4_kdtree).
+    // SPH kernel W is normalised in voxel units (consistent with particle-centric path).
+#ifdef WITH_OPENMP
+#pragma omp parallel reduction(min:g_min) reduction(max:g_max) reduction(+:g_count)
+#endif
+    {
+        std::vector<uint64_t> cand((size_t)k);
+#ifdef WITH_OPENMP
+#pragma omp for schedule(dynamic, 32)
+#endif
+        for (size_t lz = 0; lz < dim2; ++lz) {
+            for (size_t ly = 0; ly < dim1; ++ly) {
+                for (size_t lx = 0; lx < dim0; ++lx) {
+                    // Voxel centre in offset-adjusted world space
+                    size_t wx = lx + off0, wy = ly + off1, wz = lz + off2;
+                    float3 qp = make_float3(
+                        (float)((double)bbox_min_orig[0] + (double)wx / len2pix),
+                        (float)((double)bbox_min_orig[1] + (double)wy / len2pix),
+                        (float)((double)bbox_min_orig[2] + (double)wz / len2pix));
+
+                    memset(cand.data(), 0xFF, (size_t)k * sizeof(uint64_t));
+
+                    cukd::FlexHeapCandidateList cl(
+                        cand.data(), k,
+                        std::numeric_limits<float>::infinity());
+                    cukd::stackFree::knn<cukd::FlexHeapCandidateList,
+                                         float4,
+                                         float4_voxel_traits>(
+                        cl, qp, tree_nodes, tree_N);
+
+                    float density_sum = 0.0f;
+                    float norm_sum    = 0.0f;
+
+                    for (int i = 0; i < k; ++i) {
+                        // Decode: upper 32 bits = dist2 as float, lower 32 = tree index
+                        int   tree_j = (int)(uint32_t(cand[i]));
+                        float dist2  = cukd::uint_as_float((uint32_t)(cand[i] >> 32));
+                        if (tree_j < 0 || std::isinf(dist2)) continue;
+
+                        uint32_t orig_idx32;
+                        memcpy(&orig_idx32, &tree_nodes[tree_j].w, sizeof(uint32_t));
+                        size_t orig_idx = (size_t)orig_idx32;
+
+                        float val = use_simple_density ? 1.0f : value_particles[orig_idx];
+                        if (block_name_id == 0) val = 1.0f;
+
+                        // Smoothing radius: world units → voxel units for W normalization
+                        double h_world = (particle_radius_const > 0.0)
+                            ? particle_radius_const
+                            : (double)radius_particles[orig_idx] * (double)particle_radius_multiplier;
+                        if (h_world <= 0.0) continue;
+                        double h_voxel = h_world * len2pix;
+
+                        double dist_world = std::sqrt((double)dist2);
+                        double q = dist_world / h_world;  // = dist_voxel / h_voxel
+                        if (q > 1.0 + 1e-6) continue;    // outside kernel support
+
+                        // W normalised in voxel units — matches particle-centric path
+                        double W = utility::dense::sph_kernel::W(dense_type, q, 1.0 / h_voxel);
+
+                        density_sum += (float)(W * val);
+                        if (dense_norm == common::SpaceData::DenseNorm::eCount)
+                            norm_sum += 1.0f;
+                        else if (dense_norm == common::SpaceData::DenseNorm::eSPHInterpolation)
+                            norm_sum += (float)W;
+                    }
+
+                    if (density_sum != 0.0f || norm_sum != 0.0f) {
+                        const size_t gidx = lx + ly * dim0 + lz * dim0 * dim1;
+#ifdef WITH_OPENMP
+#pragma omp atomic
+#endif
+                        density[gidx] += density_sum;
+                        if (has_temp && norm_sum != 0.0f) {
+#ifdef WITH_OPENMP
+#pragma omp atomic
+#endif
+                            temp[gidx] += norm_sum;
+                        }
+                        if (density_sum < g_min) g_min = density_sum;
+                        if (density_sum > g_max) g_max = density_sum;
+                        g_count++;
+                    }
+                }
+            }
+        }
+    } // omp parallel
+
+    particles_count = g_count;
+    min_value = (g_count > 0) ? g_min : 0.0f;
+    max_value = (g_count > 0) ? g_max : 0.0f;
+}
+
+} // namespace kernel
+} // namespace vdb
+} // namespace common
+} // namespace space_converter

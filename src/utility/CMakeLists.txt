@@ -1,5 +1,5 @@
 #####################################################################################################################
-# Copyright(C) 2023-2025 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+# Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
 #
 # This program is free software : you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,7 +20,6 @@ set(INC
     .  
     ${OPENVDB_INCLUDE_DIRS}
     ${NANOVDB_INCLUDE_DIRS}
-    # ${BOOST_INCLUDE_DIRS}
     ${TBB_INCLUDE_DIRS}
     ${MPI_INCLUDE_DIRS}
     ${MPI_CXX_HEADER_DIR}
@@ -38,13 +37,10 @@ if(WITH_NANOVDB)
     list(APPEND INC
         ${NANOVDB_INCLUDE_DIRS}
     )
-    
-    add_definitions(-DOPENVDB_VERSION=${OPENVDB_VERSION})
 endif()
 
 if(WITH_OPENVDB)
     add_definitions(-DWITH_OPENVDB)
-    add_definitions(-DOPENVDB_VERSION=${OPENVDB_VERSION})
 endif()
 
 if(WITH_MPI)
@@ -53,6 +49,10 @@ endif()
 
 if(WITH_TBB)
     add_definitions(-DWITH_TBB)
+endif()
+
+if(WITH_VTK)
+    add_definitions(-DWITH_VTK)
 endif()
 
 include_directories(${INC})
@@ -66,9 +66,8 @@ if(WITH_NANOVDB AND WITH_OPENVDB)
     add_executable(nano2vdb ${SRC_NANOVDB})
     target_link_libraries(
         nano2vdb 
-        ${OPENVDB_LIBRARIES}
-        ${BOOST_LIBRARIES}
-        ${TBB_LIBRARIES}
+        $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>
+        $<IF:$<CONFIG:Debug>,${TBB_LIBRARIES_DEBUG},${TBB_LIBRARIES}>
         ${MPI_LIBRARIES}
         ${MPI_msmpi_LIBRARY}
     )
@@ -81,7 +80,11 @@ if(WITH_NANOVDB)
         nano2float3.cpp
     )
 
-    add_executable(nano2float3 ${SRC_NANOVDB})        
+    add_executable(nano2float3 ${SRC_NANOVDB})
+    target_link_libraries(
+        nano2float3 
+        $<IF:$<CONFIG:Debug>,${TBB_LIBRARIES_DEBUG},${TBB_LIBRARIES}>
+    )
     install (TARGETS nano2float3 DESTINATION bin)
 endif()
 ########################################################
@@ -94,9 +97,8 @@ if(WITH_NANOVDB AND WITH_OPENVDB)
     add_executable(vdb2nano ${SRC_NANOVDB})
     target_link_libraries(
         vdb2nano 
-        ${OPENVDB_LIBRARIES}
-        ${BOOST_LIBRARIES}
-        ${TBB_LIBRARIES}
+        $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>
+        $<IF:$<CONFIG:Debug>,${TBB_LIBRARIES_DEBUG},${TBB_LIBRARIES}>
         ${MPI_LIBRARIES}
         ${MPI_msmpi_LIBRARY}
     )
@@ -112,9 +114,8 @@ if(WITH_OPENVDB)
     add_executable(vdb_merge ${SRC_VDB_MERGE})
     target_link_libraries(
         vdb_merge 
-        ${OPENVDB_LIBRARIES}
-        ${BOOST_LIBRARIES}
-        ${TBB_LIBRARIES}
+        $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>
+        $<IF:$<CONFIG:Debug>,${TBB_LIBRARIES_DEBUG},${TBB_LIBRARIES}>
         ${MPI_LIBRARIES}
         ${MPI_msmpi_LIBRARY}
     )
@@ -138,8 +139,10 @@ if(WITH_CUDAKDTREE)
     
     target_include_directories(cudakdtree_tool 
         PUBLIC 
-            ${PROJECT_SOURCE_DIR}/submodules/cudaKDTree 
-            ${INC}
+            $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/submodules/cudaKDTree>
+            $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/utility/.>
+            $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/submodules/openvdb/nanovdb>
+            $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/common>
         PRIVATE
             ${MPI_INCLUDE_PATH}
             ${MPI_CXX_INCLUDE_PATH}
@@ -151,7 +154,12 @@ if(WITH_CUDAKDTREE)
             MPI::MPI_CXX
     )
         
-    install (TARGETS cudakdtree_tool DESTINATION lib)
+    install (TARGETS cudakdtree_tool 
+        EXPORT space_converter_targets
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib
+        RUNTIME DESTINATION bin
+    )
 endif()
 ########################################################
 if(WITH_NANOFLANN)
@@ -161,14 +169,19 @@ if(WITH_NANOFLANN)
     )    
 
     add_library(nanoflann_tool STATIC ${SRC_NANOFLANN})
-    target_include_directories(nanoflann_tool PUBLIC ${PROJECT_SOURCE_DIR}/submodules/nanoflann/include/)
+    target_include_directories(nanoflann_tool PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/submodules/nanoflann/include/>)
 
     target_link_libraries(
         nanoflann_tool
         MPI::MPI_CXX
     )
         
-    install (TARGETS nanoflann_tool DESTINATION lib)
+    install (TARGETS nanoflann_tool 
+        EXPORT space_converter_targets
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib
+        RUNTIME DESTINATION bin
+    )
 endif()
 ########################################################
 if(WITH_OPENVDB)
@@ -179,9 +192,8 @@ if(WITH_OPENVDB)
     add_executable(vdb2histo ${SRC_VDB2HISTO})
     target_link_libraries(
         vdb2histo 
-        ${OPENVDB_LIBRARIES}
-        ${BOOST_LIBRARIES}
-        ${TBB_LIBRARIES}
+        $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>
+        $<IF:$<CONFIG:Debug>,${TBB_LIBRARIES_DEBUG},${TBB_LIBRARIES}>
         ${MPI_LIBRARIES}
         ${MPI_msmpi_LIBRARY}
     )
@@ -197,9 +209,8 @@ if(WITH_OPENVDB)
     add_executable(vdb2png ${SRC_VDB2HISTO})
     target_link_libraries(
         vdb2png 
-        ${OPENVDB_LIBRARIES}
-        ${BOOST_LIBRARIES}
-        ${TBB_LIBRARIES}
+        $<IF:$<CONFIG:Debug>,${OPENVDB_LIBRARIES_DEBUG},${OPENVDB_LIBRARIES}>
+        $<IF:$<CONFIG:Debug>,${TBB_LIBRARIES_DEBUG},${TBB_LIBRARIES}>
         ${MPI_LIBRARIES}
         ${MPI_msmpi_LIBRARY}
     )

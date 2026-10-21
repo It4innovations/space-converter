@@ -1,5 +1,5 @@
 #####################################################################################################################
-# Copyright(C) 2023-2025 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+# Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
 #
 # This program is free software : you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -31,18 +31,27 @@ set(WITH_NANOVDB ON)
 option(WITH_OPENVDB  "Enable OPENVDB" ON)
 
 option(WITH_HDF5  "Enable HDF5" OFF)
-option(WITH_GENERICIO  "Enable GENERICIO" OFF)
-option(WITH_EMBREE  "Enable embree" OFF)
+option(WITH_HACC  "Enable HACC" OFF)
+option(WITH_IPIC3D  "Enable IPIC3D" OFF)
+option(WITH_PLUTO  "Enable PLUTO" OFF)
+option(WITH_VTK   "Enable VTK" OFF)
 
-option(GADGET_MAX_HSML  "Enable loading of limited values from gadget files" OFF)
+# option(GADGET_MAX_HSML  "Enable loading of limited values from gadget files" OFF)
+set(GADGET_MAX_HSML  OFF)
+
 option(GADGET_READ_ID  "Enable reading of ID" OFF)
 option(GADGET_READ_ID64  "Enable reading of 64 bit ID" OFF)
 
 option(WITH_NANOFLANN  "Enable NANOFLANN" OFF)
 option(WITH_CUDAKDTREE "Enable cudaKDTree" OFF)
-#option(WITH_CUDAKDTREE_CPU "Enable cudaKDTree on cpu" OFF)
-option(WITH_MULTIRES "Enable MultiRes" OFF)
-option(WITH_NO_DATA_TEMP "Enable No Data Temp" OFF)
+
+option(WITH_GPU_CUDA "Enable GPU CUDA" OFF)
+option(WITH_CUDA_AWARE_MPI "Enable CUDA-aware MPI for RDMA GPU-direct transfers (requires UCX/RDMA-capable MPI)" OFF)
+option(WITH_CUDA_MALLOCMANAGED "Enable CUDA unified memory (managed memory)" OFF)
+
+option(WITH_GPU_HIP "Enable GPU HIP (AMD ROCm)" OFF)
+option(WITH_HIP_AWARE_MPI "Enable GPU-aware MPI for direct device-buffer transfers (e.g. Cray MPICH with GTL on LUMI)" OFF)
+option(WITH_HIP_MALLOCMANAGED "Enable HIP unified memory (managed memory)" OFF)
 
 option(WITH_MERIC  "Enable MERIC" OFF)
 ########################################################
@@ -50,16 +59,17 @@ option(WITH_MERIC  "Enable MERIC" OFF)
 if(WITH_OPENMP)
   find_package(OpenMP)
   if(OPENMP_FOUND)
-    string(APPEND CMAKE_C_FLAGS " ${OpenMP_C_FLAGS}")
-    string(APPEND CMAKE_CXX_FLAGS " ${OpenMP_CXX_FLAGS}")
+    if(WIN32)
+        # On Windows, use LLVM OpenMP implementation
+        string(APPEND CMAKE_C_FLAGS " /openmp:llvm ")
+        string(APPEND CMAKE_CXX_FLAGS " /openmp:llvm /bigobj")
+    else()
+        string(APPEND CMAKE_C_FLAGS " ${OpenMP_C_FLAGS}")
+        string(APPEND CMAKE_CXX_FLAGS " ${OpenMP_CXX_FLAGS}")
+    endif()
+    
     string(APPEND CMAKE_EXE_LINKER_FLAGS " ${OpenMP_LINKER_FLAGS}")
     string(APPEND CMAKE_MODULE_LINKER_FLAGS " ${OpenMP_LINKER_FLAGS}")
-
-    if(WIN32)
-        string(APPEND CMAKE_C_FLAGS " /openmp:llvm ")
-        #string(APPEND CMAKE_CXX_FLAGS " /openmp:llvm ")
-        string(APPEND CMAKE_CXX_FLAGS " /openmp:llvm /bigobj")
-    endif()
 
   else()
     set(WITH_OPENMP OFF)
@@ -75,27 +85,23 @@ if(WITH_OPENVDB)
     set(OPENVDB_INCLUDE_DIRS "" CACHE PATH "")
     set(OPENVDB_LIBRARIES "" CACHE FILEPATH "")
     set(OPENVDB_LIBRARIES_DEBUG "" CACHE FILEPATH "")
-    set(OPENVDB_VERSION "" CACHE STRING "")
-
-    # set(BOOST_INCLUDE_DIRS "" CACHE PATH "")
-    # set(BOOST_LIBRARIES "" CACHE FILEPATH "")
-
-    # set(BLOSC_INCLUDE_DIRS "" CACHE PATH "")
-    # set(BLOSC_LIBRARIES "" CACHE FILEPATH "")
-
-    # set(ZLIB_INCLUDE_DIRS "" CACHE PATH "")
-    # set(ZLIB_LIBRARIES "" CACHE FILEPATH "")
-
-    # set(ZSTD_INCLUDE_DIRS "" CACHE PATH "")
-    # set(ZSTD_LIBRARIES "" CACHE FILEPATH "")
-
     set(WITH_TBB ON)
 else()
     set(OPENVDB_INCLUDE_DIRS "")
     set(NANOVDB_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/submodules/openvdb/nanovdb")
-    set(OPENVDB_VERSION 12)
 
     set(WITH_TBB OFF)
+endif()
+
+if(WITH_VTK)
+    # If you know exactly which modules you need, list them here (recommended).
+    find_package(VTK REQUIRED COMPONENTS
+        CommonCore
+        CommonDataModel
+        IOLegacy
+        IOXML
+        IOParallelXML
+    )
 endif()
 
 if(WITH_MPI)
@@ -110,28 +116,14 @@ endif()
 if(WITH_TBB)
   set(TBB_INCLUDE_DIRS "" CACHE PATH "")
   set(TBB_LIBRARIES "" CACHE FILEPATH "")
+  set(TBB_LIBRARIES_DEBUG "" CACHE FILEPATH "")
 endif()
 
 if(WITH_NANOVDB)   
     set(NANOVDB_INCLUDE_DIRS "" CACHE PATH "")
 endif()
 
-if(WITH_EMBREE)
-    find_package(embree REQUIRED)
-endif()
-
-if(WITH_GENERICIO)
-    # set(BLOSC_INCLUDE_DIRS "" CACHE PATH "")
-    # set(BLOSC_LIBRARIES "" CACHE FILEPATH "")
-
-    # set(ZLIB_INCLUDE_DIRS "" CACHE PATH "")
-    # set(ZLIB_LIBRARIES "" CACHE FILEPATH "")
-
-    # set(ZSTD_INCLUDE_DIRS "" CACHE PATH "")
-    # set(ZSTD_LIBRARIES "" CACHE FILEPATH "")
-endif()
-
-if(WITH_CUDAKDTREE)
+if(WITH_GPU_CUDA OR WITH_CUDAKDTREE)
     # ==================================================================
     # configure and enable cuda
     # ==================================================================
@@ -150,18 +142,98 @@ if(WITH_CUDAKDTREE)
     enable_language(CUDA)
 endif()
 
-if(WITH_GENERICIO)
+if(WITH_GPU_HIP)
+    # ==================================================================
+    # configure and enable HIP (AMD ROCm)
+    # ==================================================================
+    if(WITH_GPU_CUDA)
+        message(FATAL_ERROR "WITH_GPU_HIP and WITH_GPU_CUDA are mutually exclusive")
+    endif()
+
+    # gfx90a = AMD MI250X (LUMI-G)
+    if(NOT CMAKE_HIP_ARCHITECTURES)
+        set(CMAKE_HIP_ARCHITECTURES gfx90a)
+    endif()
+
+    enable_language(HIP)
+
+    # hip::host carries the HIP include dirs and libamdhip64 for plain C++ TUs;
+    # hipCUB/rocPRIM/rocThrust are header-only and live in the same ROCm prefix.
+    find_package(hip REQUIRED CONFIG HINTS "$ENV{ROCM_PATH}/lib/cmake/hip")
+endif()
+
+if(WITH_HACC)
     set(BUILD_SHARED OFF)
     set(BUILD_TESTS OFF)
     set(BUILD_TESTS OFF)
     set(BUILD_BENCHMARKS OFF)
+    set(BUILD_FUZZERS OFF)
 
     add_subdirectory(submodules/c-blosc)
 
     set(BLOSC_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/submodules/c-blosc/include")
     set(BLOSC_LIBRARIES blosc_static)
+    
+    # Set zlib and zstd include directories for SZ library
+    set(ZLIB_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/submodules/c-blosc/internal-complibs/zlib-1.3.1")
+    set(ZSTD_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/submodules/c-blosc/internal-complibs/zstd-1.5.6")
+endif()
+
+if(WITH_IPIC3D)
+    # IPIC3D requires HDF5
+    set(WITH_HDF5 ON)
+endif()
+
+if(WITH_PLUTO)
+    # PLUTO requires VTK
+    set(WITH_VTK ON)
+endif()
+
+if(WITH_HDF5)
+    find_package(HDF5 REQUIRED COMPONENTS C)
+    if(HDF5_FOUND)
+        set(HDF5_INCLUDE_DIRS ${HDF5_INCLUDE_DIRS})
+        set(HDF5_LIBRARIES ${HDF5_LIBRARIES})
+    endif()
 endif()
 
 ########################################################
 add_subdirectory(src)
 ########################################################
+
+# ==================================================================
+# CMake Package Configuration for find_package() support
+# ==================================================================
+include(CMakePackageConfigHelpers)
+include(GNUInstallDirs)
+
+# Set the installation directory for CMake files
+set(SPACE_CONVERTER_CMAKE_DIR ${CMAKE_INSTALL_LIBDIR}/cmake/space_converter)
+
+# Install export targets file
+install(EXPORT space_converter_targets
+    FILE space_converterTargets.cmake
+    NAMESPACE space_converter::
+    DESTINATION ${SPACE_CONVERTER_CMAKE_DIR}
+)
+
+# Generate the config file that contains the exports
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/space_converterConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/space_converterConfig.cmake"
+    INSTALL_DESTINATION ${SPACE_CONVERTER_CMAKE_DIR}
+)
+
+# Generate the version file for the config file
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/space_converterConfigVersion.cmake"
+    VERSION 1.0.0
+    COMPATIBILITY AnyNewerVersion
+)
+
+# Install the generated config and version files
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/space_converterConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/space_converterConfigVersion.cmake"
+    DESTINATION ${SPACE_CONVERTER_CMAKE_DIR}
+)

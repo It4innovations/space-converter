@@ -1395,12 +1395,82 @@ void empty_read_buffer(enum iofields blocknr, int offset, int pc, int type, int 
 /*! This function reads a snapshot file and distributes the data it contains
  *  to tasks 'readTask' to 'lastTask'.
  */
+/*! Tag used to distribute the "which blocks does this file contain" map from the
+ *  reading task to the other tasks of its group. Kept local so tags.h stays untouched.
+ */
+#define TAG_BLOCKS_PRESENT 1090
+
+/*! Scan a format-2 snapshot for the labels it actually contains.
+ *
+ *  present[] is indexed by 'enum iofields' and holds the payload size in bytes of every
+ *  block found in the file (0 = block absent). Snapshots routinely omit blocks that the
+ *  compiled-in iofields list knows about (a run without a potential block has no POT, and
+ *  so on). Without this map, find_block() scans to EOF looking for such a block and
+ *  my_fread() aborts the run.
+ *
+ *  The size is kept so the caller can also reject blocks whose on-disk layout disagrees
+ *  with the compiled-in one - e.g. a metal block written with a different number of
+ *  species. Reading those would overflow the receive buffer and corrupt the heap.
+ *
+ *  Uses plain fread(): hitting EOF here is the normal way to end the scan, not an error.
+ */
+static void scan_present_blocks(FILE * fd, int *present)
+{
+  int bnr;
+  unsigned int blksize, blocksize;
+  char blocklabel[4], reflabel[4];
+
+  for(bnr = 0; bnr < (int) IO_LASTENTRY; bnr++)
+    present[bnr] = 0;
+
+  rewind(fd);
+
+  while(1)
+    {
+      if(fread(&blksize, sizeof(int), 1, fd) != 1)
+	break;			/* end of file - scan complete */
+#ifdef AUTO_SWAP_ENDIAN_READIC
+      swap_Nbyte((char *) &blksize, 1, 4);
+#endif
+      if(blksize != 8)
+	break;			/* not a label record - stop rather than guess */
+
+      if(fread(blocklabel, sizeof(char), 4, fd) != 4)
+	break;
+      if(fread(&blocksize, sizeof(int), 1, fd) != 1)
+	break;
+#ifdef AUTO_SWAP_ENDIAN_READIC
+      swap_Nbyte((char *) &blocksize, 1, 4);
+#endif
+      if(fread(&blksize, sizeof(int), 1, fd) != 1)
+	break;
+
+      for(bnr = 0; bnr < (int) IO_LASTENTRY; bnr++)
+	{
+	  get_Tab_IO_Label((enum iofields) bnr, reflabel);
+	  if(strncmp(reflabel, blocklabel, 4) == 0)
+	    present[bnr] = (int) blocksize - 2 * (int) sizeof(int);	/* payload without the record markers */
+	}
+
+#ifdef _WIN32
+      if(_fseeki64(fd, (__int64) blocksize, SEEK_CUR) != 0)
+#else
+      if(fseek(fd, blocksize, SEEK_CUR) != 0)
+#endif
+	break;
+    }
+
+  clearerr(fd);
+  rewind(fd);
+}
+
 #ifdef GADGET3_IO_LIB
 void read_file(char *fname, int readTask, int lastTask, int num_files)
 #else
 void read_file(char *fname, int readTask, int lastTask)
 #endif
 {
+  int block_present[IO_LASTENTRY];
   size_t blockmaxlen;
   int i, n_in_file, n_for_this_task, ntask, pc, offset = 0, offset_gas = 0, offset_stars = 0, offset_bhs =
     0, task;
@@ -1532,9 +1602,19 @@ void read_file(char *fname, int readTask, int lastTask)
 	}
 #endif
 
+      /* Record which blocks this file really holds, so the loop below can skip the
+         ones it does not (see scan_present_blocks). Only format 2 carries labels;
+         for the other formats every block stays enabled and behaviour is unchanged. */
+      if(All.ICFormat == 2)
+	scan_present_blocks(fd, block_present);
+      else
+	for(i = 0; i < (int) IO_LASTENTRY; i++)
+	  block_present[i] = 1;
+
       for(task = readTask + 1; task <= lastTask; task++)
 	{
 	  MPI_Ssend(&header, sizeof(header), MPI_BYTE, task, TAG_HEADER, MYMPI_COMM_WORLD);
+	  MPI_Ssend(block_present, IO_LASTENTRY, MPI_INT, task, TAG_BLOCKS_PRESENT, MYMPI_COMM_WORLD);
 #ifdef AUTO_SWAP_ENDIAN_READIC
 	  MPI_Ssend(&swap_file, 1, MPI_INT, task, TAG_SWAP, MYMPI_COMM_WORLD);
 #endif
@@ -1548,6 +1628,7 @@ void read_file(char *fname, int readTask, int lastTask)
   else
     {
       MPI_Recv(&header, sizeof(header), MPI_BYTE, readTask, TAG_HEADER, MYMPI_COMM_WORLD, &status);
+      MPI_Recv(block_present, IO_LASTENTRY, MPI_INT, readTask, TAG_BLOCKS_PRESENT, MYMPI_COMM_WORLD, &status);
 #ifdef AUTO_SWAP_ENDIAN_READIC
       MPI_Recv(&swap_file, 1, MPI_INT, readTask, TAG_SWAP, MYMPI_COMM_WORLD, &status);
 #endif
@@ -1642,6 +1723,21 @@ void read_file(char *fname, int readTask, int lastTask)
 	All.MaxPartMet =
 	  All.PartAllocFactor * (All.TotN_stars / NTask +
 				 (All.TotN_gas / NTask) * All.SFfactor * All.Generations);
+
+      /* The estimate above assumes the stars are spread evenly over the tasks, but a task
+         reads whole files and files are not evenly populated - a task can end up holding
+         considerably more stars than TotN_stars/NTask. Writing their metals then runs past
+         MetP and silently corrupts the heap. Raise the allocation to a bound a single task
+         can never exceed: it holds neither more stars than exist, nor more particles than
+         All.MaxPart (which is checked separately below). */
+      {
+	int met_upper_bound = (All.TotN_stars < (long long) All.MaxPart)
+	  ? (int) All.TotN_stars : (int) All.MaxPart;
+
+	if(All.MaxPartMet < met_upper_bound)
+	  All.MaxPartMet = met_upper_bound;
+      }
+
       if(ThisTask == 0)
 	{
 	  printf("       MaxStarPart %d (%lld,%lld,%g,%d)\n", All.MaxPartMet, All.TotN_gas, All.TotN_stars,
@@ -1749,6 +1845,21 @@ void read_file(char *fname, int readTask, int lastTask)
 	      endrun(172);
 	    }
 	}
+
+#ifdef LT_STELLAREVOLUTION
+      /* Same guard as the one above for SPH particles: without it an undersized MetP is
+         written past its end, which corrupts the heap instead of reporting the problem. */
+      if(type == 4)
+	{
+	  if(N_stars + n_for_this_task > All.MaxPartMet)
+	    {
+	      printf("Not enough space on task=%d for star particles (space for %d, need at least %d)\n",
+		     ThisTask, All.MaxPartMet, N_stars + n_for_this_task);
+	      fflush(stdout);
+	      endrun(174);
+	    }
+	}
+#endif
 
       nall += n_for_this_task;
     }
@@ -1949,6 +2060,37 @@ void read_file(char *fname, int readTask, int lastTask)
 
 	  if(blocknr == IO_HSMS)
 	    continue;
+
+	  /* Skip blocks this file does not contain. The decision comes from the label
+	     scan on readTask and is broadcast to the whole group, so every task takes
+	     the same branch and the sends/receives below stay matched. */
+	  if(bnr < (int) IO_LASTENTRY && !block_present[bnr])
+	    continue;
+
+	  /* Skip blocks whose on-disk size disagrees with the compiled-in layout, and blocks
+	     this build has no storage for at all (bytes per element 0 - the physics option
+	     that owns them is switched off). Reading either would write past the receive
+	     buffer or divide by zero below, so refuse rather than corrupt memory.
+	     Derived from the header and the label scan, hence identical on every task. */
+	  if(bnr < (int) IO_LASTENTRY && block_present[bnr] > 0)
+	    {
+	      int bytes_per_element = get_bytes_per_blockelement(blocknr, 1);
+	      int expected_bytes = bytes_per_element * get_particles_in_block(blocknr, &typelist[0]);
+
+	      if(bytes_per_element <= 0 || (expected_bytes > 0 && block_present[bnr] != expected_bytes))
+		{
+		  if(ThisTask == readTask && ThisTask == 0)
+		    {
+		      get_dataset_name(blocknr, buf);
+		      printf
+			("Task %d: skipping block %d (%s): file holds %d bytes, this build expects %d "
+			 "(snapshot written with a different configuration)\n",
+			 ThisTask, bnr, buf, block_present[bnr], expected_bytes);
+		      fflush(stdout);
+		    }
+		  continue;
+		}
+	    }
 
 	  if(ThisTask == readTask && (ThisTask == 0 || VERBOSE_LEVEL > 2))
 	    {

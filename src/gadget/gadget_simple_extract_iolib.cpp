@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2023-2025 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+ * Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
  *
  * This program is free software : you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,15 +25,9 @@
 #   define NANOVDB_USE_INTRINSICS
 #endif
 
-#if OPENVDB_VERSION == 11
-#	include <nanovdb/util/GridBuilder.h>
-#	include <nanovdb/util/CreateNanoGrid.h>
-#	include <nanovdb/util/IO.h>
-#else
-#	include <nanovdb/tools/GridBuilder.h>
-#	include <nanovdb/tools/CreateNanoGrid.h>
-#	include <nanovdb/io/IO.h>
-#endif
+#include <nanovdb/tools/GridBuilder.h>
+#include <nanovdb/tools/CreateNanoGrid.h>
+#include <nanovdb/io/IO.h>
 
 #endif
 
@@ -110,9 +104,9 @@ extern "C"
 
 #define RETURN_NORM_EMPTY return 0; //return std::numeric_limits<float>::quiet_NaN();//0;
 #define RETURN_NORM_VALUE(v) return (float)(v);
-#define RETURN_NORM_VECTOR3(v) return (float)common::calculate_dmagnitude3(v[0], v[1], v[2]);
-#define RETURN_NORM_DVECTORN(v,n) return (float)common::calculate_dmagnituden(v,n);
-#define RETURN_NORM_FVECTORN(v,n) return (float)common::calculate_fmagnituden(v,n);
+#define RETURN_NORM_VECTOR3(v) return (float)space_converter::common::calculate_dmagnitude3(v[0], v[1], v[2]);
+#define RETURN_NORM_DVECTORN(v,n) return (float)space_converter::common::calculate_dmagnituden(v,n);
+#define RETURN_NORM_FVECTORN(v,n) return (float)space_converter::common::calculate_fmagnituden(v,n);
 
 #define RETURN_COMP_EMPTY return 0;
 #define RETURN_COMP_VALUE(v) return 1;
@@ -238,7 +232,7 @@ namespace gadget_simple {
 		size_t  datasize;
 	} blockdata_t;
 
-	int check_number_of_files(std::string& basename);              // check the consistency of the files number
+	int check_number_of_files(std::string& basename, int world_rank);              // check the consistency of the files number
 	int  seek_block(FILE*, const blockname_t);                         // seek a specific block in a specific file
 	int  get_particles_num(io_header* snaphead, nparts_t* nparts_file, nparts_t* nparts_all);              // get how many particles are in a snapshot
 	//int  get_known_block_list(const char*, blockdata_t**);
@@ -258,7 +252,7 @@ namespace gadget_simple {
 		float get_fvalue(size_t i) {
 			if (num_elements != 1) {
 				if (num_elements != 0)
-				printf("Error: get_fvalue called with num_elements != 1 (num_elements: %lld)\n", num_elements);
+				printf("Error: get_fvalue called with num_elements != 1 (num_elements: %zu)\n", num_elements);
 				return 0;
 			}
 			if (size_of_elem == 8) {
@@ -271,9 +265,10 @@ namespace gadget_simple {
 		}
 
 		int get_ivalue(size_t i) {
+				
 			if (num_elements != 1) {
 				if (num_elements != 0)
-				printf("Error: get_ivalue called with num_elements != 1 (num_elements: %lld)\n", num_elements);
+				printf("Error: get_ivalue called with num_elements != 1 (num_elements: %zu)\n", num_elements);
 				return 0;
 			}
 			if (size_of_elem == 8) {
@@ -288,7 +283,7 @@ namespace gadget_simple {
 		double get_dvalue(size_t i) {
 			if (num_elements != 1) {
 				if (num_elements != 0)
-				printf("Error: get_dvalue called with num_elements != 1 (num_elements: %lld)\n", num_elements);
+				printf("Error: get_dvalue called with num_elements != 1 (num_elements: %zu)\n", num_elements);
 				return 0;
 			}
 			if (size_of_elem == 8) {
@@ -303,7 +298,7 @@ namespace gadget_simple {
 		void get_fvalue3(size_t i, float v[3]) {
 			if (num_elements != 3) {
 				if (i == 0)
-					printf("Error: get_fvalue3 called with num_elements != 3 (%s: %d)\n", data_name.c_str(), num_elements);
+					printf("Error: get_fvalue3 called with num_elements != 3 (%s: %zu)\n", data_name.c_str(), num_elements);
 
 				v[0] = v[1] = v[2] = 0;
 				return;
@@ -326,7 +321,7 @@ namespace gadget_simple {
 		void get_dvalue3(size_t i, double v[3]) {
 			if (num_elements != 3) {
 				if (i == 0)
-					printf("Error: get_dvalue3 called with num_elements != 3 (%s: %d)\n", data_name.c_str(), num_elements);
+					printf("Error: get_dvalue3 called with num_elements != 3 (%s: %zu)\n", data_name.c_str(), num_elements);
 
 				v[0] = v[1] = v[2] = 0;
 				return;
@@ -424,8 +419,8 @@ namespace gadget_simple {
 
 	//std::vector<componentlist_t> components_list;
 	//io_header  snapheader;
-	double redshift = 0.0;		
-	double hubble_param = 1.0;
+	// double redshift = 0.0;		
+	// double hubble_param = 1.0;
 
 	double steps_time[2];
 	//
@@ -598,12 +593,14 @@ namespace gadget_simple {
 			npart_local_rank[NALL] += (npart_local_rank[i] = chunk_size);
 		}
 
-		printf("rank %d: processing file %s (%d/%d), particles: %lld\n", world_rank, name.c_str(), f + 1, nfiles, npart_local_rank[NALL]);
-		printf("rank %d: particles per type: ", world_rank);
-		for (int i = 0; i < NTYPES; i++) {
-			printf("%lld ", npart_local_rank[i]);
+		if (world_rank == 0) {
+			printf("rank #%d: processing file %s (%d/%d), particles: %lld\n", world_rank, name.c_str(), f + 1, nfiles, npart_local_rank[NALL]);
+			printf("rank #%d: particles per type: ", world_rank);
+			for (int i = 0; i < NTYPES; i++) {
+				printf("%lld ", npart_local_rank[i]);
+			}
+			printf("\n");
 		}
-		printf("\n");
 
 		// ---------------------------------------------------------
 		//
@@ -853,8 +850,8 @@ namespace gadget_simple {
 			get_particles_num(&snaphead, &npart_local, &npart_all);
 
 
-			printf("rank %d: processing file %s (%d/%d), particles: %lld\n", world_rank, name.c_str(), f + 1, nfiles, npart_local[NALL]);
-			printf("rank %d: particles per type: ", world_rank);
+			printf("rank #%d: processing file %s (%d/%d), particles: %lld\n", world_rank, name.c_str(), f + 1, nfiles, npart_local[NALL]);
+			printf("rank #%d: particles per type: ", world_rank);
 			for (int i = 0; i < NTYPES; i++) {
 				printf("%lld ", npart_local[i]);
 			}
@@ -1088,7 +1085,64 @@ namespace gadget_simple {
 		//#endif
 	}
 
-	int check_number_of_files(std::string& basename)
+	void gadget_snaphead_print_info(io_header* snaphead, int world_rank)
+	{
+		if (world_rank == 0) {
+			printf("rank #%d: ======== Snapshot Header Info ========\n", world_rank);
+			
+			// Print npart array
+			printf("rank #%d: npart: [", world_rank);
+			for (int i = 0; i < 6; i++) {
+				printf("%d%s", snaphead->npart[i], (i < 5 ? ", " : "]\n"));
+			}
+			
+			// Print mass array
+			printf("rank #%d: mass: [", world_rank);
+			for (int i = 0; i < 6; i++) {
+				printf("%g%s", snaphead->mass[i], (i < 5 ? ", " : "]\n"));
+			}
+			
+			// Print scalar double values
+			printf("rank #%d: time: %g\n", world_rank, snaphead->time);
+			printf("rank #%d: redshift: %g\n", world_rank, snaphead->redshift);
+			
+			// Print flags
+			printf("rank #%d: flag_sfr: %d\n", world_rank, snaphead->flag_sfr);
+			printf("rank #%d: flag_feedback: %d\n", world_rank, snaphead->flag_feedback);
+			
+			// Print npartTotal array
+			printf("rank #%d: npartTotal: [", world_rank);
+			for (int i = 0; i < 6; i++) {
+				printf("%u%s", snaphead->npartTotal[i], (i < 5 ? ", " : "]\n"));
+			}
+			
+			// Print more flags and values
+			printf("rank #%d: flag_cooling: %d\n", world_rank, snaphead->flag_cooling);
+			printf("rank #%d: num_files: %d\n", world_rank, snaphead->num_files);
+			printf("rank #%d: BoxSize: %g\n", world_rank, snaphead->BoxSize);
+			printf("rank #%d: Omega0: %g\n", world_rank, snaphead->Omega0);
+			printf("rank #%d: OmegaLambda: %g\n", world_rank, snaphead->OmegaLambda);
+			printf("rank #%d: HubbleParam: %g\n", world_rank, snaphead->HubbleParam);
+			printf("rank #%d: flag_stellarage: %d\n", world_rank, snaphead->flag_stellarage);
+			printf("rank #%d: flag_metals: %d\n", world_rank, snaphead->flag_metals);
+			
+			// Print npartTotalHighWord array
+			printf("rank #%d: npartTotalHighWord: [", world_rank);
+			for (int i = 0; i < 6; i++) {
+				printf("%u%s", snaphead->npartTotalHighWord[i], (i < 5 ? ", " : "]\n"));
+			}
+			
+			// Print remaining flags
+			printf("rank #%d: flag_entropy_instead_u: %d\n", world_rank, snaphead->flag_entropy_instead_u);
+			printf("rank #%d: flag_doubleprecision: %d\n", world_rank, snaphead->flag_doubleprecision);
+			printf("rank #%d: flag_ic_info: %d\n", world_rank, snaphead->flag_ic_info);
+			printf("rank #%d: lpt_scalingfactor: %g\n", world_rank, snaphead->lpt_scalingfactor);
+			
+			printf("rank #%d: ======================================\n", world_rank);
+		}
+	}
+
+	int check_number_of_files(std::string& basename, int world_rank)
 	{
 #if 0
 		int   nfiles = 1;
@@ -1178,17 +1232,15 @@ namespace gadget_simple {
 
 		io_header snaphead;
 
-		sprintf(buf, "%s.%d", basename.c_str(), 0);
-		sprintf(buf1, "%s", basename.c_str());
-
-		//if (All.ICFormat == 3)
+		snprintf(buf, 200, "%s.%d", basename.c_str(), 0);
+		snprintf(buf1, 200, "%s", basename.c_str());
 		//{
 		//	sprintf(buf, "%s.%d.hdf5", basename.c_str(), 0);
 		//	sprintf(buf1, "%s.hdf5", basename.c_str());
 		//}
 
 		//if (world_rank == 0)
-		//printf("rank %d: Trying to read file %s in format %d\n", world_rank, buf, 2);
+		//printf("rank #%d: Trying to read file %s in format %d\n", world_rank, buf, 2);
 
 		//#ifndef  HAVE_HDF5
 		//		if (All.ICFormat == 3)
@@ -1249,8 +1301,9 @@ namespace gadget_simple {
 //			//#endif
 //			fread(&dummy, sizeof(dummy), 1, fd);
 //			//}
+			
 			gadget_simple_read_snaphead(fd, &snaphead);
-			printf("snaphead.redshift: %f, snaphead.HubbleParam: %f\n", snaphead.redshift, snaphead.HubbleParam);
+			gadget_snaphead_print_info(&snaphead, world_rank);
 
 			fclose(fd);
 //			//#ifdef HAVE_HDF5
@@ -1318,7 +1371,7 @@ namespace gadget_simple {
 //			fread(&dummy, sizeof(dummy), 1, fd);
 //			//}
 			gadget_simple_read_snaphead(fd, &snaphead);
-			printf("snaphead.redshift: %f, snaphead.HubbleParam: %f\n", snaphead.redshift, snaphead.HubbleParam);
+			gadget_snaphead_print_info(&snaphead, world_rank);
 
 			fclose(fd);
 
@@ -1622,7 +1675,7 @@ namespace gadget_simple {
 
 		void print_CPU_steps()
 		{
-			printf("init_lib time: %f\n", steps_time[1] - steps_time[0]);
+			//printf("init_lib time: %f\n", steps_time[1] - steps_time[0]);
 		}
 
 		int get_particle_type(uint64_t id) {
@@ -1770,25 +1823,25 @@ namespace gadget_simple {
 
 		void gadget_init_lib(std::string& fname, int world_rank, int world_size)
 		{
+#ifdef WITH_OPENMP
 			steps_time[0] = omp_get_wtime();
+#endif
 
 			fill_known_blocks();
 
-			nfiles = check_number_of_files(fname);
+			nfiles = check_number_of_files(fname, world_rank);
 
 			// working dir is the current one
 			if (nfiles <= 0)
 			{
 				if (nfiles == 0)
 					printf("I'm sorry to be unable to find any snapshot "
-						"neither as ./%1$s nor as ./%1$s.x", fname);
-
-				//free(basename);
+					"neither as ./%1$s nor as ./%1$s.x", fname.c_str());
 				exit(-1);
 			}
 
 			if (world_rank == 0) {
-				printf("Total number of files: %d\n", nfiles);
+				printf("rank #%d: Total number of files: %d\n", world_rank, nfiles);
 			}
 
 			memset(npart_local_rank, 0, sizeof(nparts_t)); // initialize the local particles count to 0
@@ -1801,7 +1854,9 @@ namespace gadget_simple {
 				read_multiple_files_per_rank(fname, world_rank, world_size);
 			}
 
+#ifdef WITH_OPENMP
 			steps_time[1] = omp_get_wtime();
+#endif
 		}
 
 		void gadget_finish_lib()
@@ -1911,14 +1966,14 @@ namespace gadget_simple {
 			return GADGET_MAX_BLOCKS;
 		}
 
-		double get_redshift()
-		{
-			return redshift;
-		}
+		// double get_redshift()
+		// {
+		// 	return redshift;
+		// }
 
-		double get_hubble_param()
-		{
-			return hubble_param;
-		}
+		// double get_hubble_param()
+		// {
+		// 	return hubble_param;
+		// }
 	}//io
 }//gadget

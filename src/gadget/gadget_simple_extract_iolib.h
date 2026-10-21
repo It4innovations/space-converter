@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2023-2025 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+ * Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
  *
  * This program is free software : you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -140,8 +140,8 @@ namespace gadget_simple {
 
         int get_num_types();
         int get_num_blocks();
-        double get_redshift();
-        double get_hubble_param();
+        // double get_redshift();
+        // double get_hubble_param();
 
     } // namespace io
 

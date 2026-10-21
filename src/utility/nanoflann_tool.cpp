@@ -1,5 +1,5 @@
 ﻿/*
- * Copyright(C) 2023-2025 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+ * Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
  *
  * This program is free software : you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,6 +21,7 @@
 #include <mpi.h>
 #include <nanoflann.hpp>
 #include <iostream>
+#include "dense_utility.h"
 
 //#undef WITH_OPENMP
 
@@ -39,6 +40,7 @@
 
 #include "utility/dense_utility.h"
 
+namespace space_converter {
 namespace utility {
 	namespace nanoflann_tool {
 
@@ -367,3 +369,4 @@ namespace utility {
 
 	}// nanoflann
 } //utility
+} // namespace space_converter

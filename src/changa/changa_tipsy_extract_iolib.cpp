@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2023-2025 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+ * Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
  *
  * This program is free software : you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,15 +32,17 @@
  //#include "tree_xdr.h"
 #include "TipsyFile.h"
 
+#ifdef WITH_OPENMP
 #include <omp.h>
+#endif
 
 #include "convert_common.h"
 
 #define RETURN_NORM_EMPTY return 0; //return std::numeric_limits<float>::quiet_NaN();//0;
 #define RETURN_NORM_VALUE(v) return (float)(v);
-#define RETURN_NORM_VECTOR3(v) return (float)common::calculate_dmagnitude3(v[0], v[1], v[2]);
-#define RETURN_NORM_DVECTORN(v,n) return (float)common::calculate_dmagnituden(v,n);
-#define RETURN_NORM_FVECTORN(v,n) return (float)common::calculate_fmagnituden(v,n);
+#define RETURN_NORM_VECTOR3(v) return (float)space_converter::common::calculate_dmagnitude3(v[0], v[1], v[2]);
+#define RETURN_NORM_DVECTORN(v,n) return (float)space_converter::common::calculate_dmagnituden(v,n);
+#define RETURN_NORM_FVECTORN(v,n) return (float)space_converter::common::calculate_fmagnituden(v,n);
 
 #define RETURN_COMP_EMPTY return 0;
 #define RETURN_COMP_VALUE(v) return 1;
@@ -70,7 +72,9 @@ namespace changa {
 			int g_smoothlength_blocknr = -1;
 
 			void init_lib(std::string basefile, int world_rank, int world_size, std::string filter_in) {
+#ifdef WITH_OPENMP
 				steps_time[0] = omp_get_wtime();
+#endif
 
 				//tf_data = new Tipsy::TipsyFile(basefile);
 				Tipsy::TipsyReader treader(basefile);
@@ -93,7 +97,9 @@ namespace changa {
 					}
 				}
 
+#ifdef WITH_OPENMP
 				steps_time[1] = omp_get_wtime();
+#endif
 			}
 
 			void finish_lib() {
@@ -117,7 +123,7 @@ namespace changa {
 			}
 
 			void print_CPU_steps() {
-				printf("init_lib time: %f\n", steps_time[1] - steps_time[0]);
+				//printf("init_lib time: %f\n", steps_time[1] - steps_time[0]);
 			}
 
 			float get_particle_norm_value(int blocknr, uint64_t id) {
@@ -660,10 +666,21 @@ namespace changa {
 			//}
 
 			double get_particle_hsml(uint64_t id) {
+				// An auxiliary "smoothlength" field, when the snapshot carries one, wins over
+				// the native fields.
 				if (g_smoothlength_blocknr != -1)
 					return get_particle_norm_value(g_smoothlength_blocknr, id);
 
-				return 0.0;
+				// Otherwise fall back to what the Tipsy format always stores: the gas smoothing
+				// length, and the gravitational softening for dark matter and stars. Returning 0
+				// would collapse every particle onto a single voxel, since fill_voxels()
+				// truncates the radius to whole voxels.
+				ParticleType pt = (ParticleType)get_particle_type(id);
+
+				if (pt == ParticleType::Gas)
+					return get_particle_norm_value(BlockType::HSmooth, id);
+
+				return get_particle_norm_value(BlockType::Soft, id);
 			}
 
 			double get_particle_mass(uint64_t id) {

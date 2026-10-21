@@ -44,6 +44,7 @@
 #endif
 #include <sys/types.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 /* ARGSUSED */
 static bool_t
@@ -98,7 +99,8 @@ x_inline (XDR *xdrs, int len)
 	  xdrs->x_base = 0;
 	  return NULL;
 	}
-      xdrs->x_base = (void *) len;
+      //xdrs->x_base = (void *) len;
+      xdrs->x_base = (void *)(uintptr_t)len;
       xdrs->x_handy += len;
       return (int32_t *) xdrs->x_private;
     }

@@ -10,3 +10,6 @@
 [submodule "submodules/c-blosc"]
 	path = submodules/c-blosc
 	url = https://github.com/Blosc/c-blosc.git
+[submodule "submodules/braas-hpc-renderengine"]
+	path = submodules/braas-hpc-renderengine
+	url = https://github.com/It4innovations/braas-hpc-renderengine.git

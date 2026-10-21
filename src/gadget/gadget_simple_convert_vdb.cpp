@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2023-2025 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+ * Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
  *
  * This program is free software : you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -137,8 +137,8 @@ namespace gadget_simple {
 
 		//gadget_simple::io::gadget_read_ic(snap_file);
 
-		redshift = gadget_simple::io::get_redshift();
-		hubble_param = gadget_simple::io::get_hubble_param();
+		// redshift = gadget_simple::io::get_redshift();
+		// hubble_param = gadget_simple::io::get_hubble_param();
 
 		print_CPU_steps();
 	}

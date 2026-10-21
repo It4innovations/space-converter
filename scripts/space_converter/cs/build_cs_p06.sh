@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #####################################################################################################################
-# Copyright(C) 2023-2025 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+# Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
 #
 # This program is free software : you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -78,8 +78,8 @@ make_d="${make_d} -DWITH_OPENVDB=ON"
 make_d="${make_d} -DWITH_CUDAKDTREE=ON"
 
 make_d="${make_d} -DWITH_NANOFLANN=OFF"
-make_d="${make_d} -DWITH_GENERICIO=ON"
-make_d="${make_d} -DWITH_NO_DATA_TEMP=OFF"
+make_d="${make_d} -DWITH_HACC=ON"
+
 
 #make_d="${make_d} -DCMAKE_BUILD_TYPE=Debug"
 make_d="${make_d} -DCMAKE_BUILD_TYPE=RelWithDebInfo"

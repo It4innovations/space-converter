@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2023-2025 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+ * Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
  *
  * This program is free software : you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -64,7 +64,8 @@ static void calc_histo(openvdb::FloatGrid::Ptr grid, std::string &histogram_file
 	auto minMaxResult = openvdb::tools::minMax(grid->tree());
 	float min = minMaxResult.min();
 	float max = minMaxResult.max();
-#endif	
+#endif
+
 	std::cout << "Computed value range: " << min << "," << max << '\n';
 
 	openvdb::CoordBBox bbox;

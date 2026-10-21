@@ -1,5 +1,5 @@
 #####################################################################################################################
-# Copyright(C) 2023-2025 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
+# Copyright(C) 2023-2026 IT4Innovations National Supercomputing Center, VSB - Technical University of Ostrava
 #
 # This program is free software : you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -21,8 +21,8 @@ bl_info = {
     "name": "BSpace",
     "author": "Milan Jaros, Petr Strakos, Lubomir Riha",
     "description": "",
-    "blender": (4, 2, 0),
-    "version": (0, 3, 0),
+    "blender": (5, 0, 0),
+    "version": (1, 1, 0),
     "location": "View3D > Sidebar > BSpace Tab",
     "warning": "",
     "category": "3D View"
