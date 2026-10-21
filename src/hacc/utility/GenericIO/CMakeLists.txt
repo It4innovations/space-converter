@@ -74,6 +74,7 @@ target_link_libraries(genericio_print PUBLIC
   genericio_lib_static
   MPI::MPI_CXX
   ${BLOSC_LIBRARIES}
+  ${OpenMP_omp_LIBRARY}
   )
 
 install (TARGETS genericio_print DESTINATION bin)
@@ -105,6 +106,7 @@ target_link_libraries(gen_genericio PUBLIC
   genericio_lib_mpi_static
   MPI::MPI_CXX
   ${BLOSC_LIBRARIES}
+  ${OpenMP_omp_LIBRARY}
   )
 
 install (TARGETS gen_genericio DESTINATION bin)

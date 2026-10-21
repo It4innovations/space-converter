@@ -31,6 +31,8 @@
 #   SC_NP    max MPI ranks to test with (2 or 3 recommended) [default: 3]
 #   SC_NODE  run the MPI ranks on this node of the job (srun -w) [any]
 #   SC_LUMI_PARTITION  LUMI only: G (HIP build, default) or C (LUMI-C CPU builds)
+#   SC_DYLD_LIBRARY_PATH  macOS only: OpenVDB/TBB/libomp library dirs. SIP drops
+#            DYLD_LIBRARY_PATH when /bin/bash starts, so it is passed under this name.
 #
 # MPI ranks are started with `mpirun -n N` inside this (single-task) step when
 # mpirun is available, else `srun --overlap -n N` against the surrounding job.
@@ -72,7 +74,22 @@ else
     PARAVIEW_LIB="/apps/all/ParaView/6.0.1-foss-2025b/lib64"
     [ -d "$PARAVIEW_LIB" ] && export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$PARAVIEW_LIB"
 fi
+[ -n "${SC_DYLD_LIBRARY_PATH:-}" ] && export DYLD_LIBRARY_PATH="$SC_DYLD_LIBRARY_PATH${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-2}"
+
+# Hang guard for T11: GNU timeout (gtimeout from Homebrew coreutils on macOS);
+# without either, T11 runs unguarded. Windows (Git Bash + MS-MPI): mpiexec would
+# start the unrelated Windows timeout.exe, so no guard there.
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) SC_WINDOWS=1 ;; *) SC_WINDOWS=0 ;; esac
+if [ "$SC_WINDOWS" = 1 ]; then
+    HANG_GUARD=()
+elif command -v timeout >/dev/null 2>&1; then
+    HANG_GUARD=(timeout 300)
+elif command -v gtimeout >/dev/null 2>&1; then
+    HANG_GUARD=(gtimeout 300)
+else
+    HANG_GUARD=()
+fi
 
 # Fail fast (with a clear message) if the binary cannot even start.
 # (`-h` exits non-zero when argc < 3, so check for the usage banner instead.)
@@ -275,7 +292,7 @@ T11_OK=1
 T11_REF="$SC_OUT/t11_ref.raw"
 for n in 1 2; do
     rm -f "$SC_OUT"/*.vdb "$SC_OUT"/*_float.raw 2>/dev/null
-    if ! launch "$n" timeout 300 "$SC_BIN" "${BASE_ARGS[@]}" --export-data 0 0 --dense-type 6 --dense-norm 2 \
+    if ! launch "$n" ${HANG_GUARD[@]+"${HANG_GUARD[@]}"} "$SC_BIN" "${BASE_ARGS[@]}" --export-data 0 0 --dense-type 6 --dense-norm 2 \
         --radius-const 2 --dense-file 1 >"$SC_OUT/t11_$n.log" 2>&1; then
         bad "T11: run with $n ranks failed or hung (killed after 300 s) — see t11_$n.log"; T11_OK=0; break
     fi

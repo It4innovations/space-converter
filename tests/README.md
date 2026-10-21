@@ -66,7 +66,12 @@ Configuration via environment: `SC_BIN` (binary path), `SC_OUT` (scratch dir,
 default `<repo>/temp/tests`), `SC_NP` (max ranks for T4, default 3), `SC_NODE`
 (pin the MPI ranks to one node of the job, e.g. when the other nodes are busy),
 `SC_LUMI_PARTITION` (LUMI only: `G` for the HIP build (default), `C` for the
-LUMI-C CPU builds; `cray-hdf5` is loaded for the `h5cc`-built generators).
+LUMI-C CPU builds; `cray-hdf5` is loaded for the `h5cc`-built generators),
+`SC_DYLD_LIBRARY_PATH` (macOS only: the OpenVDB, TBB and libomp library
+directories; SIP removes `DYLD_LIBRARY_PATH` when `/bin/bash` starts, so the
+driver exports it from this variable). T11 guards each run with GNU `timeout`
+(`gtimeout` from Homebrew coreutils on macOS) and runs unguarded when neither
+is installed.
 
 Barbora CPU nodes with the FIL and FIL_GRACE readers (build:
 `build_spaceconverter_bar_cpu_fil_grace.sh`; 44 pass, 0 fail, 2026-10-06):

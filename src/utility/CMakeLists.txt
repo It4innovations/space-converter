@@ -196,6 +196,7 @@ if(WITH_OPENVDB)
         $<IF:$<CONFIG:Debug>,${TBB_LIBRARIES_DEBUG},${TBB_LIBRARIES}>
         ${MPI_LIBRARIES}
         ${MPI_msmpi_LIBRARY}
+        ${OpenMP_omp_LIBRARY}
     )
         
     install (TARGETS vdb2histo DESTINATION bin)
@@ -213,6 +214,7 @@ if(WITH_OPENVDB)
         $<IF:$<CONFIG:Debug>,${TBB_LIBRARIES_DEBUG},${TBB_LIBRARIES}>
         ${MPI_LIBRARIES}
         ${MPI_msmpi_LIBRARY}
+        ${OpenMP_omp_LIBRARY}
     )
         
     install (TARGETS vdb2png DESTINATION bin)
