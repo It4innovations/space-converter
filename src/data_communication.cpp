@@ -115,6 +115,13 @@ namespace space_converter {
 		// Maximum chunk size: 2 billion floats
 		const size_t unit_giga = 1000L * 1000L * 1000L * 2L;
 
+		// The receive buffer only matters on the root, and the callers pass none (nullptr) on
+		// the other ranks. Cray MPICH's GPU-aware MPI_Reduce still picks its algorithm from it:
+		// device send + null receive deadlocked (reduce_scatter_gather) or failed with "Message
+		// truncated" on LUMI. Give those ranks a buffer of the same memory type (never written).
+		if (gdata == nullptr)
+			gdata = ldata;
+
 		// Reduce data in chunks if it exceeds the maximum size
 		size_t size_sended = 0;
 		while (size - size_sended > unit_giga) {
